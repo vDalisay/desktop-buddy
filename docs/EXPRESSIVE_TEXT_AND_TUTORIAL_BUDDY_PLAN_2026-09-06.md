@@ -6,11 +6,11 @@ Status: AUDITED — READY FOR IMPLEMENTATION, NO FEATURE CODE STARTED
 
 ## Goal
 
-Add a reusable expressive-presentation layer that gives Desktop Buddy more authored personality while preserving the current gameplay, tutorial, reward, accessibility, localization and rendering authorities.
+Add a reusable expressive-presentation layer that gives Desktop Buddy more authored personality while preserving the current gameplay, tutorial, reward, accessibility, audio and Buddy-rendering authorities.
 
 First consumers:
 
-1. **Tutorial dialogue** — localized typewriter reveal, semantic emphasis, quiet speech-like computer chirps and a live rendered tutorial Buddy portrait.
+1. **Tutorial dialogue** — English typewriter reveal, semantic emphasis, quiet speech-like computer chirps and a live rendered tutorial Buddy portrait.
 2. **Tool purchase/unlock rewards** — short original late-90s Office/WordArt-inspired title treatment inside the existing reward popup.
 3. **Work Mode milestones** — the same reward presentation architecture with milestone-specific copy/style.
 
@@ -19,71 +19,79 @@ Explicitly excluded from the first pass:
 - Steam's native achievement notification: Desktop Buddy does not own that UI and must not attempt to animate or replace it.
 - ordinary Paint Buddy / Buddy Studio Save, Use and Equip messages;
 - Help hover text, Settings descriptions, Workshop progress text and normal tool descriptions;
-- itch.io tutorial wiring. The shared architecture may compile there, but existing `DemoScope` remains the feature gate and itch currently omits the tutorial/Work/Paint Room/Buddy Studio.
+- itch.io tutorial wiring. Existing `DemoScope` remains the feature gate and itch currently omits the tutorial/Work/Paint Room/Buddy Studio;
+- adding or integrating any non-English language.
 
 ---
 
 # Architecture audit verdict
 
-The original plan was directionally correct, but four parts need to change before implementation.
+The original direction is sound, with four architectural constraints locked before implementation.
 
-## 1. Localization must be a first-class input, not markup added after English copy
+## 1. English-only now, localization-ready by construction
 
-There is already localization work in `feature/localization-ru`: Godot PO resources, a persisted language setting, runtime `TranslationServer.SetLocale`, translated tutorial lines and translated tool names/descriptions. That branch is currently diverged from `main`, so it must **not** be merged wholesale into this branch, but the new architecture must be compatible with the contract it establishes.
+This feature does **not** implement localization, PO files, language settings, locale switching or integration with the existing Russian localization branch.
 
-The Russian copy demonstrates why English character offsets or phrase matching are invalid: translated sentences reorder, inflect and sometimes paraphrase the emphasized phrase. The new system therefore must not search the translated result for English words and must not ask translators to preserve character positions.
+However, expressive effects must never be attached by English character offsets, substring searches or phrase matching. That would make later localization unnecessarily expensive.
 
-The first draft's `[wave]...[/wave]`-style tags inside translator prose are also rejected as the primary authoring model. They mix grammar with rendering syntax and are easy to break during translation.
+### Authoring contract
 
-### Revised localization contract
-
-Use **stable localization keys + named semantic slots**.
+Use **English message templates + named semantic slots**.
 
 Conceptual example:
 
-- message key: `tutorial.charged_bat`
-- English fallback template: `Hold {input_secondary} to charge a {impact}.`
-- `input_secondary` value: localized/current display text for the secondary mouse input, semantic style `Input`
-- `impact` value: localized phrase for the sentence, semantic style `Impact`
+- English template: `Hold {input_secondary} to charge a {impact}.`
+- `input_secondary` value: `right mouse button`, semantic role `Input`
+- `impact` value: `big swing`, semantic role `Impact`
 
-A translator may freely reorder the placeholders. Code styles the semantic slot after localization rather than styling fixed character ranges.
+The formatter produces an `ExpressiveTextDocument` containing ordinary runs and semantic runs. The renderer only sees the resolved document and semantic roles.
 
-New expressive messages should use stable keys even while older UI still uses source-English gettext msgids. A localization adapter may temporarily support both during migration:
+This gives us the desired authoring workflow now:
 
-1. stable key lookup;
-2. English fallback template if untranslated;
-3. optional legacy source-msgid fallback only where an existing PO entry must be preserved during migration.
+- choose the English sentence;
+- mark exactly which words/phrases receive emphasis by assigning them to named slots;
+- choose a semantic role rather than raw animation parameters.
 
-The expressive presenter itself must never call `TranslationServer` directly.
+And it leaves a clean future localization path:
 
-### Required localization safety
+- a translated template can reorder `{input_secondary}` and `{impact}`;
+- the same semantic slots retain the correct effects;
+- no renderer, tutorial controller or effect code changes are required.
 
-- Validate named placeholders in every translated expressive template.
-- Unknown/missing/duplicated required placeholders never strand the tutorial: log the problem and fall back to the English template, with safe/static styling if necessary.
-- Plain-text projection must always be available for tests and accessibility.
-- Dynamic counts use plural-aware localization rather than English concatenation.
-- Do not force uppercase: casing rules differ by language.
-- Measure the final localized string before rendering WordArt or dialogue.
-- Add long-string, Cyrillic, CJK and at least one RTL/pseudo-RTL layout fixture even before all of those locales ship.
-- Translator notes must describe each placeholder's meaning, not its visual implementation.
+No localization adapter is built in this feature. The message source simply returns the English template. A future `ITextTemplateSource`/localization adapter can replace that source without changing the document formatter or renderer.
 
-## 2. The tutorial already has a rebindable input that the current copy hardcodes
+### Important future-proofing rules
 
-`Drop Tool` is no longer always `D`; `LocalSettingsInputBindings.DropTool(settings)` is the actual machine-local binding and is applied through the existing input-map seam.
+- no hard-coded start/end character indices in tutorial data;
+- no `IndexOf("big swing")`-style effect lookup;
+- no effect syntax mixed directly into player-facing prose;
+- semantic slot names describe meaning (`Input`, `Money`, `Impact`, `Playful`) rather than visual implementation (`Wave`, `ShakeBlue`);
+- plain-text projection is always available;
+- do not force assumptions into the renderer that only work for one exact English sentence.
 
-The expressive system should fix this existing mismatch rather than preserve it.
+This is all the localization work required now.
 
-Introduce an input-prompt adapter that resolves semantic input actions to display text. Tutorial copy references an input action/slot, not the literal key.
+## 2. Input prompts should use the actual configured binding
+
+This is useful independently of localization.
+
+`Drop Tool` is rebindable through `LocalSettingsInputBindings.DropTool(settings)`, while the current tutorial copy still says `D`.
+
+Introduce `IInputPromptResolver` so expressive tutorial data can request a semantic input binding instead of hard-coding it.
 
 Examples:
 
 - `InputActions.DropTool` -> current configured chord;
-- primary/secondary mouse -> localized display phrase;
-- later controller bindings can use the same seam without rewriting tutorial copy.
+- primary mouse -> `left mouse button`;
+- secondary mouse -> `right mouse button`.
+
+The resulting text is then supplied as an `Input` semantic slot and receives the corresponding emphasis automatically.
+
+This also leaves room for future controller/input schemes without rewriting tutorial prose architecture.
 
 ## 3. The live portrait rendering stack already exists in another form
 
-Work Mode already constructs exactly the rendering pattern the tutorial portrait needs:
+Work Mode already constructs the rendering pattern the tutorial portrait needs:
 
 `SubViewportContainer` -> transparent `SubViewport` with its own `World3D` -> `StaticBuddyVisualTransformSource` -> `BuddyVisualRigView` -> appearance -> orthographic camera -> light.
 
@@ -93,185 +101,201 @@ Do not create a second tutorial-only 3D rendering stack. Extract/reuse a small o
 
 Also reuse the existing engine-free `BlinkModel` and `FaceRenderState`/face painter. Do not invent another blink algorithm or another face renderer.
 
-## 4. Accessibility already has a stronger presentation boundary than the draft assumed
+## 4. Accessibility already has a strong presentation boundary
 
 `EffectsSettings` is explicitly presentation-only and existing tests assert that changing it cannot change gameplay. `Win98MotionPolicy` separately combines the user's aesthetic `ModernUiMotion` preference with `ReducedMotion`.
 
-New effects must consume these existing policies rather than scatter one-off booleans through each presenter.
+New effects consume those existing policies rather than introducing ad-hoc settings.
 
 Rules:
 
-- WordArt entry/wobble/wave and animated text distortion require `Win98MotionPolicy.Allows`.
-- Photosensitivity and particle decisions use `EffectsSettings`.
-- text remains visible and readable when motion is removed;
-- portrait blink/talk/idle animation is character animation, not generic UI travel, so one centralized portrait-animation policy decides which parts survive Reduced Motion. Do not make that decision independently in three classes.
-- tutorial chirps use the existing UI audio bus. `Interface Sounds` is currently a UI-volume slider, so `UiVolume == 0` naturally silences them; do not add a redundant sound toggle in this feature.
+- WordArt entry/wobble/wave and animated text distortion require `Win98MotionPolicy.Allows`;
+- photosensitivity/particle decisions use `EffectsSettings`;
+- static color/weight emphasis remains visible when motion is removed;
+- one centralized portrait-animation policy decides what blink/talk/idle motion survives Reduced Motion;
+- tutorial chirps use the existing UI audio bus and `UiVolume`; no new sound toggle.
 
 ---
 
 # Design patterns and boundaries
 
-Use patterns only where they protect an existing authority. Prefer composition over inheritance and avoid a new global manager.
+Use patterns where they protect an existing authority. Prefer composition over inheritance and avoid a new global manager/autoload.
 
 ## Ports and Adapters
 
 Pure presentation models depend on small ports; Godot/runtime services implement them.
 
-Suggested ports:
+Initial ports:
 
-- `ITextLocalizer` — resolves a stable key/template, locale/context/plural form;
-- `IInputPromptResolver` — returns current human-readable input binding text;
+- `IInputPromptResolver` — current human-readable binding text;
 - `ITextVoiceSink` — plays/stops semantic text-voice cues;
 - optional `IPresentationClock` / deterministic time source for pure timing tests.
 
+Future-only seam:
+
+- the English template provider is behind a small interface/data boundary so a localization-backed provider can replace it later. Do **not** build the localization adapter now.
+
 Adapters:
 
-- Godot `TranslationServer` -> `ITextLocalizer`;
 - `LocalSettingsInputBindings` / `InputMap` -> `IInputPromptResolver`;
 - `UiFeedbackAudioBootstrap` -> `ITextVoiceSink`.
 
-No presenter reaches sideways into a singleton to discover policy when the owning composition can supply the dependency.
-
 ## Immutable value objects / Parameter Objects
 
-Do not pass long lists of primitive arguments.
+Avoid long primitive argument lists.
 
-Examples:
+Core values:
 
 - `ExpressiveMessageSpec`
 - `ExpressiveSlotValue`
+- `ExpressiveTextDocument`
 - `TutorialGuideCue`
 - `RewardPresentationRequest`
 - `WordArtStylePreset`
 
 These describe **what** should be presented; Godot views decide **how**.
 
-## Composite / small AST
+## Composite / small text AST
 
-After localization/template expansion, an `ExpressiveTextDocument` is a sequence/tree of literal runs and semantic runs. The renderer receives this document and does not parse business/tutorial IDs.
+An `ExpressiveTextDocument` is an ordered collection of literal and semantic runs.
 
-## State pattern / explicit finite state machine
+Example resolved document:
 
-Reveal behavior is a pure explicit state machine, for example:
+- Plain: `Hold `
+- Input: `right mouse button`
+- Plain: ` to charge a `
+- Impact: `big swing`
+- Plain: `.`
+
+The renderer never parses tutorial step IDs or searches prose for effect targets.
+
+## Explicit state machine
+
+Reveal behavior is a pure finite state machine:
 
 `Idle -> Revealing -> PunctuationPause -> Revealing -> Complete`
 
-Skip-to-complete is an explicit transition, not a collection of timer hacks.
+Skip-to-complete is an explicit transition, not scattered timer checks.
 
 ## Strategy / resolver
 
-Use strategies for choices that may vary without changing callers:
+Use resolvers for decisions that may vary without changing callers:
 
 - reveal timing/cadence policy;
-- semantic text effect -> visual treatment;
+- semantic role -> visual treatment;
 - portrait mood -> face pose;
 - reward semantic kind -> WordArt/chrome preset.
 
-Callers should never choose raw shader parameters, wave amplitudes or gradient colors.
+Callers never choose raw shader values, wave amplitudes or gradient colors.
 
-## Facade
+## Facades
 
 Two facades keep orchestration out of existing controllers:
 
 1. `TutorialGuideView` / `ITutorialGuidePresenter` owns expressive text + voice + portrait as one presentation unit.
-2. `BuddyPreviewSurface` owns the reusable offscreen Buddy render composition.
+2. `BuddyPreviewSurface` owns reusable offscreen Buddy rendering.
 
-`FirstSessionGuidanceController` continues to own tutorial state, spotlights, input locks and gameplay completion checks. It should not become the mouth-animation/audio controller.
+`FirstSessionGuidanceController` continues to own tutorial state, spotlights, input locks and gameplay completion checks. It does not become a glyph/mouth/audio controller.
 
 ## Observer/events
 
-The expressive text view may emit lifecycle events (`RevealStarted`, `SpeakingChanged`, `RevealCompleted`) to its containing guide facade. The facade coordinates portrait mouth state and audio. Tutorial gameplay progression does **not** subscribe to per-glyph events.
+The expressive text presenter may emit lifecycle events such as:
+
+- `RevealStarted`
+- `SpeakingChanged`
+- `RevealCompleted`
+
+The containing guide facade uses those to coordinate portrait mouth state and audio. Tutorial gameplay progression never subscribes to per-glyph events.
 
 ---
 
-# System A — localized expressive dialogue
+# System A — expressive tutorial dialogue
 
 ## A1. Message model
 
-Engine-independent model under the presentation/domain boundary:
+Engine-independent presentation model:
 
-- `ExpressiveMessageSpec`: localization key + fallback template + context + slot definitions;
-- `ExpressiveSlotValue`: slot name, localized/dynamic value, semantic role;
-- `ExpressiveTextDocument`: resolved runs;
+- `ExpressiveMessageSpec`: stable message ID, English template, slot definitions;
+- `ExpressiveSlotValue`: slot name, resolved value, semantic role;
+- `ExpressiveTextDocument`: resolved ordered runs;
 - `ExpressiveSemanticRole`: `Plain`, `Action`, `Input`, `Money`, `Impact`, `Playful`, `Warning`, etc.;
 - `TextVoiceProfileId`.
 
-Keep semantic roles meaningful. `Wave` and `Shake` are renderer decisions/preset mappings, not grammar concepts embedded into translated text.
+Keep semantic roles meaningful. `Wave` and `Shake` are renderer choices, not content semantics.
 
-## A2. Template expansion
+## A2. English template expansion
 
 Pipeline:
 
-1. owning presenter requests a message spec;
-2. localizer resolves the locale-specific template;
-3. dynamic slot values are resolved (including current input binding);
-4. template validator verifies required slot names;
-5. formatter builds an `ExpressiveTextDocument` preserving semantic run boundaries;
-6. renderer lays out the completed localized document.
+1. owning presenter requests an English `ExpressiveMessageSpec`;
+2. dynamic slots are resolved, including current input bindings;
+3. formatter validates that all required named slots exist;
+4. formatter produces `ExpressiveTextDocument` preserving semantic run boundaries;
+5. renderer lays out the complete document before reveal begins.
 
-The template language supports only named placeholders. No arbitrary code, conditions or general scripting.
+Template language supports named placeholders only. No arbitrary code, conditions or general scripting.
 
-Conditional tutorial variants remain separate stable message keys/variant IDs rather than prose-level condition syntax.
+Conditional tutorial variants remain separate message/variant IDs rather than prose-level conditions.
 
-## A3. Unicode-safe reveal model
+Future localization can replace step 1 with a translated template provider while retaining steps 2–5 unchanged.
 
-Never use C# `char` as "one visible character". It is UTF-16 and can split surrogate pairs/combining sequences.
+## A3. Reveal model
 
-Reveal timing works in Unicode **grapheme clusters/text elements**. Punctuation classification is Unicode-aware.
+Use text elements/grapheme clusters rather than raw C# `char` where practical. This is cheap correctness now and avoids having to replace the reveal model later.
 
-The Godot view lays out/shapes the complete localized text first, then reveals it without changing wrapping as letters appear. This prevents the tutorial box from reflowing every few glyphs.
+The view lays out the completed text first, then reveals it without changing line wrapping.
 
-For future RTL languages, the renderer follows the locale/text direction rather than assuming left-to-right reveal order.
+Behavior:
+
+- configurable base reveal rate;
+- slightly longer pauses for comma/sentence punctuation;
+- no chirp on whitespace/punctuation;
+- voice cadence every few visible text elements, not every letter;
+- first confirm/click while revealing completes the current line only;
+- reveal completion never advances a gameplay tutorial step by itself;
+- replacing a message ID/variant resets reveal once;
+- re-presenting the same cue is idempotent.
+
+Line identity is semantic (`step + variant + message id`), not `_lastRenderedText` string equality.
 
 ## A4. Godot renderer
 
-Use one `RichTextLabel`-backed presenter as shaping/wrapping authority. Do not create one `Control`/`Label` per glyph.
+Use one `RichTextLabel`-backed presenter as shaping/wrapping authority. Do not create one `Label`/`Control` per glyph.
 
-A small custom `RichTextEffect` layer may supply per-glyph offsets/transform for selected semantic runs. Requirements:
+A small custom `RichTextEffect` layer may provide per-glyph offsets/transforms for selected semantic runs.
 
-- static color/weight styling remains readable with motion disabled;
+Requirements:
+
 - effects never alter line measurement;
+- static styling remains readable when motion is disabled;
 - whole-pixel snapping where appropriate for the Win98 shell;
-- no per-frame allocations proportional to text length;
-- animated effects stop processing once a line/effect has settled;
-- hidden tutorial views do not keep RichText effects ticking in the background.
+- no per-frame allocations proportional to full text length;
+- settled/hidden effects stop processing;
+- hidden tutorial views do not keep animation processing alive.
 
 Initial semantic visual mapping:
 
-- `Input` / required control: Win98-title blue/strong weight;
-- `Money`: existing money green;
-- `Impact`: short low-amplitude force/wave treatment;
-- `Playful`: gentle wave;
-- `Warning`: color/weight only;
-- ordinary prose: no effect.
+- `Input` / required control -> strong Win98-blue emphasis;
+- `Money` -> existing money green;
+- `Impact` -> brief low-amplitude force/wave treatment;
+- `Playful` -> gentle wave;
+- `Warning` -> color/weight only;
+- ordinary prose -> no effect.
 
-## A5. Typewriter behavior
-
-- configurable base rate;
-- punctuation-aware pauses;
-- no speech chirp on whitespace/punctuation;
-- voice cadence every few visible text elements, not every code unit;
-- first confirm/click while revealing completes the line only;
-- completion never advances a gameplay tutorial step by itself;
-- replacing a semantic line resets reveal exactly once;
-- re-rendering the same line identity is idempotent.
-
-The identity must be semantic (`step + variant + locale/version`), not `_lastRenderedText` string equality. This avoids brittle behavior when locale or dynamic binding text changes.
-
-If the locale changes while a tutorial line is visible, re-resolve the current cue and show the newly localized line immediately complete rather than replaying the whole spoken animation a second time.
-
-## A6. Text voice
+## A5. Text voice
 
 `ExpressiveTextPresenter` does not own `AudioStreamPlayer`s.
 
-A voice cadence model decides when a semantic chirp is requested. `ITextVoiceSink` adapts this to `UiFeedbackAudioBootstrap`, preserving:
+A pure cadence model decides when a chirp should occur. `ITextVoiceSink` adapts those requests to `UiFeedbackAudioBootstrap`.
 
-- pooled UI voices;
-- UI bus volume;
-- existing audio lifecycle;
-- future alternate guide voices without duplicating reveal logic.
+Tutorial guide voice direction:
 
-Tutorial guide direction: 3–5 closely related short synthetic computer chirps with subtle pitch variation, quiet enough for a 32-step tutorial.
+- short synthetic 90s-computer chirps;
+- 3–5 closely related variants/pitches;
+- subtle pitch variation;
+- quiet enough for the full tutorial;
+- stops immediately on reveal skip/completion;
+- obeys the existing UI audio bus/volume.
 
 ---
 
@@ -281,31 +305,25 @@ Tutorial guide direction: 3–5 closely related short synthetic computer chirps 
 
 `RewardPopup` remains the only notification queue/timing owner. Do not add a `WordArtManager` or second queue.
 
-WordArt is a view component inside the existing popup.
+WordArt is a view component composed inside the existing popup.
 
 ## B2. Semantic reward request
 
-Replace the presenter's dependence on raw title/style decisions with a semantic request at the UI boundary, e.g.:
+Reward callers describe meaning, not style.
+
+Initial kinds:
 
 - `ToolPurchase`
 - `WorkSessionMilestone`
 - `WorkLifetimeMilestone`
 
-The request carries semantic data needed to build localized copy (content ID, threshold/counter/scope, amount, icon ID). It does not carry `MoneyBurst`, `BigDeal`, wave amplitude or gradient colors.
+A request carries semantic data such as title text/content ID, threshold/counter/scope, amount and icon ID. It never carries raw visual parameters.
 
-A `RewardPresentationStyleResolver` maps semantic reward kind/importance to an original WordArt preset.
+`RewardPresentationStyleResolver` maps semantic reward kind/importance to an original WordArt preset.
 
-## B3. Localization debt to fix at integration points
+English display text remains the source for now. Keep the request semantic enough that future localization can replace title construction without changing `RewardPopup` or the WordArt renderer.
 
-`ContentDisplayName.For` currently derives English tool names and explicitly documents that it should move to the localization table. Do not make WordArt depend permanently on that English derivation.
-
-`WorkCompanionCoordinator.DescribeMilestone` currently concatenates English `actions/clicks/keystrokes` and formats the threshold invariantly. New reward presentation should instead resolve a localized/plural-aware milestone message from semantic milestone data.
-
-Keep economy/domain milestone logic untouched; this is a presentation adapter migration only.
-
-Number-format policy should be decided deliberately during localization integration. Do not silently change the authoritative credit formatting in this feature.
-
-## B4. WordArt renderer
+## B3. WordArt renderer
 
 Original late-90s Office/WordArt visual vocabulary, without copying Microsoft assets/fonts:
 
@@ -317,22 +335,21 @@ Original late-90s Office/WordArt visual vocabulary, without copying Microsoft as
 - entry squash/overshoot;
 - short settle wobble.
 
-Presets are immutable data/resources and callers never tune raw parameters.
+Presets are immutable data/resources. Callers never tune raw parameters.
 
-Localized-title fit rules:
+Fit rules:
 
-- measure the final translated title first;
-- never force uppercase;
-- support Cyrillic/CJK font fallback;
+- measure title before rendering;
 - bounded scale-down with a minimum legibility floor;
-- allow a controlled two-line/static fallback for long translations;
-- if a transform harms readability, resolver falls back to a flatter preset rather than clipping text.
+- controlled two-line/static fallback for long titles;
+- if a transform harms readability, use a flatter preset rather than clipping;
+- do not rely on an all-uppercase-only layout.
 
-## B5. Existing reward chrome
+## B4. Existing reward chrome
 
-Do not stack every existing glow/breath effect plus every WordArt effect by default. Style resolution may select a simpler reward-chrome profile when WordArt supplies the visual punch.
+Do not stack every current glow/breath effect plus every WordArt effect by default. Style resolution may choose simpler surrounding chrome when WordArt supplies the visual punch.
 
-Reduced motion renders the final WordArt pose statically. Photosensitivity-safe mode forbids new brightness pulsing. Reduced-particle policy applies if any glint/particle primitive is introduced later.
+Reduced Motion renders the final WordArt pose statically. Photosensitivity Safe forbids new brightness pulsing. Reduced Particles applies if glints/particles are added later.
 
 ---
 
@@ -342,49 +359,49 @@ Reduced motion renders the final WordArt pose statically. Photosensitivity-safe 
 
 Extract/reuse the proven Work/Workshop/editor preview composition:
 
-- transparent `SubViewport` / own `World3D`;
+- transparent `SubViewport` with own `World3D`;
 - `BuddyVisualRigView`;
 - physics-free visual transform source;
-- same appearance pipeline/materials/surface underlays;
+- same appearance/material/surface-underlay pipeline;
 - orthographic camera;
 - shared look/lighting setup where practical.
 
 `BuddyPreviewSurface` is a rendering facade. It accepts visual profile, appearance, pose/face state and framing options. It contains no tutorial logic.
 
-Avoid a risky broad Work Mode rewrite merely for purity: extract the smallest common helper, add parity coverage, then migrate Work to it only if the helper can replace the proven setup without changing Work output/behavior.
+Avoid a broad Work Mode rewrite merely for abstraction purity. Extract the smallest common helper and migrate Work only if parity is proven.
 
 ## C2. Portrait model
 
-A presentation-only `TutorialPortraitModel`/`PortraitFaceModel` owns:
+A presentation-only `TutorialPortraitModel` owns:
 
 - semantic tutorial mood;
 - deterministic idle/look offsets;
-- `BlinkModel` state;
+- existing `BlinkModel` state;
 - speaking/rest mouth phase;
 - pupil/look intent.
 
-Output is existing render data (`BuddyVisualPoseFrame` / `FaceRenderState`). It never owns `BuddyRoot`, `RigidBody2D`, damage, mood, economy, autonomy or gameplay RNG.
+Output is existing render data (`BuddyVisualPoseFrame` / `FaceRenderState`). It never owns `BuddyRoot`, `RigidBody2D`, damage, gameplay mood, economy, autonomy or gameplay RNG.
 
 ## C3. Reuse existing blink and face systems
 
-Use the existing engine-free `BlinkModel`; do not duplicate its random interval/suppression rules.
+Use the existing engine-free `BlinkModel` and existing face painter through `FaceRenderState`.
 
-Use the existing face painter via `FaceRenderState`. Do not mutate the live Buddy's semantic reaction state to make the tutorial guide smile/talk.
+Do not mutate the live Buddy's semantic reaction state to make the tutorial guide smile/talk.
 
-Talking is a presentation overlay over the tutorial mood. Do not abuse the existing chew animation as speech. If the current mouth enum lacks a visually suitable neutral speaking pose, extend the presentation pose vocabulary deliberately and add renderer coverage rather than pretending eating is talking.
+Talking is a presentation overlay over the tutorial mood. Do not reuse chewing as speech. If the current mouth vocabulary lacks a suitable speaking pose, extend the presentation pose vocabulary deliberately and add renderer coverage.
 
 ## C4. Tutorial moods
 
-Semantic, presentation-only moods such as:
+Presentation-only semantic moods:
 
-- Neutral
-- Friendly
-- Curious
-- Pleased
-- Proud
-- Concerned
+- `Neutral`
+- `Friendly`
+- `Curious`
+- `Pleased`
+- `Proud`
+- `Concerned`
 
-A catalog/strategy maps these to face feature poses. Step metadata chooses the mood; `FirstSessionGuidanceController` does not contain face-string switches.
+A catalog/resolver maps moods to face feature poses. Step metadata chooses the mood; `FirstSessionGuidanceController` contains no face-string switches.
 
 Compliment/farewell lines settle into a visible smile after speaking finishes.
 
@@ -392,12 +409,14 @@ Compliment/farewell lines settle into a visible smile after speaking finishes.
 
 - shoulders/chest upward;
 - small deterministic idle/head movement;
-- natural blink;
-- mouth moves while text is actively revealing, rests over punctuation pauses and closes immediately when reveal is skipped/completed;
+- natural blinking;
+- mouth moves while text is actively revealing;
+- mouth rests during punctuation pauses and closes immediately when reveal is skipped/completed;
 - one authored tutorial Buddy appearance, data-driven and stable throughout the tutorial;
-- no screenshot capture.
+- no screenshot capture;
+- SubViewport updates only while portrait is visible/animated.
 
-SubViewport updates only while the portrait is visible/animated. Hidden portrait rendering must be suspended so a desktop-idler does not pay a permanent GPU cost for a tutorial that is no longer on screen.
+Hidden portrait rendering must be suspended so the desktop application does not pay permanent GPU cost after the tutorial is gone.
 
 ---
 
@@ -413,13 +432,9 @@ Replace the narrow legacy `ITutorialCharacterPresenter` with a guide-level facad
 - `ExpressiveMessageSpec`;
 - portrait mood;
 - voice profile ID;
-- any semantic input-slot values required by the line.
+- dynamic semantic slot values required by the line.
 
-Responsibilities remain strict:
-
-### `FirstSessionGuidanceController`
-
-Owns:
+### `FirstSessionGuidanceController` owns
 
 - tutorial progress/persistence;
 - real gameplay completion checks;
@@ -427,24 +442,36 @@ Owns:
 - which step/variant is active;
 - Continue/Skip/Goodbye semantics.
 
-Does **not** own:
+It does **not** own glyph timing, chirp cadence, portrait mouth state, blink state or WordArt rendering.
 
-- glyph timing;
-- chirp cadence;
-- portrait mouth state;
-- blink state;
-- WordArt rendering.
+### `TutorialGuideView` owns
 
-### `TutorialGuideView`
-
-Owns:
-
-- localized expressive text presentation;
+- expressive text presentation;
 - reveal/skip-to-complete interaction;
 - guide voice;
 - live portrait coordination.
 
-The main tutorial window and the separate Work helper window host the same guide view/model. Do not maintain a second plain-Label dialogue implementation for Work Mode. The Work host may use a compact layout, but it must share the same text/reveal/portrait architecture.
+The main tutorial window and separate Work helper window host the same guide model/presenter. The Work host may use a compact layout, but it must not maintain a second plain-Label dialogue implementation.
+
+---
+
+# Suggested first-pass tutorial emphasis
+
+Most words remain ordinary. Emphasis is authored only where it improves clarity or personality.
+
+Examples:
+
+- `left mouse button`, `right mouse button`, current Drop Tool binding, `Save`, `Buy`, `X` -> `Input`/`Action`;
+- `Credits` -> `Money`;
+- `big swing` -> `Impact`;
+- `Paint away!` -> `Playful`;
+- `Beautiful!` -> `Playful` + pleased portrait;
+- `Spray tool!` -> `Playful`;
+- `Button nose` -> `Playful`;
+- `Now that is what I call a nose.` -> stronger playful/comedic treatment + smile;
+- `best of buds` -> gentle positive/playful treatment.
+
+Instruction-heavy lines must remain easy to scan.
 
 ---
 
@@ -455,70 +482,63 @@ Desktop Buddy is a long-running desktop application, so temporary visual effects
 - no one-node-per-glyph architecture;
 - no per-frame allocation proportional to full text length;
 - RichText custom effects stop processing once inactive/hidden;
-- tutorial SubViewport rendering is disabled when the guide is hidden;
+- tutorial SubViewport rendering disables when the guide is hidden;
 - WordArt nodes/effects live only for the reward popup lifetime;
-- avoid object pools until profiling proves allocation churn is material;
+- avoid pooling until profiling proves allocation churn is material;
 - no additional permanent autoload/global manager for expressive presentation.
 
 ---
 
 # Implementation sequence
 
-## Phase 0 — localization integration boundary
+## Phase 1 — pure expressive-text architecture
 
-Before animated UI:
+1. Add `ExpressiveMessageSpec`, named semantic slots, document/run model and role enum.
+2. Add the English template formatter/validator.
+3. Add `IInputPromptResolver` and resolve Drop Tool from the real current binding.
+4. Add the reveal state machine and punctuation timing policy.
+5. Add voice cadence policy.
+6. Add deterministic tests for slot expansion, reveal, skip, idempotence and input binding resolution.
 
-1. Add `ITextLocalizer`, message specs, named-slot formatter and English fallback catalog.
-2. Support migration compatibility with current/source-msgid gettext strings where needed, but make new expressive messages stable-key based.
-3. Add `IInputPromptResolver` and wire Drop Tool to the actual configured binding.
-4. Add placeholder-contract validation tests and PO/localization fixtures.
-5. Keep changes additive/narrow because the existing `feature/localization-ru` branch is diverged and touches the same controller/settings files.
-
-## Phase 1 — pure expressive-text models
-
-1. immutable document/run/semantic-role model;
-2. grapheme-aware reveal state machine;
-3. Unicode punctuation timing policy;
-4. voice cadence policy;
-5. deterministic tests for skip/idempotence/replacement.
+No localization implementation in this phase.
 
 ## Phase 2 — Godot dialogue presenter
 
-1. `RichTextLabel`-based shaping/layout;
-2. semantic style/effect resolver;
-3. post-layout reveal with stable wrapping;
-4. motion/accessibility policy integration;
-5. `ITextVoiceSink` adapter through existing UI audio;
-6. rendering scenario at UI scales 100–200%.
+1. `RichTextLabel`-based shaping/layout.
+2. Semantic style/effect resolver.
+3. Stable wrapping during reveal.
+4. Motion/accessibility policy integration.
+5. `ITextVoiceSink` adapter through existing UI audio.
+6. Rendering scenario at UI scales 100–200%.
 
 ## Phase 3 — reusable Buddy preview + tutorial portrait
 
-1. extract reusable offscreen Buddy preview facade from the proven preview pattern;
-2. build presentation-only portrait model using existing `BlinkModel` and `FaceRenderState`;
-3. implement shoulders-up camera/framing and authored guide appearance;
-4. talking mouth + mood strategy;
-5. prove no gameplay nodes/authority exist in portrait tree;
-6. prove hidden portrait stops updating.
+1. Extract reusable offscreen Buddy preview facade from the proven preview pattern.
+2. Build presentation-only portrait model using existing `BlinkModel` and `FaceRenderState`.
+3. Implement shoulders-up camera/framing and authored guide appearance.
+4. Add talking mouth + mood resolver.
+5. Prove no gameplay nodes/authority exist in portrait tree.
+6. Prove hidden portrait stops updating.
 
 ## Phase 4 — tutorial integration
 
-1. introduce `TutorialGuideCue` + guide facade;
-2. replace main tutorial plain body label;
-3. replace Work helper plain dialogue path with same guide architecture;
-4. migrate selected lines to stable localized templates/semantic slots;
-5. preserve all existing tutorial semantic gates, replay paths and conditional variants;
-6. locale change while visible re-renders current line safely;
-7. first click completes reveal without advancing tutorial state.
+1. Introduce `TutorialGuideCue` + guide facade.
+2. Replace main tutorial plain body label.
+3. Replace Work helper plain dialogue path with the same guide architecture.
+4. Convert selected English lines to named semantic slots.
+5. Preserve all existing tutorial gates, replay paths and conditional variants.
+6. First click completes reveal without advancing tutorial state.
+7. Verify current Drop Tool binding appears in its tutorial prompt.
 
 ## Phase 5 — reward/WordArt integration
 
-1. introduce semantic reward-presentation request;
-2. localize tool purchase title through content localization boundary;
-3. localize/pluralize Work milestone copy from semantic data;
-4. build original WordArt renderer/preset resolver;
-5. compose it inside existing `RewardPopup` queue;
-6. apply to tool purchases and Work milestones;
-7. tune/suppress redundant existing reward motion where necessary.
+1. Introduce semantic reward-presentation request.
+2. Build original WordArt renderer/preset resolver.
+3. Compose it inside existing `RewardPopup` queue.
+4. Apply to tool purchases.
+5. Apply to Work Mode milestones.
+6. Tune/suppress redundant existing reward motion where necessary.
+7. Keep reward inputs semantic enough that localized title construction can be introduced later without touching the renderer.
 
 ## Phase 6 — release/regression gate
 
@@ -529,11 +549,6 @@ Before animated UI:
 - Buddy-already-wearing-nose route;
 - Work separate-window route;
 - rebound Drop Tool key reflected in tutorial copy;
-- Russian localized tutorial fixture / long translated copy;
-- grapheme fixture with combining marks/emoji;
-- CJK no-space wrapping fixture;
-- RTL/pseudo-RTL direction fixture;
-- locale switch while tutorial visible;
 - UI scale 100/125/150/175/200%;
 - Reduced Motion / Modern UI Motion off;
 - Photosensitivity Safe;
@@ -547,30 +562,30 @@ Itch.io remains outside this feature's manual release gate until its shipped fea
 
 ---
 
-# Localization branch / merge strategy
+# Future localization contract — deliberately not implemented now
 
-`feature/localization-ru` is currently ahead of its old base but substantially behind current `main`, and overlaps likely integration files (`ProgressSave`, `FirstSessionGuidanceController`, Settings, `ContentDisplayName`, `project.godot`).
+When localization is eventually added to this system, it should require only a different template provider/catalog:
 
-Therefore:
+- English: `Hold {input_secondary} to charge a {impact}.`
+- another language may reorder those named slots freely;
+- the formatter still produces the same semantic `Input` and `Impact` runs;
+- the renderer/effect resolver remains unchanged.
 
-- do not merge the stale branch into this planning branch;
-- design against its intended contract (PO translation resource, machine-local language selection, runtime locale application);
-- keep this implementation mostly additive/new-file based until the localization work is rebased/landed;
-- after localization lands, migrate the expressive catalogs/PO entries through the shared localization adapter instead of creating a competing path.
+At that time we can add locale-specific template validation, pluralization and international layout testing. None of that is part of the current feature.
 
-Expected conflict hotspots are documented up front so implementation can minimize churn in them.
+This future contract is the reason named semantic slots exist now; it is **not** a request to build localization infrastructure early.
 
 ---
 
 # Non-goals
 
+- adding or integrating another language in this feature;
 - changing tutorial progression/economy/domain rules;
 - replacing Steam native achievement UI;
 - gameplay physics/autonomy in the portrait;
 - human voice acting or phoneme analysis;
 - a general-purpose rich-text scripting language;
 - a second reward queue;
-- a second localization framework;
 - permanent animated Help/Settings/reference text;
 - copying Microsoft WordArt assets or fonts.
 
@@ -580,17 +595,17 @@ Expected conflict hotspots are documented up front so implementation can minimiz
 
 The architecture is accepted when:
 
-- expressive text is localized before rendering and uses validated semantic slots rather than English offsets;
-- translated phrases may reorder freely without losing their semantic emphasis;
+- English expressive text uses named semantic slots/runs rather than hard-coded character offsets;
+- changing which English phrase receives an effect is an authoring/data change, not renderer code;
+- the formatter boundary can later accept a translated/reordered template without changing the renderer;
 - tutorial key prompts reflect current input bindings;
-- reveal timing is Unicode/grapheme safe and does not reflow lines while typing;
+- reveal timing does not reflow lines while typing;
 - text chirps route through the existing UI audio system and UI volume;
 - motion/photosensitivity behavior is decided through existing presentation policy seams;
 - the tutorial Buddy is a real live 3D Buddy render using the shared physics-free preview architecture;
 - existing `BlinkModel` / face rendering are reused rather than duplicated;
 - portrait speaking/smiling never touches live gameplay Buddy state;
 - reward callers describe semantic reward events while `RewardPopup` remains the queue owner and a resolver chooses WordArt style;
-- tool/Work reward copy is localization-ready rather than permanently English-derived;
 - Steam's own achievement popup remains unaffected;
 - hidden/settled expressive systems stop expensive processing;
 - all existing tutorial/reward/domain regressions remain green.
