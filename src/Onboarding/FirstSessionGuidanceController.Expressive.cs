@@ -120,7 +120,7 @@ public partial class FirstSessionGuidanceController
         Node parent = fallback.GetParent()
             ?? throw new InvalidOperationException($"Tutorial body '{fallback.Name}' has no parent.");
         int fallbackIndex = fallback.GetIndex();
-        presenter = new ExpressiveTextPresenter
+        var created = new ExpressiveTextPresenter
         {
             Name = name,
             CustomMinimumSize = fallback.CustomMinimumSize,
@@ -128,15 +128,16 @@ public partial class FirstSessionGuidanceController
             SizeFlagsVertical = fallback.SizeFlagsVertical,
             Visible = false,
         };
-        parent.AddChild(presenter);
-        parent.MoveChild(presenter, fallbackIndex);
+        presenter = created;
+        parent.AddChild(created);
+        parent.MoveChild(created, fallbackIndex);
 
         // _Ready intentionally defaults reusable dialogue to Ignore. Tutorial text is one of the
         // few surfaces where clicking the words themselves has meaning: reveal the rest now.
-        presenter.MouseFilter = Control.MouseFilterEnum.Stop;
-        presenter.GuiInput += input => OnExpressiveBodyGuiInput(presenter, input);
+        created.MouseFilter = Control.MouseFilterEnum.Stop;
+        created.GuiInput += input => OnExpressiveBodyGuiInput(created, input);
         fallback.Visible = false;
-        return presenter;
+        return created;
     }
 
     private void OnExpressiveBodyGuiInput(ExpressiveTextPresenter presenter, InputEvent input)
