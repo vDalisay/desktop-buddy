@@ -129,7 +129,7 @@ internal static class TutorialExpressiveCopy
     {
         // '[' is the only syntax introducer in the deliberately tiny authoring language. A very
         // unusual custom key label containing it stays readable and simply skips emphasis.
-        if (text.Contains('[', StringComparison.Ordinal))
+        if (text.Contains('['))
             return text;
         string tag = ExpressiveSemanticTags.Name(role);
         return $"[{tag}]{text}[/{tag}]";
