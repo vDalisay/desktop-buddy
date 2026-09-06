@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Sharing;
 using DesktopBuddy.Persistence.Sharing;
 using DesktopBuddy.Platform.Steam;
@@ -61,6 +62,8 @@ public readonly record struct WorkshopContentTypeResult(
 /// </summary>
 public sealed class WorkshopSharingCoordinator
 {
+    private const string Category = "Workshop";
+
     private const int SteamResultBusy = 10;
     private static readonly TimeSpan[] CreateBusyRetryDelays =
     [
@@ -188,12 +191,20 @@ public sealed class WorkshopSharingCoordinator
 
         try
         {
+            Log.Info(
+                Category,
+                $"Resolving Workshop content type; item={item.PublishedFileId} consumerAppId={item.ConsumerAppId} state={item.State}.");
             WorkshopInstalledItemResult installed = await _transport.EnsureInstalledAsync(
                 item.PublishedFileId,
                 progress,
                 token);
             if (!installed.IsSuccess || installed.InstallFolder is null)
+            {
+                Log.Warn(
+                    Category,
+                    $"Workshop content type unresolved; item={item.PublishedFileId} status={installed.Status} detail={installed.Detail ?? "none"}.");
                 return new WorkshopContentTypeResult(installed.Status, null, installed.Detail);
+            }
 
             string? contentType = await Task.Run(
                 () => DetectContentType(installed.InstallFolder),
@@ -238,9 +249,16 @@ public sealed class WorkshopSharingCoordinator
         WorkshopIncomingStaging? incoming = null;
         try
         {
+            Log.Info(
+                Category,
+                $"Import requested; item={item.PublishedFileId} consumerAppId={item.ConsumerAppId} " +
+                $"contentType={item.ContentType ?? "unknown"} state={item.State} replace={replaceCharacterId?.ToString() ?? "none"}.");
             WorkshopInstalledItemResult installed = await _transport.EnsureInstalledAsync(item.PublishedFileId, progress, token);
             if (!installed.IsSuccess || installed.InstallFolder is null)
             {
+                Log.Warn(
+                    Category,
+                    $"Import stopped before staging; item={item.PublishedFileId} status={installed.Status} detail={installed.Detail ?? "none"}.");
                 WorkshopImportStatus status = installed.Status == WorkshopRemoteStatus.Cancelled
                     ? WorkshopImportStatus.Cancelled
                     : WorkshopImportStatus.Failed;
@@ -257,6 +275,9 @@ public sealed class WorkshopSharingCoordinator
             string? contentType = item.ContentType;
             if (contentType is null)
                 contentType = DetectContentType(incoming.Value.ContentRoot);
+            Log.Info(
+                Category,
+                $"Import staged; item={item.PublishedFileId} contentType={contentType ?? "unrecognized"} folder={installed.InstallFolder}.");
             var source = new WorkshopImportSource(
                 item.PublishedFileId,
                 installed.TimeUpdated,

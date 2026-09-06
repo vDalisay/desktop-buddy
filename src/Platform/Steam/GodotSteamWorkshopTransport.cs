@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Diagnostics;
 using Godot;
 
 namespace DesktopBuddy.Platform.Steam;
@@ -15,6 +16,15 @@ namespace DesktopBuddy.Platform.Steam;
 public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
 {
     private const int SteamResultOk = 1;
+
+    /// <summary>
+    /// Steam has no failure callback for a download it never starts. A subscribed item whose
+    /// content Steam is not serving simply never fires item_downloaded, and the import that is
+    /// waiting for it used to hang for the rest of the session with an empty status line and
+    /// nothing in the log (owner report 2026-09-06). Give up on a download that reports no bytes
+    /// for this long and say what Steam thinks the item's state is.
+    /// </summary>
+    private const double DownloadStallSeconds = 45.0;
     private const long InvalidUgcUpdateHandle = -1;
     private readonly object _callbackGate = new();
     private readonly WorkshopPublishCallbackLane _publishCallbacks = new();
@@ -31,6 +41,8 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         public required TaskCompletionSource<WorkshopInstalledItemResult> Completion { get; init; }
         public IProgress<WorkshopTransferProgress>? Progress { get; init; }
         public CancellationTokenRegistration CancellationRegistration { get; set; }
+        public ulong LastDownloadedBytes { get; set; }
+        public double SecondsWithoutProgress { get; set; }
     }
 
     public bool IsAvailable => IsInitialized && GodotObject.IsInstanceValid(_bridge);
@@ -69,11 +81,45 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         lock (_callbackGate) downloads = _downloads.Values.ToArray();
         foreach (PendingDownload pending in downloads)
         {
-            Godot.Collections.Dictionary info = CallDictionary("get_item_download_info", checked((long)pending.PublishedFileId));
+            long rawId = checked((long)pending.PublishedFileId);
+            Godot.Collections.Dictionary info = CallDictionary("get_item_download_info", rawId);
             ulong current = ReadUInt64(info, "downloaded", "bytes_downloaded", "current");
             ulong total = ReadUInt64(info, "total", "bytes_total");
             if (total > 0)
                 pending.Progress?.Report(new WorkshopTransferProgress(current, total, "Downloading"));
+
+            // Steam sometimes finishes an install without the download callback reaching this
+            // process at all - the item was already cached, or the callback arrived before the
+            // download was registered. Poll the state as a second completion path.
+            var state = (WorkshopItemState)checked((uint)Math.Max(0, CallInt64("get_item_state", rawId)));
+            if ((state & WorkshopItemState.Installed) != 0 && (state & WorkshopItemState.NeedsUpdate) == 0)
+            {
+                CompleteDownload(pending, InstalledInfo(pending.PublishedFileId), $"installed without a download callback (state {state})");
+                continue;
+            }
+
+            if (current != pending.LastDownloadedBytes)
+            {
+                pending.LastDownloadedBytes = current;
+                pending.SecondsWithoutProgress = 0;
+                continue;
+            }
+
+            pending.SecondsWithoutProgress += delta;
+            if (pending.SecondsWithoutProgress < DownloadStallSeconds)
+                continue;
+
+            CompleteDownload(
+                pending,
+                new WorkshopInstalledItemResult(
+                    WorkshopRemoteStatus.Failed,
+                    pending.PublishedFileId,
+                    null,
+                    0,
+                    Detail: $"Steam delivered no content for Workshop item {pending.PublishedFileId} within " +
+                        $"{DownloadStallSeconds:0}s (Steam reports state {state}). Check that you are subscribed and that " +
+                        "the item is public, then try again."),
+                $"stalled after {DownloadStallSeconds:0}s with no bytes (state {state})");
         }
     }
 
@@ -222,8 +268,18 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
                 return pending.Completion.Task;
         }
 
+        Log.Info(
+            "Workshop",
+            $"Requesting Workshop download; item={publishedFileId} state={state} runtimeAppId={_runtimeAppId}.");
+
         if (!CallBool("download_item", rawId, false))
         {
+            // Steam refuses DownloadItem outright when the running app has no registered
+            // subscription for the item, and this exit used to be completely silent.
+            Log.Warn(
+                "Workshop",
+                $"Steam refused to start the download for item {publishedFileId} (state {state}). " +
+                "The running app has no usable subscription for it.");
             RemoveDownload(pending);
             pending.Completion.TrySetResult(new WorkshopInstalledItemResult(
                 WorkshopRemoteStatus.Failed,
@@ -377,6 +433,10 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
         }
         pending.CancellationRegistration.Dispose();
 
+        Log.Info(
+            "Workshop",
+            $"Steam download callback; item={publishedFileId} result={result} appId={appId} expected={_workshopOwnerAppId}.");
+
         WorkshopInstalledItemResult final;
         if (appId < 0 || checked((uint)appId) != _workshopOwnerAppId)
         {
@@ -405,6 +465,22 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
                 pending.Progress?.Report(new WorkshopTransferProgress(1, 1, "Installed"));
         }
         pending.Completion.TrySetResult(final);
+    }
+
+    /// <summary>Finishes one pending download from the state pump rather than the callback.</summary>
+    private void CompleteDownload(PendingDownload pending, WorkshopInstalledItemResult result, string reason)
+    {
+        bool removed;
+        lock (_callbackGate)
+        {
+            removed = _downloads.TryGetValue(pending.PublishedFileId, out PendingDownload? current) &&
+                ReferenceEquals(current, pending);
+            if (removed) _downloads.Remove(pending.PublishedFileId);
+        }
+        if (!removed) return;
+        pending.CancellationRegistration.Dispose();
+        Log.Info("Workshop", $"Workshop download for item {pending.PublishedFileId} {reason}; status={result.Status}.");
+        pending.Completion.TrySetResult(result);
     }
 
     private void CancelDownload(PendingDownload pending)
