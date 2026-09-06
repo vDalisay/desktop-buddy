@@ -8,6 +8,8 @@ using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Environment;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
@@ -31,7 +33,12 @@ public partial class AchievementBootstrap : Node
 
     private readonly HashSet<int> _baseballsThatTouchedWall = [];
     private SandboxRoot _sandbox = null!;
-    private RunContext _context = null!;
+    private BuddyProgressState _progress = null!;
+    private SaveCoordinator _saves = null!;
+    private WorkProgressState? _work;
+    private EnvironmentProgressState? _environment;
+    private CharacterSelectionState? _selection;
+    private CharacterStore? _characters;
     private AchievementCoordinator _coordinator = null!;
     private SteamAchievementPublisher? _publisher;
     private double _persistentCountdown;
@@ -42,13 +49,21 @@ public partial class AchievementBootstrap : Node
 
     public AchievementCoordinator Coordinator => _coordinator;
 
-    public void Configure(SandboxRoot sandbox, RunContext context)
+    public void Configure(
+        SandboxRoot sandbox,
+        CharacterSelectionState? selection = null,
+        CharacterStore? characters = null)
     {
         if (IsInsideTree())
             throw new InvalidOperationException("AchievementBootstrap must be configured before entering the tree.");
         _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
-        _context = context ?? throw new ArgumentNullException(nameof(context));
-        _coordinator = new AchievementCoordinator(context.Progress, context.WorkProgress);
+        _progress = sandbox.Progress;
+        _saves = sandbox.Saves;
+        _work = sandbox.Saves.WorkProgress;
+        _environment = sandbox.Saves.EnvironmentProgress;
+        _selection = selection ?? sandbox.Saves.CharacterSelection;
+        _characters = characters;
+        _coordinator = new AchievementCoordinator(_progress, _work);
         ProcessMode = ProcessModeEnum.Always;
     }
 
@@ -60,18 +75,18 @@ public partial class AchievementBootstrap : Node
         _sandbox.Pipeline.ImpactAccepted += OnImpactAccepted;
         _sandbox.FireSprayer.Ignited += OnIgnited;
         _sandbox.Buddy.ObjectInteraction.ConsumeSucceeded += OnCareItemTaken;
-        _context.Progress.Changed += OnProgressChanged;
-        if (_context.WorkProgress is not null)
-            _context.WorkProgress.Changed += OnWorkProgressChanged;
-        if (_context.EnvironmentProgress is not null)
-            _context.EnvironmentProgress.Changed += OnEnvironmentChanged;
-        if (_context.Characters is not null)
-            _context.Characters.LibraryChanged += OnCharacterLibraryChanged;
-        if (_context.CharacterSelection is not null)
-            _context.CharacterSelection.Changed += OnCharacterSelectionChanged;
+        _progress.Changed += OnProgressChanged;
+        if (_work is not null)
+            _work.Changed += OnWorkProgressChanged;
+        if (_environment is not null)
+            _environment.Changed += OnEnvironmentChanged;
+        if (_characters is not null)
+            _characters.LibraryChanged += OnCharacterLibraryChanged;
+        if (_selection is not null)
+            _selection.Changed += OnCharacterSelectionChanged;
 
         _coordinator.Store.Qualified += OnQualified;
-        _coordinator.EvaluatePersistentState(_context.CharacterSelection?.ActiveCharacterId);
+        _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
         EvaluateEnvironment();
         _ = RefreshActiveCharacterAsync();
 
@@ -99,15 +114,15 @@ public partial class AchievementBootstrap : Node
                 _sandbox.Buddy.ObjectInteraction.ConsumeSucceeded -= OnCareItemTaken;
             }
         }
-        _context.Progress.Changed -= OnProgressChanged;
-        if (_context.WorkProgress is not null)
-            _context.WorkProgress.Changed -= OnWorkProgressChanged;
-        if (_context.EnvironmentProgress is not null)
-            _context.EnvironmentProgress.Changed -= OnEnvironmentChanged;
-        if (_context.Characters is not null)
-            _context.Characters.LibraryChanged -= OnCharacterLibraryChanged;
-        if (_context.CharacterSelection is not null)
-            _context.CharacterSelection.Changed -= OnCharacterSelectionChanged;
+        _progress.Changed -= OnProgressChanged;
+        if (_work is not null)
+            _work.Changed -= OnWorkProgressChanged;
+        if (_environment is not null)
+            _environment.Changed -= OnEnvironmentChanged;
+        if (_characters is not null)
+            _characters.LibraryChanged -= OnCharacterLibraryChanged;
+        if (_selection is not null)
+            _selection.Changed -= OnCharacterSelectionChanged;
         _coordinator.Store.Qualified -= OnQualified;
     }
 
@@ -123,7 +138,7 @@ public partial class AchievementBootstrap : Node
         if (_persistentCountdown <= 0.0)
         {
             _persistentCountdown = PersistentEvaluationSeconds;
-            _coordinator.EvaluatePersistentState(_context.CharacterSelection?.ActiveCharacterId);
+            _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
             EvaluateEnvironment();
             _ = RefreshActiveCharacterAsync();
         }
@@ -159,11 +174,11 @@ public partial class AchievementBootstrap : Node
         _burnWasActive = _sandbox.FireSprayer.IsBurning;
     }
 
-    private void OnProgressChanged(Domain.Persistence.ProgressChange _change) =>
-        _coordinator.EvaluatePersistentState(_context.CharacterSelection?.ActiveCharacterId);
+    private void OnProgressChanged(ProgressChange _change) =>
+        _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
 
     private void OnWorkProgressChanged() =>
-        _coordinator.EvaluatePersistentState(_context.CharacterSelection?.ActiveCharacterId);
+        _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
 
     private void OnEnvironmentChanged()
     {
@@ -175,7 +190,7 @@ public partial class AchievementBootstrap : Node
 
     private void OnCharacterSelectionChanged(Guid? _id)
     {
-        _coordinator.EvaluatePersistentState(_context.CharacterSelection?.ActiveCharacterId);
+        _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
         _ = RefreshActiveCharacterAsync();
     }
 
@@ -190,7 +205,7 @@ public partial class AchievementBootstrap : Node
     {
         try
         {
-            await _context.Saves.FlushProgressAsync().ConfigureAwait(false);
+            await _saves.FlushProgressAsync().ConfigureAwait(false);
         }
         catch
         {
@@ -249,11 +264,10 @@ public partial class AchievementBootstrap : Node
 
     private void EvaluateEnvironment()
     {
-        EnvironmentProgressState? environment = _context.EnvironmentProgress;
-        if (environment is null)
+        if (_environment is null)
             return;
 
-        foreach (PlacedDecoration placed in environment.Layout.Decorations)
+        foreach (PlacedDecoration placed in _environment.Layout.Decorations)
         {
             EnvironmentDecorationResource? resource = EnvironmentDecorationRegistry.Find(placed.DefinitionId);
             if (GodotObject.IsInstanceValid(resource))
@@ -264,16 +278,16 @@ public partial class AchievementBootstrap : Node
 
     private void MarkEnvironmentCustomization()
     {
-        if (_context.EnvironmentProgress?.Layout.Decorations.Count > 0)
+        if (_environment?.Layout.Decorations.Count > 0)
             _coordinator.RecordCustomization(
-                _context.CharacterSelection?.ActiveCharacterId,
+                _selection?.ActiveCharacterId,
                 CustomizationArea.EnvironmentDecorator);
     }
 
     private async Task RefreshActiveCharacterAsync()
     {
-        if (_characterRefreshRunning || _context.Characters is null ||
-            _context.CharacterSelection?.ActiveCharacterId is not Guid id || id == Guid.Empty)
+        if (_characterRefreshRunning || _characters is null ||
+            _selection?.ActiveCharacterId is not Guid id || id == Guid.Empty)
         {
             return;
         }
@@ -281,7 +295,7 @@ public partial class AchievementBootstrap : Node
         _characterRefreshRunning = true;
         try
         {
-            CharacterLoadResult load = await _context.Characters.LoadAsync(id, CancellationToken.None);
+            CharacterLoadResult load = await _characters.LoadAsync(id, CancellationToken.None);
             if (load.Document is not CharacterDocument document)
                 return;
 
@@ -301,7 +315,7 @@ public partial class AchievementBootstrap : Node
             {
                 _coordinator.RecordCustomization(id, CustomizationArea.PaintBackground);
             }
-            if (_context.EnvironmentProgress?.Layout.Decorations.Count > 0)
+            if (_environment?.Layout.Decorations.Count > 0)
                 _coordinator.RecordCustomization(id, CustomizationArea.EnvironmentDecorator);
         }
         finally
