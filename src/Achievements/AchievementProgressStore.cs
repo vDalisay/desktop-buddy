@@ -88,14 +88,19 @@ public sealed class AchievementProgressStore
         _progress.SetExtensionValue(ValuePrefix + name, value ?? string.Empty);
     }
 
-    public static IReadOnlyDictionary<string, string> PreserveAchievementValues(
+    /// <summary>
+    /// Reset Progress keeps already-earned achievement qualifications because Steam achievements
+    /// cannot be revoked and Demo-qualified awards still need the full game to publish them. Any
+    /// partial counters or rule-specific working values are ordinary progress and reset normally.
+    /// </summary>
+    public static IReadOnlyDictionary<string, string> PreserveQualifiedAchievementValues(
         ProgressExtensionData? extensions)
     {
         var kept = new Dictionary<string, string>(StringComparer.Ordinal);
         if (extensions?.Values is null)
             return kept;
         foreach ((string key, string value) in extensions.Values)
-            if (key.StartsWith(Prefix, StringComparison.Ordinal))
+            if (key.StartsWith(QualifiedPrefix, StringComparison.Ordinal) && value == "1")
                 kept[key] = value;
         return kept;
     }
