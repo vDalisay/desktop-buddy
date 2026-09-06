@@ -362,7 +362,14 @@ public partial class WorkCompanionCoordinator : Node
 
         (string title, string icon) = DescribeMilestone(definition);
         UiFeedbackAudioBootstrap.TryPlay(this, UiFeedbackCue.Reward);
-        RewardPopup.Show(this, RewardIconProvider.For(icon), title, earned.RewardMilliCredits);
+        RewardPopup.Show(
+            this,
+            RewardIconProvider.For(icon),
+            title,
+            earned.RewardMilliCredits,
+            definition.Scope == WorkMilestoneScope.Lifetime
+                ? RewardPresentationKind.WorkLifetimeMilestone
+                : RewardPresentationKind.WorkSessionMilestone);
     }
 
     /// <summary>
@@ -394,7 +401,7 @@ public partial class WorkCompanionCoordinator : Node
     private async Task<CompiledCharacterAppearance?> ResolveAppearanceAsync(CancellationToken token)
     {
         BuddyVisualRigView liveRig = _sandbox.VisualPresenter.RigView;
-        CompiledCharacterAppearance? liveAppearance = liveRig.ActiveAppearance;
+        CompiledCharacterAppearance? liveAppearance = _appearanceOverride ?? liveRig.ActiveAppearance;
         Guid? activeId = _context.CharacterSelection?.ActiveCharacterId;
 
         // CharacterId alone is not a freshness guarantee: Studio can save/equip another cosmetic
