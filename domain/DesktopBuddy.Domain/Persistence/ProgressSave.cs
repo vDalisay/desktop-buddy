@@ -344,9 +344,13 @@ public sealed record LocalSettingsSave
 
     /// <summary>Interface and font scale: 100, 125, 150, 175, or 200 percent.</summary>
     public int UiScalePercent { get; init; } = 100;
-    public float MasterVolume { get; init; } = 1.0f;
-    public float SfxVolume { get; init; } = 1.0f;
-    public float UiVolume { get; init; } = 1.0f;
+    /// <summary>
+    /// A first launch starts at 80%, not full, so the sliders have somewhere to go up as well as
+    /// down and an unattended desktop pet never opens at maximum volume.
+    /// </summary>
+    public float MasterVolume { get; init; } = 0.8f;
+    public float SfxVolume { get; init; } = 0.8f;
+    public float UiVolume { get; init; } = 0.8f;
 
     /// <summary>Foreground frame cap; zero leaves the cap to V-sync.</summary>
     public int MaxFps { get; init; }

@@ -9,6 +9,8 @@ signal workshop_item_created(result: int, file_id: int, needs_legal_agreement: b
 signal workshop_item_updated(result: int, needs_legal_agreement: bool, file_id: int)
 signal workshop_item_downloaded(result: int, app_id: int, file_id: int)
 signal workshop_query_completed(handle: int, result: int, results_returned: int)
+## Re-emitted GodotSteam overlay callback, normalized to the one argument callers care about.
+signal steam_overlay_toggled(active: bool)
 
 const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
@@ -89,6 +91,11 @@ func initialize(app_id: int) -> Dictionary:
         _connect_once("download_item_result", Callable(self, "_on_download_item_result"))
     else:
         return _fail("GodotSteam is missing the Workshop download-result signal.")
+
+    # Optional, unlike the Workshop signals: a build without it simply never pauses for the
+    # overlay rather than losing Steam entirely.
+    if _steam.has_signal("overlay_toggled"):
+        _connect_once("overlay_toggled", Callable(self, "_on_overlay_toggled"))
 
     # Since GodotSteam 4.14 the arguments are app_id first, embed_callbacks second. We keep
     # embed_callbacks false and explicitly pump run_callbacks() from this always-processing node.
@@ -319,6 +326,11 @@ func _on_item_downloaded(result: int, app_id: int, file_id: int) -> void:
 
 func _on_ugc_query_completed(handle: int, result: int, results_returned: int, _total_matching: int, _cached: bool, _next_cursor: String) -> void:
     workshop_query_completed.emit(handle, result, results_returned)
+
+## GodotSteam emits (active, user_initiated, app_id); older builds emitted fewer arguments, so
+## everything past the first is optional and ignored.
+func _on_overlay_toggled(active: bool, _user_initiated: bool = false, _app_id: int = 0) -> void:
+    steam_overlay_toggled.emit(active)
 
 func _on_download_item_result(app_id: int, file_id: int, result: int) -> void:
     workshop_item_downloaded.emit(result, app_id, file_id)

@@ -9,6 +9,7 @@ public enum GameplayPauseReason
     HiddenToTray,
     Suspended,
     CharacterEditor,
+    SteamOverlay,
 }
 
 /// <summary>

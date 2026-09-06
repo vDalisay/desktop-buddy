@@ -30,6 +30,8 @@ public partial class DesktopShellController : Node
     private Rect2 _innerBounds;
     private Vector2I? _pendingClientSize;
     private double _storedZoom = 1.0;
+    /// <summary>Chrome inset the current room was measured with; see ApplyZoom.</summary>
+    private float _storedChromeHeight = UI.Win98.Win98ThemeFactory.ChromeHeight;
     private double _effectiveZoom = 1.0;
     private IReadOnlyList<Rect2I>? _dynamicWorkModeHitRegions;
     private readonly Rect2I[] _fallbackWorkModeHitRegion = new Rect2I[1];
@@ -386,7 +388,7 @@ public partial class DesktopShellController : Node
     private Vector2I RoomSizeFor(Vector2I client)
     {
         if (Window.LayoutMode == WindowLayoutMode.Compact && !Window.WorkCompanionActive)
-            client.Y -= UI.Win98.Win98ThemeFactory.ChromeHeight;
+            client.Y -= UI.Win98.Win98ThemeFactory.ScaledChromeHeight;
 
         if (client.X < RoomLayoutPolicy.MinimumRoomWidth ||
             client.Y < RoomLayoutPolicy.MinimumRoomHeight)
