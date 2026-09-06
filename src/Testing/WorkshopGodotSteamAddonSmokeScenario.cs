@@ -68,16 +68,12 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
             if (!addonPresent)
                 return Result(checks, $"seed={seed}");
 
-            GodotObject? steam = Engine.HasSingleton("Steam") ? Engine.GetSingleton("Steam") : null;
-            bool achievementCapabilities = GodotObject.IsInstanceValid(steam) &&
-                steam!.HasMethod("requestCurrentStats") &&
-                steam.HasMethod("setAchievement") &&
-                steam.HasMethod("storeStats");
+            bool achievementCapabilities = bridge.Call("has_achievement_capabilities").AsBool();
             checks.Add(new StartupCheck(
                 "steam_achievement_godotsteam_422_capabilities_match",
                 achievementCapabilities,
                 achievementCapabilities
-                    ? "GodotSteam exposes requestCurrentStats/setAchievement/storeStats for the full-game publisher."
+                    ? "GodotSteam exposes requestCurrentStats/setAchievement/storeStats through the project bridge."
                     : "Pinned GodotSteam is missing an achievement/stat method required by SteamAchievementPublisher."));
 
             // Discovery is intentionally a separate optional bridge because demos need an in-game
