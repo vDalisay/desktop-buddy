@@ -50,7 +50,7 @@ public static class ExpressiveSemanticMarkup
             }
 
             string tag = source[(open + 1)..closeBracket];
-            if (tag.StartsWith('/', StringComparison.Ordinal) ||
+            if (tag.StartsWith("/", StringComparison.Ordinal) ||
                 !ExpressiveSemanticTags.TryParse(tag, out ExpressiveSemanticRole role))
             {
                 // Unknown/stray closing marker: show it exactly as authored and continue looking
@@ -71,7 +71,7 @@ public static class ExpressiveSemanticMarkup
             }
 
             string inner = source[(closeBracket + 1)..close];
-            if (inner.IndexOf('[', StringComparison.Ordinal) >= 0)
+            if (inner.IndexOf("[", StringComparison.Ordinal) >= 0)
             {
                 // Nested/general markup is outside this language. Preserve the whole construct.
                 int end = close + closingTag.Length;
