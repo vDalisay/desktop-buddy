@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Achievements;
 using DesktopBuddy.App;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Diagnostics;
@@ -31,6 +32,7 @@ public partial class WorkshopBootstrap : Node
     private WorkshopStagingStore? _staging;
     private RoomPaintingLibraryStore? _rooms;
     private WorkshopPanel? _panel;
+    private AchievementBootstrap? _achievements;
     private IDisposable? _commandRegistration;
     private ISteamWorkshopTransport? _transport;
     private bool _servicesComposed;
@@ -38,6 +40,7 @@ public partial class WorkshopBootstrap : Node
     internal WorkshopSharingCoordinator? Sharing => _sharing;
     internal ISteamWorkshopTransport? Transport => _transport;
     internal RoomPaintingLibraryStore? RoomLibrary => _rooms;
+    internal AchievementBootstrap? Achievements => _achievements;
 
     public void Configure(
         CharacterStore characters,
@@ -58,6 +61,7 @@ public partial class WorkshopBootstrap : Node
     {
         ProcessMode = ProcessModeEnum.Always;
         ComposeServices();
+        ComposeAchievements();
         if (DisplayServer.GetName() != "headless")
             ComposeUi();
         SetProcess(false);
@@ -69,7 +73,21 @@ public partial class WorkshopBootstrap : Node
         _commandRegistration = null;
         if (GodotObject.IsInstanceValid(_panel)) _panel!.QueueFree();
         _panel = null;
+        _achievements = null;
         base._ExitTree();
+    }
+
+    private void ComposeAchievements()
+    {
+        if (_sandbox is null)
+        {
+            Log.Warn(Category, "Achievement tracking was not composed because the sandbox was not injected.");
+            return;
+        }
+
+        _achievements = new AchievementBootstrap { Name = nameof(AchievementBootstrap) };
+        _achievements.Configure(_sandbox, _selection, _characters);
+        AddChild(_achievements);
     }
 
     private void ComposeUi()
