@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Buddy;
-using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Persistence.Characters;
@@ -70,39 +69,31 @@ public partial class WorkshopPreviewCapture : Node
         if (!compiled.IsSuccess || compiled.Appearance is null)
             throw new InvalidOperationException(string.Join("; ", compiled.Errors));
 
-        var viewport = new SubViewport
-        {
-            Name = "WorkshopBuddyPreviewViewport",
-            Size = new Vector2I(BuddyPreviewWidth, BuddyPreviewHeight),
-            TransparentBg = false,
-            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-            OwnWorld3D = true,
-        };
-        AddChild(viewport);
+        var preview = new BuddyPreviewSurface { Name = "WorkshopBuddyPreviewViewport" };
+        preview.Configure(
+            rigName: "WorkshopBuddyPreviewRig",
+            viewportSize: new Vector2I(BuddyPreviewWidth, BuddyPreviewHeight),
+            transparentBackground: false,
+            rigProfile: _buddy.Rig.Profile,
+            visualProfile: _buddy.VisualProfile,
+            cameraSize: 180.0f,
+            cameraPosition: new Vector3(0, 0, 600),
+            lightRotationDegrees: new Vector3(-30, -20, 0));
+        AddChild(preview);
+
         RuntimePaintTextureBridge? paint = null;
         try
         {
-            var world = new Node3D { ProcessMode = ProcessModeEnum.Always };
-            viewport.AddChild(world);
-            var source = new StaticBuddyVisualTransformSource(_buddy.Rig.Profile, Vector2.Zero);
-            var rig = new BuddyVisualRigView
-            {
-                Name = "WorkshopBuddyPreviewRig",
-                ProcessMode = ProcessModeEnum.Always,
-            };
-            rig.Initialize(_buddy.VisualProfile, source);
-            world.AddChild(rig);
+            BuddyVisualRigView rig = preview.Rig;
             rig.ApplyAppearance(compiled.Appearance);
             paint = new RuntimePaintTextureBridge(rig);
             paint.Apply(loaded.Surfaces);
             rig.ApplyRestPose();
-
-            Camera3D camera = CreateFramedBuddyCamera(rig);
-            world.AddChild(camera);
-            world.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-30, -20, 0) });
+            FrameBuddyPreview(preview);
+            preview.RequestSingleFrame();
 
             await WaitForRenderAsync(token);
-            Image image = viewport.GetTexture().GetImage();
+            Image image = preview.GetTexture().GetImage();
             if (image.IsEmpty()) throw new InvalidOperationException("The active buddy did not produce a Workshop preview.");
             if (image.GetWidth() != BuddyPreviewWidth || image.GetHeight() != BuddyPreviewHeight)
                 image.Resize(BuddyPreviewWidth, BuddyPreviewHeight, Image.Interpolation.Lanczos);
@@ -111,21 +102,17 @@ public partial class WorkshopPreviewCapture : Node
         finally
         {
             paint?.Dispose();
-            viewport.QueueFree();
+            preview.QueueFree();
         }
     }
 
-    private static Camera3D CreateFramedBuddyCamera(BuddyVisualRigView rig)
+    private static void FrameBuddyPreview(BuddyPreviewSurface preview)
     {
+        BuddyVisualRigView rig = preview.Rig;
         if (!TryGetVisibleMeshBounds(rig, out Vector2 minimum, out Vector2 maximum))
         {
-            return new Camera3D
-            {
-                Position = new Vector3(0, 0, 600),
-                Projection = Camera3D.ProjectionType.Orthogonal,
-                Size = 180,
-                Current = true,
-            };
+            preview.SetCameraFrame(new Vector3(0, 0, 600), 180.0f);
+            return;
         }
 
         Vector2 size = maximum - minimum;
@@ -133,13 +120,7 @@ public partial class WorkshopPreviewCapture : Node
         float aspect = BuddyPreviewWidth / (float)BuddyPreviewHeight;
         float requiredVerticalSpan = MathF.Max(size.Y, size.X / aspect);
         float cameraSize = MathF.Max(MinimumBuddyCameraSize, requiredVerticalSpan / BuddyFrameFill);
-        return new Camera3D
-        {
-            Position = new Vector3(center.X, center.Y, 600),
-            Projection = Camera3D.ProjectionType.Orthogonal,
-            Size = cameraSize,
-            Current = true,
-        };
+        preview.SetCameraFrame(new Vector3(center.X, center.Y, 600), cameraSize);
     }
 
     private static bool TryGetVisibleMeshBounds(Node root, out Vector2 minimum, out Vector2 maximum)
