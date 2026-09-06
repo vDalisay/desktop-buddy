@@ -11,6 +11,7 @@ using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Persistence.Sharing;
 using DesktopBuddy.Platform.Steam;
 using DesktopBuddy.Sharing;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Testing;
@@ -195,10 +196,42 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
                 unsubscribeOk,
                 $"button={unsubscribeComposed} remaining={remaining.Items.Count} localCharacter={store.Paths.Directory(id)}"));
 
+            // The Workshop window is built entirely in Win98ThemeFactory.Px units but used to be
+            // opened at a fixed 900x700, so at any interface scale above 1 its own content was
+            // wider than the window and the native surface clipped the right edge off - the legal
+            // notice, the Apply/Cancel buttons and the right pane (owner report 2026-09-06). The
+            // scale is raised before the second window is composed because that is the real case:
+            // the player picks 150% in Settings and only then opens the Workshop.
+            float authoredScale = Win98ThemeFactory.Scale;
+            Win98ThemeFactory.ApplyScale(1.5f);
+            var scaled = new WorkshopPanel { Name = "ScaledWorkshopPanel" };
+            scaled.Configure(sharing, rooms, new RoomHost(), new CharacterSelectionState(id), capture);
+            tree.Root.AddChild(scaled);
+            scaled.Open();
+            for (int frame = 0; frame < 10; frame++)
+                await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            Control content = scaled.FindChild("WorkshopRoot", true, false) as Control
+                ?? throw new InvalidOperationException("Workshop root was not composed.");
+            Vector2 composed = content.GetCombinedMinimumSize();
+            Vector2I scaledWindow = scaled.Size;
+            Vector2I scaledMinimum = scaled.MinSize;
+            await tree.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            byte[] scaledPng = scaled.GetTexture().GetImage().SavePngToBuffer();
+            Vector2 contentSize = content.Size;
+            bool fitsScaled = contentSize.X <= scaledWindow.X && contentSize.Y <= scaledWindow.Y &&
+                composed.X <= scaledMinimum.X && composed.Y <= scaledMinimum.Y;
+            scaled.QueueFree();
+            Win98ThemeFactory.ApplyScale(authoredScale);
+            await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
+            checks.Add(new StartupCheck(
+                "workshop_window_contains_its_content_at_raised_interface_scale",
+                fitsScaled,
+                $"composed={composed} content={contentSize} window={scaledWindow} min={scaledMinimum}"));
+
             panel.QueueFree();
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
-            SaveArtifacts(buddyPng, roomPng, dialogPng, descriptionPng);
+            SaveArtifacts(buddyPng, roomPng, dialogPng, descriptionPng, scaledPng);
         }
         finally
         {
@@ -256,7 +289,12 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
         return colors.Count;
     }
 
-    private static void SaveArtifacts(byte[] buddyPng, byte[] roomPng, byte[] dialogPng, byte[] descriptionPng)
+    private static void SaveArtifacts(
+        byte[] buddyPng,
+        byte[] roomPng,
+        byte[] dialogPng,
+        byte[] descriptionPng,
+        byte[] scaledPng)
     {
         if (string.IsNullOrWhiteSpace(ScenarioArtifacts.Directory)) return;
         string directory = Path.GetFullPath(ScenarioArtifacts.Directory);
@@ -265,6 +303,7 @@ public sealed class WorkshopPreviewCaptureScenario : IScenario
         File.WriteAllBytes(Path.Combine(directory, "workshop_room_preview.png"), roomPng);
         File.WriteAllBytes(Path.Combine(directory, "workshop_publish_success.png"), dialogPng);
         File.WriteAllBytes(Path.Combine(directory, "workshop_subscription_description.png"), descriptionPng);
+        File.WriteAllBytes(Path.Combine(directory, "workshop_window_at_150_percent.png"), scaledPng);
     }
 
     private sealed class RoomHost : IRoomPaintingSharingHost

@@ -36,6 +36,7 @@ public partial class WorkshopPanel : Window
     private VBoxContainer _roomLibrary = null!;
     private Button _publishBuddy = null!;
     private Button _cancel = null!;
+    private PanelContainer _root = null!;
     private Control _publishSuccessBlocker = null!;
     private PanelContainer _publishSuccessPanel = null!;
     private Label _publishSuccessMessage = null!;
@@ -68,8 +69,11 @@ public partial class WorkshopPanel : Window
     {
         ProcessMode = ProcessModeEnum.Always;
         Title = string.Empty;
-        Size = new Vector2I(900, 700);
-        MinSize = new Vector2I(720, 560);
+        // Every child is laid out in Win98ThemeFactory.Px units, so the window has to be sized in
+        // them too. A fixed 900x700 was narrower than its own content from 125% interface scale up,
+        // and the native surface clipped the overhang off the right edge (owner report 2026-09-06).
+        Size = new Vector2I(Win98ThemeFactory.Px(900), Win98ThemeFactory.Px(700));
+        MinSize = new Vector2I(Win98ThemeFactory.Px(560), Win98ThemeFactory.Px(420));
         Borderless = true;
         Unresizable = false;
         DockWindow.ApplyOwnedWindowFlags(this);
@@ -103,7 +107,8 @@ public partial class WorkshopPanel : Window
 
     private void Build()
     {
-        var root = new PanelContainer { Name = "WorkshopRoot" };
+        _root = new PanelContainer { Name = "WorkshopRoot" };
+        PanelContainer root = _root;
         root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         root.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Raised(Win98ThemeFactory.Face, 2));
         AddChild(root);
@@ -152,15 +157,18 @@ public partial class WorkshopPanel : Window
         column.AddChild(browseRow);
         AddOperationButton(browseRow, "Browse Workshop...", () => _sharing?.OpenWorkshopBrowser());
         AddOperationButton(browseRow, "Refresh Subscriptions", () => _ = RefreshSubscriptionsAsync());
-        var spacer = new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
-        browseRow.AddChild(spacer);
+        browseRow.AddChild(new Control { SizeFlagsHorizontal = Control.SizeFlags.ExpandFill });
+
+        // The legal sentence gets its own wrapping row. Sitting on the button row it was the
+        // single largest minimum-width contributor and pushed the composed width past the window.
         var legal = new Label
         {
             Text = "Publishing is subject to the Steam Workshop Legal Agreement.",
-            VerticalAlignment = VerticalAlignment.Center,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
         legal.AddThemeFontSizeOverride("font_size", Win98ThemeFactory.Px(11));
-        browseRow.AddChild(legal);
+        column.AddChild(legal);
 
         column.AddChild(SectionLabel("Publish"));
         _title = new LineEdit
@@ -180,14 +188,13 @@ public partial class WorkshopPanel : Window
 
         var publishRow = new HBoxContainer();
         column.AddChild(publishRow);
-        AddOperationButton(publishRow, "Publish Room Painting", () => _ = PublishRoomAsync());
-        _publishBuddy = AddOperationButton(publishRow, "Publish Active Buddy", () => _ = PublishBuddyAsync());
+        AddOperationButton(publishRow, "Publish Room Painting", () => _ = PublishRoomWithDemoFeedbackAsync());
+        _publishBuddy = AddOperationButton(publishRow, "Publish Active Buddy", () => _ = PublishBuddyWithDemoFeedbackAsync());
 
         var split = new HSplitContainer
         {
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-            SplitOffsets = [545],
         };
         column.AddChild(split);
 
@@ -366,45 +373,6 @@ public partial class WorkshopPanel : Window
             StartDrag();
     }
 
-    private async Task PublishRoomAsync()
-    {
-        if (_busy || _sharing is null || _environment is null || _previews is null) return;
-        byte[] pixels = _environment.SnapshotRoomPaintingForSharing();
-        SetStatus("Preparing room preview...");
-        await RunBusyAsync(async (progress, token) =>
-        {
-            byte[] preview = await _previews.CaptureRoomAsync(token);
-            SetStatus("Publishing room painting...");
-            WorkshopPublishResult result = await _sharing.PublishRoomAsync(
-                pixels,
-                _title.Text,
-                _description.Text,
-                preview,
-                progress,
-                token);
-            SetPublishStatus(result, "Room painting");
-        });
-    }
-
-    private async Task PublishBuddyAsync()
-    {
-        if (_busy || _sharing is null || _previews is null || _selection?.ActiveCharacterId is not Guid id) return;
-        SetStatus("Preparing buddy preview...");
-        await RunBusyAsync(async (progress, token) =>
-        {
-            byte[] preview = await _previews.CaptureBuddyAsync(id, token);
-            SetStatus("Publishing active buddy...");
-            WorkshopPublishResult result = await _sharing.PublishCharacterAsync(
-                id,
-                _title.Text,
-                _description.Text,
-                preview,
-                progress,
-                token);
-            SetPublishStatus(result, "Buddy");
-        });
-    }
-
     private async Task RefreshAsync()
     {
         RefreshRoomLibrary();
@@ -473,7 +441,11 @@ public partial class WorkshopPanel : Window
         foreach (PublishedWorkshopItem item in items)
         {
             _itemMetadata[item.PublishedFileId] = item;
-            var row = new HBoxContainer { Name = $"SubscriptionRow{item.PublishedFileId}" };
+            var row = new VBoxContainer
+            {
+                Name = $"SubscriptionRow{item.PublishedFileId}",
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            };
             var itemButton = new Button
             {
                 Text = item.DisplayName,
@@ -484,20 +456,18 @@ public partial class WorkshopPanel : Window
             };
             itemButton.Pressed += () => ShowDescription(item.DisplayName, item.Description);
             row.AddChild(itemButton);
-            Button open = new() { Text = "Open", TooltipText = "Open this item in your browser." };
+            GridContainer actions = ActionGrid("SubscriptionActionGrid", 3);
+            row.AddChild(actions);
+            Button open = Action(actions, "Open", "Open this item in your browser.");
             open.Pressed += () => _sharing?.OpenWorkshopItem(item.PublishedFileId);
-            row.AddChild(open);
-            Button import = new() { Text = "Import", TooltipText = "Import this item as a local Desktop Buddy copy." };
+            Button import = Action(actions, "Import", "Import this item as a local Desktop Buddy copy.");
             import.Pressed += () => RequestImport(item);
-            row.AddChild(import);
-            Button unsubscribe = new()
-            {
-                Name = $"Unsubscribe{item.PublishedFileId}",
-                Text = "Unsubscribe",
-                TooltipText = "Stop following this Workshop item in Steam. Imported local copies are kept.",
-            };
+            Button unsubscribe = Action(
+                actions,
+                "Unsubscribe",
+                "Stop following this Workshop item in Steam. Imported local copies are kept.");
+            unsubscribe.Name = $"Unsubscribe{item.PublishedFileId}";
             unsubscribe.Pressed += () => _ = UnsubscribeAsync(item);
-            row.AddChild(unsubscribe);
             _subscriptions.AddChild(row);
         }
         RefreshRoomLibrary();
@@ -591,7 +561,7 @@ public partial class WorkshopPanel : Window
             };
             itemButton.Pressed += () => ShowDescription(displayName, description);
             row.AddChild(itemButton);
-            var actions = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.End };
+            GridContainer actions = ActionGrid("ImportedRoomActionGrid", 2);
             row.AddChild(actions);
             if (room.WorkshopItemId is ulong workshopItemId)
             {
@@ -600,25 +570,47 @@ public partial class WorkshopPanel : Window
                     WorkshopItemState.None,
                     displayName,
                     Description: description);
-                Button open = new() { Text = "Open", TooltipText = "Open this item in your browser." };
+                Button open = Action(actions, "Open", "Open this item in your browser.");
                 open.Pressed += () => _sharing?.OpenWorkshopItem(workshopItemId);
-                actions.AddChild(open);
-                Button import = new() { Text = "Import", TooltipText = "Import the latest Workshop version as another local copy." };
+                Button import = Action(
+                    actions,
+                    "Import",
+                    "Import the latest Workshop version as another local copy.");
                 import.Pressed += () => RequestImport(remote);
-                actions.AddChild(import);
-                Button unsubscribe = new()
-                {
-                    Text = "Unsubscribe",
-                    TooltipText = "Stop following this Workshop item in Steam. Imported local copies are kept.",
-                };
+                Button unsubscribe = Action(
+                    actions,
+                    "Unsubscribe",
+                    "Stop following this Workshop item in Steam. Imported local copies are kept.");
                 unsubscribe.Pressed += () => _ = UnsubscribeAsync(remote);
-                actions.AddChild(unsubscribe);
             }
-            Button apply = new() { Text = "Apply" };
+            Button apply = Action(actions, "Apply", "Paint this imported room onto the room now.");
             apply.Pressed += () => _ = ApplyRoomAsync(room);
-            actions.AddChild(apply);
             _roomLibrary.AddChild(row);
         }
+    }
+
+    /// <summary>
+    /// List-row actions wrap instead of forming one unbreakable row: a title plus three buttons
+    /// side by side set the pane's minimum width, and a window narrower than its content clips
+    /// the overhang off its right edge instead of reflowing it.
+    /// </summary>
+    private static GridContainer ActionGrid(string name, int columns) => new()
+    {
+        Name = name,
+        Columns = columns,
+        SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+    };
+
+    private static Button Action(GridContainer actions, string text, string tooltip)
+    {
+        var button = new Button
+        {
+            Text = text,
+            TooltipText = tooltip,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        actions.AddChild(button);
+        return button;
     }
 
     private async Task ApplyRoomAsync(RoomPaintingLibraryEntry entry)

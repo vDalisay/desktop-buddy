@@ -1,116 +1,28 @@
 using System;
-using System.Linq;
 using System.Threading.Tasks;
 using Godot;
 
 namespace DesktopBuddy.Sharing;
 
 /// <summary>
-/// Responsive composition guard for the free-floating Workshop window.
+/// Publish feedback and the size rule for the free-floating Workshop window.
 ///
-/// The Workshop must be able to shrink to its native window width without any child advertising a
-/// wider minimum size. In particular, the legal notice used to live on the same HBox as the Browse
-/// buttons, and subscription/import action buttons used to be single unbreakable rows. Godot then
-/// quite correctly laid the controls out wider than the Window, so the right edge (including the
-/// title-bar close button) was clipped by the native surface.
+/// The core publish methods predate Demo mirroring and only show the success dialog for a plain
+/// Published result. A first Demo item may instead return NeedsLegalAgreement, and a successful
+/// Demo item may be followed by a failed full-game mirror. In both cases the author still needs
+/// access to the real Demo item page.
 ///
-/// This partial also owns the publish-button wrappers. The core publish methods predate Demo
-/// mirroring and only show the success dialog for a plain Published result. A first Demo item may
-/// instead return NeedsLegalAgreement, and a successful Demo item may be followed by a failed
-/// full-game mirror. In both cases the author still needs access to the real Demo item page.
+/// The window itself is composed in Win98ThemeFactory.Px units, so its size has to follow the
+/// interface scale. It never shrinks below the width its own content composes to: Godot does not
+/// reflow an overflowing child, the native surface simply clips it, taking the right-hand buttons
+/// and part of the title bar with them.
 /// </summary>
 public partial class WorkshopPanel
 {
-    private bool _workshopStaticLayoutNormalized;
-
     public override void _Process(double delta)
     {
-        if (!_built || !Visible)
-            return;
-
-        if (!_workshopStaticLayoutNormalized)
-        {
-            NormalizeStaticWorkshopLayout();
-            _workshopStaticLayoutNormalized = true;
-        }
-
-        NormalizeSubscriptionRows();
-        NormalizeImportedRoomActionRows();
-        KeepWorkshopInsideUsableScreen();
-    }
-
-    private void NormalizeStaticWorkshopLayout()
-    {
-        NormalizePublishButtons();
-
-        // The legal sentence is intentionally not part of the Browse-button HBox. A long, single
-        // line label in that HBox was the largest minimum-width contributor and could make the
-        // complete Workshop root wider than the native Window from the first frame.
-        Label? legal = FindChildren("*", nameof(Label), true, false)
-            .OfType<Label>()
-            .FirstOrDefault(label => label.Text.StartsWith(
-                "Publishing is subject to the Steam Workshop Legal Agreement",
-                StringComparison.Ordinal));
-        if (legal?.GetParent() is HBoxContainer browseRow && browseRow.GetParent() is VBoxContainer column)
-        {
-            int browseIndex = browseRow.GetIndex();
-            legal.Reparent(column, false);
-            column.MoveChild(legal, browseIndex + 1);
-            legal.AutowrapMode = TextServer.AutowrapMode.WordSmart;
-            legal.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-            legal.CustomMinimumSize = Vector2.Zero;
-        }
-
-        // Let Godot calculate the natural split from the two equally expanding panes. Do not add
-        // an artificial offset; doing so is what moved the divider progressively to the right.
-        HSplitContainer? split = FindChildren("*", nameof(HSplitContainer), true, false)
-            .OfType<HSplitContainer>()
-            .FirstOrDefault();
-        if (split is not null)
-        {
-            split.SplitOffsets = [0];
-            split.CustomMinimumSize = Vector2.Zero;
-            foreach (Control pane in split.GetChildren().OfType<Control>())
-            {
-                pane.CustomMinimumSize = Vector2.Zero;
-                pane.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-                pane.SizeFlagsStretchRatio = 1.0f;
-            }
-        }
-    }
-
-    private void NormalizePublishButtons()
-    {
-        Button? oldRoom = FindChildren("*", nameof(Button), true, false)
-            .OfType<Button>()
-            .FirstOrDefault(button => button.Text == "Publish Room Painting");
-        Button? oldBuddy = FindChildren("*", nameof(Button), true, false)
-            .OfType<Button>()
-            .FirstOrDefault(button => button.Text == "Publish Active Buddy");
-        if (oldRoom?.GetParent() is not HBoxContainer publishRow || oldBuddy?.GetParent() != publishRow)
-            return;
-
-        int roomIndex = oldRoom.GetIndex();
-        int buddyIndex = oldBuddy.GetIndex();
-
-        var room = new Button { Text = oldRoom.Text };
-        room.Pressed += () => _ = PublishRoomWithDemoFeedbackAsync();
-        publishRow.AddChild(room);
-        publishRow.MoveChild(room, roomIndex);
-
-        var buddy = new Button { Text = oldBuddy.Text };
-        buddy.Pressed += () => _ = PublishBuddyWithDemoFeedbackAsync();
-        publishRow.AddChild(buddy);
-        publishRow.MoveChild(buddy, buddyIndex);
-
-        _operationButtons.Remove(oldRoom);
-        _operationButtons.Remove(oldBuddy);
-        _operationButtons.Add(room);
-        _operationButtons.Add(buddy);
-        _publishBuddy = buddy;
-
-        oldRoom.QueueFree();
-        oldBuddy.QueueFree();
+        if (_built && Visible)
+            KeepWorkshopInsideUsableScreen();
     }
 
     private async Task PublishRoomWithDemoFeedbackAsync()
@@ -180,101 +92,26 @@ public partial class WorkshopPanel
         }
     }
 
-    private void NormalizeSubscriptionRows()
-    {
-        if (!GodotObject.IsInstanceValid(_subscriptions))
-            return;
-
-        foreach (Node child in _subscriptions.GetChildren())
-        {
-            if (child is not HBoxContainer oldRow || oldRow.HasMeta("responsive_workshop_row"))
-                continue;
-
-            Button[] buttons = oldRow.GetChildren().OfType<Button>().ToArray();
-            if (buttons.Length < 2)
-            {
-                oldRow.SetMeta("responsive_workshop_row", true);
-                continue;
-            }
-
-            // Keep the title on its own row and wrap Open / Import / Unsubscribe underneath. This
-            // prevents one long subscription title plus three buttons from setting the pane width.
-            int index = oldRow.GetIndex();
-            var replacement = new VBoxContainer
-            {
-                Name = oldRow.Name,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            replacement.SetMeta("responsive_workshop_row", true);
-            _subscriptions.AddChild(replacement);
-            _subscriptions.MoveChild(replacement, index);
-
-            buttons[0].Reparent(replacement, false);
-            var actions = new GridContainer
-            {
-                Name = "SubscriptionActionGrid",
-                Columns = 3,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            replacement.AddChild(actions);
-            foreach (Button button in buttons.Skip(1))
-            {
-                button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-                button.Reparent(actions, false);
-            }
-
-            oldRow.QueueFree();
-        }
-    }
-
-    private void NormalizeImportedRoomActionRows()
-    {
-        if (!GodotObject.IsInstanceValid(_roomLibrary))
-            return;
-
-        foreach (Node child in _roomLibrary.GetChildren())
-        {
-            if (child is not VBoxContainer row || row.FindChild("ImportedRoomActionGrid", false, false) is not null)
-                continue;
-
-            HBoxContainer? oldActions = row.GetChildren().OfType<HBoxContainer>().FirstOrDefault();
-            if (oldActions is null)
-                continue;
-
-            Button[] buttons = oldActions.GetChildren().OfType<Button>().ToArray();
-            if (buttons.Length == 0)
-                continue;
-
-            int oldIndex = oldActions.GetIndex();
-            var grid = new GridContainer
-            {
-                Name = "ImportedRoomActionGrid",
-                Columns = 2,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-            };
-            row.AddChild(grid);
-            row.MoveChild(grid, oldIndex);
-
-            foreach (Button button in buttons)
-            {
-                button.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
-                button.Reparent(grid, false);
-            }
-
-            oldActions.QueueFree();
-        }
-    }
-
     private void KeepWorkshopInsideUsableScreen()
     {
         Rect2I usable = DisplayServer.ScreenGetUsableRect(DisplayServer.WindowGetCurrentScreen());
-        Vector2I maximum = new(
-            Math.Max(MinSize.X, usable.Size.X),
-            Math.Max(MinSize.Y, usable.Size.Y));
+        if (usable.Size.X <= 0 || usable.Size.Y <= 0)
+            return;
+
+        // A window narrower than its own content does not shrink that content - the overhang is
+        // simply clipped by the native surface, taking the right-hand buttons and part of the
+        // close box with it. So the minimum tracks the composed width, exactly as a detached
+        // Win98 panel does, and it re-tracks it after every interface scale change.
+        Vector2 content = _root.GetCombinedMinimumSize();
+        Vector2I minimum = new(
+            Math.Clamp(Mathf.CeilToInt(content.X), 1, usable.Size.X),
+            Math.Clamp(Mathf.CeilToInt(content.Y), 1, usable.Size.Y));
+        if (minimum != MinSize)
+            MinSize = minimum;
 
         Vector2I clampedSize = new(
-            Math.Clamp(Size.X, MinSize.X, maximum.X),
-            Math.Clamp(Size.Y, MinSize.Y, maximum.Y));
+            Math.Clamp(Size.X, minimum.X, Math.Max(minimum.X, usable.Size.X)),
+            Math.Clamp(Size.Y, minimum.Y, Math.Max(minimum.Y, usable.Size.Y)));
         if (clampedSize != Size)
             Size = clampedSize;
 
