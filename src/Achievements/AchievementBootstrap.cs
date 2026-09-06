@@ -133,6 +133,8 @@ public partial class AchievementBootstrap : Node
 
         ObserveAirborne(delta);
         ObserveBaseballWallTouches();
+        if (!_sandbox.FireSprayer.IsBurning)
+            _burnWasActive = false;
 
         _persistentCountdown -= delta;
         if (_persistentCountdown <= 0.0)
@@ -217,7 +219,8 @@ public partial class AchievementBootstrap : Node
     {
         if (_coordinator.Store.IsQualified(AchievementIds.AirBud))
             return;
-        if (_sandbox.Grab.IsGrabbing)
+        if (_sandbox.Grab.IsGrabbing || !_sandbox.Shell.GameplayInputEnabled ||
+            _sandbox.Lifecycle.PauseCoordinator.IsPaused || _sandbox.Lifecycle.IsEditorModeActive)
         {
             _airborneSeconds = 0.0;
             return;
