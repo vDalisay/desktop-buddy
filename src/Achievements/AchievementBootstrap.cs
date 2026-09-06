@@ -9,6 +9,7 @@ using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Interaction;
+using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Environment;
