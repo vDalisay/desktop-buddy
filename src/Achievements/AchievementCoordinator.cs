@@ -179,7 +179,7 @@ public sealed class AchievementCoordinator
             foreach (string item in saved.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                 categories.Add(item);
         categories.Add(categoryId);
-        _store.SetValue(HomeCategoriesKey, string.Join('|', categories));
+        _store.SetValue(HomeCategoriesKey, string.Join("|", categories));
     }
 
     public void EvaluateHomeSweetHome(IEnumerable<string> requiredCategoryIds)
