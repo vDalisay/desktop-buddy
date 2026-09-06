@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading.Tasks;
 using Godot;
 
 namespace DesktopBuddy.Sharing;
@@ -13,9 +14,10 @@ namespace DesktopBuddy.Sharing;
 /// quite correctly laid the controls out wider than the Window, so the right edge (including the
 /// title-bar close button) was clipped by the native surface.
 ///
-/// This partial normalizes those rows after they are composed. It does not continuously shove the
-/// split bar around; the previous SplitOffsets workaround was fragile because SplitOffsets are
-/// relative to the SplitContainer's normal layout, not absolute pixel coordinates.
+/// This partial also owns the publish-button wrappers. The core publish methods predate Demo
+/// mirroring and only show the success dialog for a plain Published result. A first Demo item may
+/// instead return NeedsLegalAgreement, and a successful Demo item may be followed by a failed
+/// full-game mirror. In both cases the author still needs access to the real Demo item page.
 /// </summary>
 public partial class WorkshopPanel
 {
@@ -39,6 +41,8 @@ public partial class WorkshopPanel
 
     private void NormalizeStaticWorkshopLayout()
     {
+        NormalizePublishButtons();
+
         // The legal sentence is intentionally not part of the Browse-button HBox. A long, single
         // line label in that HBox was the largest minimum-width contributor and could make the
         // complete Workshop root wider than the native Window from the first frame.
@@ -72,6 +76,107 @@ public partial class WorkshopPanel
                 pane.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
                 pane.SizeFlagsStretchRatio = 1.0f;
             }
+        }
+    }
+
+    private void NormalizePublishButtons()
+    {
+        Button? oldRoom = FindChildren("*", nameof(Button), true, false)
+            .OfType<Button>()
+            .FirstOrDefault(button => button.Text == "Publish Room Painting");
+        Button? oldBuddy = FindChildren("*", nameof(Button), true, false)
+            .OfType<Button>()
+            .FirstOrDefault(button => button.Text == "Publish Active Buddy");
+        if (oldRoom?.GetParent() is not HBoxContainer publishRow || oldBuddy?.GetParent() != publishRow)
+            return;
+
+        int roomIndex = oldRoom.GetIndex();
+        int buddyIndex = oldBuddy.GetIndex();
+
+        var room = new Button { Text = oldRoom.Text };
+        room.Pressed += () => _ = PublishRoomWithDemoFeedbackAsync();
+        publishRow.AddChild(room);
+        publishRow.MoveChild(room, roomIndex);
+
+        var buddy = new Button { Text = oldBuddy.Text };
+        buddy.Pressed += () => _ = PublishBuddyWithDemoFeedbackAsync();
+        publishRow.AddChild(buddy);
+        publishRow.MoveChild(buddy, buddyIndex);
+
+        _operationButtons.Remove(oldRoom);
+        _operationButtons.Remove(oldBuddy);
+        _operationButtons.Add(room);
+        _operationButtons.Add(buddy);
+        _publishBuddy = buddy;
+
+        oldRoom.QueueFree();
+        oldBuddy.QueueFree();
+    }
+
+    private async Task PublishRoomWithDemoFeedbackAsync()
+    {
+        if (_busy || _sharing is null || _environment is null || _previews is null) return;
+        byte[] pixels = _environment.SnapshotRoomPaintingForSharing();
+        SetStatus("Preparing room preview...");
+        await RunBusyAsync(async (progress, token) =>
+        {
+            byte[] preview = await _previews.CaptureRoomAsync(token);
+            SetStatus("Publishing room painting...");
+            WorkshopPublishResult result = await _sharing.PublishRoomAsync(
+                pixels,
+                _title.Text,
+                _description.Text,
+                preview,
+                progress,
+                token);
+            PresentPublishResult(result, "Room painting");
+        });
+    }
+
+    private async Task PublishBuddyWithDemoFeedbackAsync()
+    {
+        if (_busy || _sharing is null || _previews is null || _selection?.ActiveCharacterId is not Guid id) return;
+        SetStatus("Preparing buddy preview...");
+        await RunBusyAsync(async (progress, token) =>
+        {
+            byte[] preview = await _previews.CaptureBuddyAsync(id, token);
+            SetStatus("Publishing active buddy...");
+            WorkshopPublishResult result = await _sharing.PublishCharacterAsync(
+                id,
+                _title.Text,
+                _description.Text,
+                preview,
+                progress,
+                token);
+            PresentPublishResult(result, "Buddy");
+        });
+    }
+
+    private void PresentPublishResult(WorkshopPublishResult result, string noun)
+    {
+        SetPublishStatus(result, noun);
+
+        if (result.PublishedFileId == 0)
+            return;
+
+        if (result.Status == WorkshopPublishStatus.NeedsLegalAgreement)
+        {
+            ShowPublishSuccess(noun, result.PublishedFileId);
+            _publishSuccessMessage.Text =
+                $"{noun} uploaded as Workshop item {result.PublishedFileId}. Steam still requires the Workshop Legal Agreement. " +
+                "Open the item page, accept the agreement if prompted, and make sure the item is Public.";
+            return;
+        }
+
+        // The Demo item itself is already real at this point; only the extra full-game mirror
+        // failed. Keep the warning, but do not strand the author without a way to open the Demo
+        // item that Steamworks needs for the Workshop checklist.
+        if (result.Status == WorkshopPublishStatus.Failed &&
+            result.Detail?.StartsWith("Published to the Demo Workshop as item", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            ShowPublishSuccess(noun, result.PublishedFileId);
+            _publishSuccessMessage.Text = result.Detail +
+                "\n\nThe Demo item is available to open. You can retry the full-game mirror separately after checking Steamworks permissions.";
         }
     }
 
@@ -167,9 +272,6 @@ public partial class WorkshopPanel
             Math.Max(MinSize.X, usable.Size.X),
             Math.Max(MinSize.Y, usable.Size.Y));
 
-        // Never let a restored/dragged native Workshop window exceed the usable desktop. This is a
-        // final native-window guard; the responsive rows above are what keep the content itself
-        // below the Window's minimum width.
         Vector2I clampedSize = new(
             Math.Clamp(Size.X, MinSize.X, maximum.X),
             Math.Clamp(Size.Y, MinSize.Y, maximum.Y));
