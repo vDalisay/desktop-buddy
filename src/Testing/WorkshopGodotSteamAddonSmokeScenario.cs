@@ -11,9 +11,9 @@ namespace DesktopBuddy.Testing;
 
 /// <summary>
 /// Runs only in the CI lane that materializes the pinned GodotSteam addon. It proves the real
-/// GDExtension can be discovered by the project-owned bridge and that its Workshop capability
-/// surface still matches the adapter. An unauthenticated GitHub runner is allowed to fail Steam
-/// client initialization; missing/incompatible GodotSteam is not allowed.
+/// GDExtension can be discovered by the project-owned bridge and that its Workshop plus achievement
+/// capability surface still matches the adapters. An unauthenticated GitHub runner is allowed to
+/// fail Steam client initialization; missing/incompatible GodotSteam is not allowed.
 /// </summary>
 public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
 {
@@ -67,6 +67,18 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     : "Pinned GodotSteam addon was materialized but no Steam API object is discoverable."));
             if (!addonPresent)
                 return Result(checks, $"seed={seed}");
+
+            GodotObject? steam = Engine.HasSingleton("Steam") ? Engine.GetSingleton("Steam") : null;
+            bool achievementCapabilities = GodotObject.IsInstanceValid(steam) &&
+                steam!.HasMethod("requestCurrentStats") &&
+                steam.HasMethod("setAchievement") &&
+                steam.HasMethod("storeStats");
+            checks.Add(new StartupCheck(
+                "steam_achievement_godotsteam_422_capabilities_match",
+                achievementCapabilities,
+                achievementCapabilities
+                    ? "GodotSteam exposes requestCurrentStats/setAchievement/storeStats for the full-game publisher."
+                    : "Pinned GodotSteam is missing an achievement/stat method required by SteamAchievementPublisher."));
 
             // Discovery is intentionally a separate optional bridge because demos need an in-game
             // Workshop browser even though they have no Community Hub. Probe its exact 4.22 method
