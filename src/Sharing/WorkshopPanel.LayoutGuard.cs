@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -13,19 +12,15 @@ namespace DesktopBuddy.Sharing;
 /// </summary>
 public partial class WorkshopPanel
 {
-    private int _lastGuardedWorkshopWidth = -1;
-
     public override void _Process(double delta)
     {
         if (!_built || !Visible)
             return;
 
-        if (_lastGuardedWorkshopWidth != Size.X)
-        {
-            _lastGuardedWorkshopWidth = Size.X;
-            BalanceWorkshopColumns();
-        }
-
+        // Re-apply after content changes too, not only after a native resize. Publishing/importing
+        // can change child minimum sizes and make SplitContainer clamp itself again on the next
+        // layout pass even though the Window width did not change.
+        BalanceWorkshopColumns();
         NormalizeImportedRoomActionRows();
     }
 
@@ -37,14 +32,18 @@ public partial class WorkshopPanel
         if (split is null)
             return;
 
-        // Keep both sides useful instead of permanently reserving 545 px for subscriptions.
-        // The right side is the one with the denser controls, so a roughly even split is the
-        // stable default at every user-resizable window width.
-        int inset = Win98ThemeFactory.Px(20);
-        int available = Math.Max(1, Size.X - inset);
-        int minimumPane = Math.Min(Win98ThemeFactory.Px(280), available / 2);
-        int target = Math.Clamp(available / 2, minimumPane, Math.Max(minimumPane, available - minimumPane));
-        split.SplitOffsets = [target];
+        foreach (Control pane in split.GetChildren().OfType<Control>().Take(2))
+        {
+            pane.SizeFlagsHorizontal = Control.SizeFlags.ExpandFill;
+            pane.SizeFlagsStretchRatio = 1.0f;
+        }
+
+        // Godot 4.6 SplitOffsets are offsets *from the container's default split*, not absolute
+        // pixel positions. The previous guard wrote ~half the window width here, which shifted an
+        // already-even split hundreds of pixels to the right and caused exactly the clipping it
+        // was meant to fix. Zero means "use the equal/default split".
+        split.DraggingEnabled = false;
+        split.SplitOffsets = [0];
     }
 
     private void NormalizeImportedRoomActionRows()
