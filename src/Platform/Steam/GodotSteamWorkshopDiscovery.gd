@@ -11,7 +11,7 @@ signal browse_query_completed(handle: int, result: int, results_returned: int, t
 const UGC_QUERY_RANKED_BY_VOTE := 0
 const UGC_QUERY_RANKED_BY_PUBLICATION_DATE := 1
 const UGC_MATCHING_ITEMS := 0
-const QUERY_ALL_PAGE_ARGUMENT_COUNT := 5
+const QUERY_ALL_ARGUMENT_COUNT := 5
 
 var _steam: Object
 var _app_id := 0
@@ -43,10 +43,10 @@ func configure(app_id: int) -> Dictionary:
     if not missing.is_empty():
         return _fail("This GodotSteam build cannot browse Workshop content. Missing: %s" % ", ".join(missing))
 
-    # GodotSteam 4.22 exposes two overloads of SteamUGC::CreateQueryAllUGCRequest. Depending on
-    # the generated GDExtension binding, the page-based five-argument overload can receive a
-    # disambiguated name rather than the plain createQueryAllUGCRequest identifier. Resolve that
-    # binding by signature instead of pinning Desktop Buddy to one generated spelling.
+    # Steam exposes page- and cursor-based CreateQueryAllUGCRequest overloads. GodotSteam's
+    # generated GDExtension binding may disambiguate those overloads in the exported method name,
+    # so resolve the page version by its generated name instead of pinning Desktop Buddy to one
+    # spelling. The browser's Previous/Next controls deliberately use numbered pages.
     _create_query_all_method = _resolve_create_query_all_method()
     if _create_query_all_method.is_empty():
         return _fail(_missing_query_all_detail())
@@ -126,13 +126,11 @@ func get_item_state(file_id: int) -> int:
     return int(_steam.call("getItemState", file_id))
 
 func _resolve_create_query_all_method() -> String:
-    # Prefer the canonical name when a build can expose it without overload disambiguation.
-    if _steam.has_method("createQueryAllUGCRequest"):
-        var canonical_args := _method_argument_count("createQueryAllUGCRequest")
-        if canonical_args == -1 or canonical_args == QUERY_ALL_PAGE_ARGUMENT_COUNT:
-            return "createQueryAllUGCRequest"
+    var canonical := ""
+    var page_candidate := ""
+    var neutral_candidate := ""
+    var cursor_candidate := ""
 
-    var fallback := ""
     for method_info_variant in _steam.get_method_list():
         if typeof(method_info_variant) != TYPE_DICTIONARY:
             continue
@@ -146,29 +144,30 @@ func _resolve_create_query_all_method() -> String:
         var argument_count := -1
         if typeof(args_variant) == TYPE_ARRAY:
             argument_count = (args_variant as Array).size()
-
-        # The page-based Steam API has exactly five arguments. Pick it over the cursor overload.
-        if argument_count == QUERY_ALL_PAGE_ARGUMENT_COUNT:
-            return method_name
-        if fallback.is_empty():
-            fallback = method_name
-
-    # If the binding does not expose argument metadata but only one similarly named method exists,
-    # keep the browser usable rather than rejecting a potentially compatible GodotSteam build.
-    return fallback
-
-func _method_argument_count(wanted_name: String) -> int:
-    for method_info_variant in _steam.get_method_list():
-        if typeof(method_info_variant) != TYPE_DICTIONARY:
+        # Both Steam overloads have five parameters. Reject any unrelated generated helper whose
+        # metadata proves a different signature, but keep methods with no metadata for robustness.
+        if argument_count != -1 and argument_count != QUERY_ALL_ARGUMENT_COUNT:
             continue
-        var method_info: Dictionary = method_info_variant
-        if str(method_info.get("name", "")) != wanted_name:
-            continue
-        var args_variant: Variant = method_info.get("args", [])
-        if typeof(args_variant) == TYPE_ARRAY:
-            return (args_variant as Array).size()
-        return -1
-    return -1
+
+        if method_name == "createQueryAllUGCRequest":
+            canonical = method_name
+        elif folded.contains("page"):
+            page_candidate = method_name
+        elif folded.contains("cursor"):
+            cursor_candidate = method_name
+        elif neutral_candidate.is_empty():
+            neutral_candidate = method_name
+
+    # Explicit page disambiguation is strongest. A canonical unsuffixed binding comes next; it is
+    # the page overload on builds that do not need generated suffixes. Never deliberately select a
+    # cursor-labelled method for a numeric page argument unless it is the only possible binding.
+    if not page_candidate.is_empty():
+        return page_candidate
+    if not canonical.is_empty():
+        return canonical
+    if not neutral_candidate.is_empty():
+        return neutral_candidate
+    return cursor_candidate
 
 func _missing_query_all_detail() -> String:
     var candidates := PackedStringArray()
