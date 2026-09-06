@@ -136,8 +136,15 @@ public partial class FirstSessionGuidanceController
         // few surfaces where clicking the words themselves has meaning: reveal the rest now.
         created.MouseFilter = Control.MouseFilterEnum.Stop;
         created.GuiInput += input => OnExpressiveBodyGuiInput(created, input);
+        created.SpeakingChanged += OnExpressiveSpeakingChanged;
         fallback.Visible = false;
         return created;
+    }
+
+    private void OnExpressiveSpeakingChanged(bool speaking)
+    {
+        if (_characterPresenter is LiveTutorialBuddyPresenter live)
+            live.SetSpeaking(speaking);
     }
 
     private void OnExpressiveBodyGuiInput(ExpressiveTextPresenter presenter, InputEvent input)
@@ -165,6 +172,8 @@ public partial class FirstSessionGuidanceController
             _expressiveBody!.Visible = false;
         if (GodotObject.IsInstanceValid(_expressiveWorkBody))
             _expressiveWorkBody!.Visible = false;
+        if (_characterPresenter is LiveTutorialBuddyPresenter live)
+            live.SetSpeaking(false);
     }
 }
 
