@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Presentation;
 
 namespace DesktopBuddy.Onboarding;
