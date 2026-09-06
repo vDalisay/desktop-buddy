@@ -52,25 +52,33 @@ public static class ExpressiveSemanticTags
 /// Pure timing policy for the tutorial typewriter. The Godot view owns glyph shaping/reveal;
 /// this model only says how long the reveal should wait after a visible text element.
 /// </summary>
-public readonly record struct ExpressiveRevealTiming(
-    double BaseElementSeconds,
-    double CommaPauseSeconds,
-    double SentencePauseSeconds)
+public readonly record struct ExpressiveRevealTiming
 {
-    public static ExpressiveRevealTiming Default => new(
-        BaseElementSeconds: 1.0 / 62.0,
-        CommaPauseSeconds: 0.085,
-        SentencePauseSeconds: 0.16);
+    public double BaseElementSeconds { get; }
+    public double CommaPauseSeconds { get; }
+    public double SentencePauseSeconds { get; }
 
-    public ExpressiveRevealTiming
+    public ExpressiveRevealTiming(
+        double baseElementSeconds,
+        double commaPauseSeconds,
+        double sentencePauseSeconds)
     {
-        if (!double.IsFinite(BaseElementSeconds) || BaseElementSeconds <= 0.0)
-            throw new ArgumentOutOfRangeException(nameof(BaseElementSeconds));
-        if (!double.IsFinite(CommaPauseSeconds) || CommaPauseSeconds < 0.0)
-            throw new ArgumentOutOfRangeException(nameof(CommaPauseSeconds));
-        if (!double.IsFinite(SentencePauseSeconds) || SentencePauseSeconds < 0.0)
-            throw new ArgumentOutOfRangeException(nameof(SentencePauseSeconds));
+        if (!double.IsFinite(baseElementSeconds) || baseElementSeconds <= 0.0)
+            throw new ArgumentOutOfRangeException(nameof(baseElementSeconds));
+        if (!double.IsFinite(commaPauseSeconds) || commaPauseSeconds < 0.0)
+            throw new ArgumentOutOfRangeException(nameof(commaPauseSeconds));
+        if (!double.IsFinite(sentencePauseSeconds) || sentencePauseSeconds < 0.0)
+            throw new ArgumentOutOfRangeException(nameof(sentencePauseSeconds));
+
+        BaseElementSeconds = baseElementSeconds;
+        CommaPauseSeconds = commaPauseSeconds;
+        SentencePauseSeconds = sentencePauseSeconds;
     }
+
+    public static ExpressiveRevealTiming Default => new(
+        baseElementSeconds: 1.0 / 62.0,
+        commaPauseSeconds: 0.085,
+        sentencePauseSeconds: 0.16);
 
     /// <summary>
     /// Delay after one already-shaped visible element. Newlines get a sentence-class pause;
