@@ -2,7 +2,13 @@
 
 Date: 2026-09-06
 Branch: `expressive-text-tutorial-buddy-plan`
-Status: AUDITED — READY FOR IMPLEMENTATION, NO FEATURE CODE STARTED
+Status: AUDITED TWICE — READY FOR IMPLEMENTATION AFTER ONE OPEN OWNER DECISION, NO FEATURE CODE STARTED
+
+> **Read the second audit before implementing.** A code-verified audit on 2026-09-07 confirmed every
+> existing-code claim below but found that Godot 4.6 already ships most of System A's reveal and effect
+> machinery natively, and that one authoring decision is still open. See
+> [Implementation audit — 2026-09-07](#implementation-audit--2026-09-07) at the end of this document; where
+> the two disagree, the audit wins.
 
 ## Goal
 
@@ -609,3 +615,251 @@ The architecture is accepted when:
 - Steam's own achievement popup remains unaffected;
 - hidden/settled expressive systems stop expensive processing;
 - all existing tutorial/reward/domain regressions remain green.
+
+---
+
+# Implementation audit — 2026-09-07
+
+A second audit, run against the actual code and against the actual engine binary rather than against
+the plan's own reasoning.
+
+**Verdict: the diagnosis is sound and the prescription is roughly three times the machinery the
+problem needs.** Every existing-code claim above was checked and holds. Three of them are real
+defects worth fixing regardless of whether this feature ships. But System A specifies a reveal
+engine, a per-glyph effect layer and a template/document pipeline that Godot 4.6 substantially
+provides already — a gap that went unnoticed because this project has never used `RichTextLabel`
+(zero occurrences in `src/`), so its capabilities were never on the table.
+
+## Claims verified against the code
+
+Every load-bearing claim above is true. Recording the evidence so the next reader does not re-derive it:
+
+| Claim in this plan | Verified at |
+| --- | --- |
+| `Drop Tool` is rebindable but tutorial copy hard-codes `D` | `domain/DesktopBuddy.Domain/Persistence/LocalSettingsInputBindings.cs:17` vs `src/Onboarding/FirstSessionGuidanceController.cs:1266` |
+| Line identity is `_lastRenderedText` string equality | `src/Onboarding/FirstSessionGuidanceController.cs:297` |
+| The Work helper keeps a second plain-`Label` dialogue path | `_workGuideBody`, `src/Onboarding/FirstSessionGuidanceController.cs:192`, built at `:1150`, written at `:1218` |
+| The offscreen preview stack already exists | `src/Work/WorkCompanionView.cs:527`, `src/CharacterEditor/CharacterEditorHost.cs:557`, `src/Sharing/WorkshopPreviewCapture.cs:73` |
+| `ITutorialCharacterPresenter` is narrow | `Present(stepId, text)` / `Dismiss()`, `src/Onboarding/FirstSessionGuidanceController.cs:29`; one implementation |
+| `Win98MotionPolicy.Allows` combines `ModernUiMotion` and `ReducedMotion` | `src/UI/Win98/Win98MotionPolicy.cs:11` |
+| `EffectsSettings` is presentation-only with `PhotosensitivitySafe` / `ReducedParticles` | `domain/DesktopBuddy.Domain/Presentation/EffectsSettings.cs:19` |
+| `RewardPopup` owns a single queue | `_queue`, `src/UI/RewardPopup.cs:43` |
+| `BlinkModel`, `FaceRenderState`, `StaticBuddyVisualTransformSource`, `BuddyVisualRigView`, `UiFeedbackAudioBootstrap` all exist as described | present across `src/` and `domain/` |
+| No feature code started | `ExpressiveMessageSpec`, `IInputPromptResolver`, `ITextTemplateSource` return zero hits repo-wide |
+
+Two sharper readings of those facts:
+
+- **The preview stack is not duplicated once, it is triplicated.** Work, the character editor and
+  Workshop capture each build their own `SubViewport` + `OwnWorld3D` + `StaticBuddyVisualTransformSource`
+  + `BuddyVisualRigView` + orthographic `Camera3D` + `DirectionalLight3D`. That materially strengthens
+  the case for C1 — and changes what a correct extraction looks like (see finding 4).
+- **The `D` bug is shippable on its own.** It needs `LocalSettingsInputBindings.DropTool(settings)`
+  interpolated into one string. It should not wait for six phases of architecture.
+
+## Finding 1 — Godot 4.6 already implements most of System A (the big one)
+
+This project uses `RichTextLabel` zero times, so A3/A4 were designed as if the reveal and the
+per-glyph effects had to be built. They do not. Probed directly against
+`Godot_v4.6.1-stable_mono_win64` (`ClassDB` property list plus a live `bbcode_enabled` parse):
+
+```
+PROP visible_characters = true      PROP visible_ratio = true
+PROP visible_characters_behavior = true    PROP custom_effects = true
+TAG wave -> parsed_text=abc         TAG shake -> parsed_text=abc
+TAG tornado -> parsed_text=abc      TAG fade -> parsed_text=abc
+TAG rainbow -> parsed_text=abc      TAG pulse -> parsed_text=abc
+ENUM VisibleCharactersBehavior: [VC_CHARS_BEFORE_SHAPING, VC_CHARS_AFTER_SHAPING,
+                                 VC_GLYPHS_AUTO, VC_GLYPHS_LTR, VC_GLYPHS_RTL]
+METHODS: get_character_line=true get_parsed_text=true get_total_character_count=true
+```
+
+(The six animated tags are stripped from `get_parsed_text()`, which is how the parser reports that it
+recognised them. `[color]` and `[font_size]` stay literal only because the probe passed them no
+argument.)
+
+What that means, requirement by requirement:
+
+- **A3 "the view lays out the completed text first, then reveals it without changing line wrapping"** is
+  exactly `visible_ratio` / `visible_characters` with `visible_characters_behavior` set to a
+  post-shaping mode. The label shapes the whole string once and reveals glyphs out of that finished
+  layout. There is no wrapping to protect, because nothing re-wraps. Do not hand-roll this.
+- **A3 "use text elements/grapheme clusters rather than raw C# `char`"** is the `VC_GLYPHS_*` behaviors.
+  The engine's `TextServer` already does the cluster work, correctly, for scripts we have not thought
+  about. A hand-written grapheme walker is strictly worse.
+- **A4 "a small custom `RichTextEffect` layer may provide per-glyph offsets"** is `[wave]`, `[shake]`,
+  `[pulse]`, `[fade]`, `[tornado]`, `[rainbow]` — all six built in, all parameterised (`amp`, `freq`,
+  `rate`, `level`), and all guaranteed by construction not to affect line measurement, which is the
+  hard half of A4's requirement list. `custom_effects` remains available for the one case a built-in
+  genuinely cannot express; it should not be the default plan.
+- **A4 "semantic style/effect resolver"** collapses to a `Dictionary<ExpressiveSemanticRole, string>`
+  mapping a role to a BBCode tag (plus a static-fallback tag for when motion is disallowed). That is a
+  lookup table, not a strategy subsystem, and it preserves the plan's actual invariant: callers name
+  meaning, the table owns the visuals.
+- **Motion policy integration stays intact.** `Win98MotionPolicy.Allows(settings)` selects between the
+  animated tag and the static one when building the BBCode string; `EffectsSettings.PhotosensitivitySafe`
+  gates `[rainbow]`/`[pulse]`-class brightness modulation. Same seams, one branch each.
+
+What is genuinely still ours to write, and worth writing:
+
+- the **chirp cadence model** (A5) — pure, deterministic, testable, no engine equivalent;
+- the **punctuation pause policy** (A3) — likewise pure; it drives how fast `visible_ratio` advances;
+- **skip-to-complete and re-present idempotence** (A3) — but these are now two assignments
+  (`visible_ratio = 1.0`, stop the chirp) rather than an FSM with a `PunctuationPause` state.
+
+**Recommendation.** Rewrite A3/A4 as: one `RichTextLabel`, reveal driven by advancing `visible_ratio`
+from a pure cadence model, semantic roles mapped to BBCode tags through a table, `custom_effects` only
+on demonstrated need. Keep the explicit state machine only if implementation shows the two-assignment
+version actually tangles; do not build it up front. This deletes the per-glyph effect layer, the glyph
+walker and most of the reveal FSM from the estimate.
+
+**Caveat that survives.** `RichTextLabel` is new to this codebase and `Win98ThemeFactory` has no
+styling for it, so Phase 2 must include theme/font parity with the existing `Label` look — otherwise
+the mismatch surfaces at the Phase 6 UI-scale gate, which is far too late. This is a new Phase 2 item;
+see the revised sequence.
+
+## Finding 2 — five interfaces, five single implementations
+
+`IInputPromptResolver`, `ITextVoiceSink`, `IPresentationClock`, `ITextTemplateSource` and
+`ITutorialGuidePresenter` would each have exactly one implementation, and two of them wrap statics that
+already exist and are already easy to call: `LocalSettingsInputBindings.DropTool(settings)` and
+`UiFeedbackAudioBootstrap.TryPlay(...)`.
+
+The testability the ports are meant to buy comes from the **pure models**, not from the indirection.
+A cadence model that takes a `string dropToolChord` and returns "chirp now" is fully testable without
+a single interface; the view calls the static and passes the value in. That is the same guarantee at
+five fewer types.
+
+**Recommendation.** Keep pure models and their deterministic tests. Drop `IInputPromptResolver`,
+`ITextVoiceSink` and `IPresentationClock` — pass values and a `double delta` in. Keep a guide-level
+facade for the tutorial (finding 6 gives it a second consumer, which is what earns it). Introduce
+`ITextTemplateSource` only when a second template source actually exists; until then it is a named
+placeholder for a feature this plan explicitly refuses to build.
+
+## Finding 3 — the slot/template pipeline is the largest cost, and its rationale is contestable (OPEN OWNER DECISION)
+
+Section 1 forbids "effect syntax mixed directly into player-facing prose", and that single rule is what
+requires `ExpressiveMessageSpec` + `ExpressiveSlotValue` + `ExpressiveTextDocument` + a formatter + a
+slot validator. It is a defensible rule — translators should not be handed markup they can corrupt —
+but it is the most expensive line in this document, and it is bought for a localization pass that
+Section 1 also explicitly declines to build.
+
+The alternative reaches the same stated goal for far less. Author the English line with inline semantic
+tags:
+
+```
+Hold [input]right mouse button[/input] to charge a [impact]big swing[/impact].
+```
+
+That **is** a named-slot document. It satisfies every future-proofing rule in Section 1: no character
+offsets, no `IndexOf`, semantic names rather than visual ones (`input`, not `wave`), a plain-text
+projection available for free via `get_parsed_text()`. A translator may reorder the tagged spans
+freely, which is the exact property the "Future localization contract" section asks for, and Godot's
+own translation workflow carries BBCode through PO files routinely. The renderer's job becomes
+substituting each semantic tag for its visual BBCode tag before assigning `Text` — a string replace
+over a table.
+
+The genuine trade, stated plainly so it can be decided rather than assumed:
+
+- **Slots (as planned):** translators never see markup; costs ~5 types, a formatter and a validator;
+  slot-name typos are caught by the validator.
+- **Inline semantic tags:** near-zero new types; translators see `[input]…[/input]` and can break it;
+  a malformed tag degrades to visible literal text rather than a thrown validation error.
+
+**Recommendation: inline semantic tags**, on the grounds that no localization is planned, the failure
+mode is cosmetic, and the ~5 types can be introduced later without touching the renderer if a real
+translation pass ever arrives. **This is the one call left to the owner** — it is the difference between
+a small Phase 1 and a large one, and the rest of this audit's sequencing assumes the recommendation is
+taken. If slots are chosen instead, Phase 1 stands roughly as originally written.
+
+## Finding 4 — C1 as written sanctions a fourth copy
+
+"Avoid a broad Work Mode rewrite merely for abstraction purity. Extract the smallest common helper and
+migrate Work only if parity is proven" permits an outcome where the extracted facade has exactly one
+consumer — the tutorial portrait — while all three existing stacks stay as they are. Extraction with
+one consumer is not extraction; it is a fourth copy with a better name.
+
+**Recommendation.** Either extract *and* migrate all three call sites (`WorkCompanionView`,
+`CharacterEditorHost`, `WorkshopPreviewCapture`), or copy the ~40 lines into the tutorial with a
+comment naming the duplication and the trigger for consolidating. Both are honest; the middle option is
+not. Finding 5 supplies the strongest argument for choosing the first.
+
+## Finding 5 — gap: the suspension fix belongs to all four consumers, not just the tutorial
+
+C5 and the performance section require the tutorial SubViewport to stop rendering when hidden. All
+three existing stacks set `RenderTargetUpdateMode.Always` (`WorkCompanionView.cs:531`,
+`CharacterEditorHost.cs:561`, `WorkshopPreviewCapture.cs:78`). So the plan asks the new portrait to be
+frugal while leaving Work and the editor paying permanent GPU cost in a long-running desktop
+application — the precise failure mode the performance section exists to prevent.
+
+**Recommendation.** Make visibility-driven update mode a property of the extracted facade, and let the
+migration in finding 4 carry the fix to all three existing consumers. This is the concrete payoff that
+justifies extracting at all, and it should be stated as a Phase 3 deliverable rather than left implicit.
+
+## Finding 6 — gap: `DemoTutorialCharacterPresenter`'s owner-art path is silently retired
+
+`src/Onboarding/DemoTutorialCharacterPresenter.cs:9` documents a standing promise: dropping the owner's
+final art at `res://assets/ui/tutorial/tutorial_guide.png` replaces the procedural placeholder without
+code changes. A live 3D portrait ends that promise. The plan never says so, and an owner who later drops
+that PNG in will find it silently ignored.
+
+**Recommendation.** State explicitly in Phase 3 or 4 that the optional-art path is retired, and delete
+`OptionalArtPath` and its loader with the replacement rather than leaving dead code that advertises a
+behavior the build no longer has. This is also what gives the guide facade its second consumer, which
+is why it survives finding 2.
+
+## Finding 7 — speculative enum breadth
+
+`ExpressiveSemanticRole` lists 7 roles; the plan's own "Suggested first-pass tutorial emphasis" section
+uses 5 and never uses `Warning`. `TutorialPortraitModel` lists 6 moods for 38 tutorial strings
+(`TextFor` in `FirstSessionGuidanceController.cs`), which is more mood vocabulary than the copy can
+distinguish.
+
+**Recommendation.** Ship the roles the copy actually uses (`Input`/`Action`, `Money`, `Impact`,
+`Playful`) and three moods (`Neutral`, `Friendly`, `Pleased`). Adding a role is a table row and a mood
+is a face pose; neither needs to exist before its first use.
+
+## Finding 8 — sequencing: Phase 5 is independent and should go first
+
+Phase 5 (WordArt rewards) depends on nothing in Phases 1–4. It touches one 326-line file whose queue
+ownership is already correct, and it is the most visible personality-per-line-of-code in the document.
+Running it first de-risks the schedule: if the expressive-text work is cut or deferred, the reward
+polish has already shipped.
+
+## Revised implementation sequence
+
+Supersedes the sequence above. Stop at any point where it feels finished; each step is shippable alone.
+
+0. **`D`-binding fix, standalone.** Interpolate `LocalSettingsInputBindings.DropTool(settings)` into the
+   `UnequipTool` line. One string, no architecture, ship immediately.
+1. **Phase 5 as written** (rewards/WordArt), promoted to first, per finding 8.
+2. **Pure models + tests:** chirp cadence, punctuation pause policy, semantic-role-to-tag table.
+   No ports, no clock interface. Slot pipeline only if the owner rejects finding 3's recommendation.
+3. **Godot dialogue presenter:** one `RichTextLabel`; reveal via `visible_ratio` with a post-shaping
+   `visible_characters_behavior`; roles resolved to built-in BBCode tags, static variants chosen when
+   `Win98MotionPolicy.Allows` is false; `UiFeedbackAudioBootstrap` called directly.
+   **Includes `Win98ThemeFactory` styling for `RichTextLabel` and font parity with the existing
+   `Label`** (finding 1's surviving caveat) — verified at 100–200% UI scale in this phase, not at the
+   Phase 6 gate.
+4. **Tutorial integration** as in the original Phase 4, plus: replace `_lastRenderedText` equality with
+   semantic step+variant identity (`FirstSessionGuidanceController.cs:297`), and route the Work helper
+   window through the same presenter so `_workGuideBody` stops being a second implementation.
+5. **Preview facade extraction *with* migration of all three existing call sites, carrying the
+   visibility-driven update-mode fix** (findings 4 and 5).
+6. **Portrait**, as in the original Phase 3 items 2–6, retiring `OptionalArtPath` (finding 6). This part
+   of the original plan needs no simplification: reusing `BlinkModel` and `FaceRenderState` and never
+   touching live Buddy state is exactly right and worth its cost.
+7. **Phase 6 release gate** as written, minus the UI-scale items already covered in step 3.
+
+## Amendments to the acceptance criteria
+
+Add:
+
+- built-in `RichTextLabel` reveal and BBCode effects are used unless a specific requirement is
+  demonstrably unmet, and any `custom_effects` addition names the requirement it satisfies;
+- `RichTextLabel` matches the existing Win98 `Label` styling at 100–200% UI scale;
+- no new interface ships with a single implementation unless a second consumer exists in the same change;
+- the extracted preview facade has all four consumers migrated, or the duplication is left in place and
+  commented — not a fourth silent copy;
+- hidden-viewport suspension applies to Work, the character editor and Workshop capture, not only the
+  tutorial portrait;
+- the `tutorial_guide.png` optional-art path is explicitly retired along with its loader.
