@@ -32,6 +32,7 @@ public partial class AchievementBootstrap : Node
     private const double SteamRetrySeconds = 5.0;
     private const float AirborneFloorClearancePixels = 3.0f;
     private const float BankShotWallTolerancePixels = 3.0f;
+    private const string BackgroundPath = "user://environment/background.png";
 
     private readonly HashSet<int> _baseballsThatTouchedWall = [];
     private SandboxRoot _sandbox = null!;
@@ -49,6 +50,7 @@ public partial class AchievementBootstrap : Node
     private bool _burnWasActive;
     private bool _characterRefreshRunning;
     private int _observedRopeAttachCount;
+    private string? _backgroundHash;
 
     public AchievementCoordinator Coordinator => _coordinator;
 
@@ -91,6 +93,10 @@ public partial class AchievementBootstrap : Node
             _selection.Changed += OnCharacterSelectionChanged;
 
         _observedRopeAttachCount = _sandbox.Ropes.AttachCount;
+        // Existing room art predates this runtime observation. Make It Yours records which
+        // character was active when a customization actually changes; merely selecting another
+        // character beside an already-painted room must not transfer that credit.
+        _backgroundHash = CurrentBackgroundHash();
         _coordinator.Store.Qualified += OnQualified;
         _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
         EvaluateEnvironment();
@@ -152,6 +158,7 @@ public partial class AchievementBootstrap : Node
         if (_persistentCountdown <= 0.0)
         {
             _persistentCountdown = PersistentEvaluationSeconds;
+            ObserveBackgroundCustomization();
             _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
             EvaluateEnvironment();
             _ = RefreshActiveCharacterAsync();
@@ -341,6 +348,30 @@ public partial class AchievementBootstrap : Node
                 CustomizationArea.EnvironmentDecorator);
     }
 
+    private void ObserveBackgroundCustomization()
+    {
+        string? current = CurrentBackgroundHash();
+        if (string.Equals(current, _backgroundHash, StringComparison.Ordinal))
+            return;
+
+        _backgroundHash = current;
+        // Deletion is Reset Progress / explicit clearing, not customization. A new or changed
+        // background file is a completed Paint Background save and belongs to the character active
+        // at that moment; the resulting bit is persisted by AchievementProgressStore.
+        if (!string.IsNullOrEmpty(current))
+            _coordinator.RecordCustomization(
+                _selection?.ActiveCharacterId,
+                CustomizationArea.PaintBackground);
+    }
+
+    private static string? CurrentBackgroundHash()
+    {
+        if (!FileAccess.FileExists(BackgroundPath))
+            return null;
+        string hash = FileAccess.GetSha256(BackgroundPath);
+        return string.IsNullOrEmpty(hash) ? null : hash;
+    }
+
     private async Task RefreshActiveCharacterAsync()
     {
         if (_characterRefreshRunning || _characters is null ||
@@ -363,17 +394,13 @@ public partial class AchievementBootstrap : Node
                 !string.Equals(features.Shoes.FeatureId, CharacterFeatureIds.ShoesNone, StringComparison.Ordinal),
                 !string.Equals(features.Glasses.FeatureId, CharacterFeatureIds.GlassesNone, StringComparison.Ordinal));
 
+            // These two systems are intrinsic to the character document, so reconstructing their
+            // credit on load is safe. Room/background systems are credited only from actual runtime
+            // commits above; existing room state must never migrate onto a newly selected character.
             if (HasStudioCustomization(document))
                 _coordinator.RecordCustomization(id, CustomizationArea.BuddyStudio);
             if (document.Paint.Declared().Any())
                 _coordinator.RecordCustomization(id, CustomizationArea.PaintBuddy);
-            if (FileAccess.FileExists(
-                    $"user://{SteamCloudSavePolicy.EnvironmentDirectoryName}/{SteamCloudSavePolicy.EnvironmentBackgroundFileName}"))
-            {
-                _coordinator.RecordCustomization(id, CustomizationArea.PaintBackground);
-            }
-            if (_environment?.Layout.Decorations.Count > 0)
-                _coordinator.RecordCustomization(id, CustomizationArea.EnvironmentDecorator);
         }
         finally
         {
