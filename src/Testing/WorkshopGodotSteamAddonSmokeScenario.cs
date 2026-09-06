@@ -73,8 +73,8 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 "steam_achievement_godotsteam_422_capabilities_match",
                 achievementCapabilities,
                 achievementCapabilities
-                    ? "GodotSteam exposes requestCurrentStats/setAchievement/storeStats through the project bridge."
-                    : "Pinned GodotSteam is missing an achievement/stat method required by SteamAchievementPublisher."));
+                    ? "GodotSteam exposes setAchievement/storeStats through the project bridge; RequestCurrentStats is intentionally absent in Steamworks SDK 1.61+."
+                    : "Pinned GodotSteam is missing setAchievement or storeStats required by SteamAchievementPublisher."));
 
             // Discovery is intentionally a separate optional bridge because demos need an in-game
             // Workshop browser even though they have no Community Hub. Probe its exact 4.22 method
