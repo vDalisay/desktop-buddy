@@ -6,96 +6,152 @@ Plan: `docs/EXPRESSIVE_TEXT_AND_TUTORIAL_BUDDY_PLAN_2026-09-06.md`
 
 ## Status
 
-Implementation has started. The audited architecture remains authoritative; this file records what is actually present on the branch so later slices do not re-plan completed work.
+The audited implementation plan is now substantially implemented on this branch. The remaining work is validation/polish rather than another architecture pass.
 
-## Completed kickoff slices
+## Implemented
 
-### 1. Semantic WordArt reward presentation
+### 1. Semantic WordArt rewards
 
-- `RewardPopup` remains the only queue/timing owner.
-- Reward callers may provide a semantic `RewardPresentationKind`:
-  - `ToolPurchase`
-  - `WorkSessionMilestone`
-  - `WorkLifetimeMilestone`
-- Tool purchases and both Work milestone scopes now use that semantic path.
-- The popup resolves the semantic kind to an original late-90s WordArt-inspired title preset.
-- WordArt uses layered `RichTextLabel` text for outline/extrusion plus a short built-in wave/settle treatment.
-- Reduced/disabled UI motion leaves the styled title static.
-- Existing whole-popup breathing is suppressed while WordArt supplies the motion so the effects do not stack.
-- The existing reward scenario now asserts queue ordering and semantic presentation-kind ordering.
+- `RewardPopup` remains the single queue/timing owner.
+- Semantic `RewardPresentationKind` values cover tool purchases, Work session milestones, and Work lifetime milestones.
+- Those kinds resolve inside the popup to original late-90s WordArt-inspired title treatments.
+- Reduced/disabled UI motion keeps the styled title static.
+- Reward queue ordering and semantic presentation-kind ordering are covered by the existing reward scenario.
 
-### 2. Pure expressive-text vocabulary and timing
+### 2. Expressive-text domain layer
 
-Added engine-independent presentation code for:
+Engine-independent presentation code now provides:
 
 - semantic roles: `Input`, `Action`, `Money`, `Impact`, `Playful`;
 - stable semantic tag names;
+- safe semantic markup parsing;
 - punctuation-aware reveal timing;
-- speech-chirp cadence that ignores whitespace/punctuation;
-- Unicode `Rune` classification rather than C# `char` assumptions.
+- Unicode-aware speech-chirp cadence.
 
-Unit coverage is present for the vocabulary, timing validation, punctuation classes and chirp cadence.
+Malformed, unknown or nested/general markup remains literal and readable rather than disappearing or being executed as arbitrary BBCode. Domain unit tests cover these policies.
 
-### 3. Safe semantic markup parser
+### 3. Tutorial text voice and presenter
 
-English authored copy may use a deliberately tiny semantic language such as:
+`UiFeedbackAudioBootstrap` owns five closely related synthetic tutorial chirps through the existing pooled UI audio path and UI bus.
 
-`Hold [input]right mouse button[/input] for a [impact]big swing[/impact].`
+`ExpressiveTextPresenter` now provides:
 
-The pure parser produces plain player-readable text plus semantic runs. It does not understand arbitrary BBCode and does not encode the eventual visual treatment into the copy.
+- one `RichTextLabel` surface;
+- post-shaping typewriter reveal;
+- grapheme/text-element reveal timing;
+- semantic emphasis mapped to a small set of built-in RichText treatments;
+- punctuation pauses;
+- pooled speech chirps;
+- `SpeakingChanged` for portrait mouth animation;
+- first-click `CompleteReveal()` behavior;
+- reduced-motion/static fallback;
+- semantic identity plus source idempotence.
 
-Safety rules already covered by tests:
+### 4. Tutorial integration
 
-- unknown tags stay literal;
-- stray closing tags stay literal;
-- missing closing tags stay literal;
-- nested/general markup stays literal;
-- malformed authoring cannot make tutorial instructions disappear or crash the parser.
+Both tutorial dialogue surfaces now use `ExpressiveTextPresenter`:
 
-This is the future-localization seam: a later translated line can put the same semantic markers around different/reordered words without changing the Godot renderer. No localization implementation is part of this feature now.
+- main first-session tutorial window;
+- separate Work Mode tutorial helper window.
 
-### 4. Tutorial text voice
+Help/reference labels remain immediate ordinary Labels.
 
-`UiFeedbackAudioBootstrap` now has a partial-file extension for tutorial text voice:
+Interaction rules:
 
-- five closely related synthetic computer chirps;
-- random-no-repeat selection with tiny pitch/volume variation;
-- reuses the existing pooled UI voices and UI audio bus;
-- therefore obeys Interface Sounds volume and existing audio lifecycle automatically;
-- no new audio singleton/global manager.
+- gameplay actions remain possible while a line is typing;
+- clicking the tutorial dialogue/window while a line is revealing completes only that reveal;
+- Continue/Goodbye remains disabled until the current reveal has completed, preventing one click from both revealing and advancing;
+- Work Mode uses the same expressive presenter behavior as the main tutorial.
 
-### 5. Reusable `ExpressiveTextPresenter`
+The Drop Tool tutorial line reads the live configured binding through `LocalSettingsInputBindings.DropTool(...)` instead of teaching a hard-coded `D`.
 
-Added a single-`RichTextLabel` reusable presenter that:
+English expressive copy now authors semantic tags directly rather than searching/replacing visible phrases. Conditional prompts that were not explicitly reauthored fall back to the existing authoritative `TextFor` copy.
 
-- parses the semantic markup above;
-- maps semantic roles to a small set of built-in BBCode treatments;
-- uses `VisibleCharactersBehavior.CharsAfterShaping` so the full line is shaped/wrapped before reveal;
-- reveals Unicode text elements/graphemes as units while translating them to Godot's codepoint-based `VisibleCharacters` count;
-- applies punctuation timing from the pure model;
-- requests chirps from the pooled UI audio path on the pure cadence;
-- exposes `SpeakingChanged` for the later Buddy mouth animation;
-- exposes `CompleteReveal()` for first-click skip-to-complete behavior;
-- uses semantic line identity so presenting the same line again is idempotent;
-- disables the reveal/wave motion through the existing `Win98MotionPolicy` while preserving readable static emphasis;
-- explicitly matches the Win98 font size/text color rather than assuming `RichTextLabel` inherits the `Label` theme entries.
+The expressive presentation identity is semantic:
+
+- normal prompts: `surface + step + default`;
+- Create Buddy: `can-create` vs `select-existing`;
+- Exit Buddy Studio: `nothing-to-save` vs `saved-item`.
+
+The legacy controller still compares conditional source text to notice that live state changed, but rendered expressive identity no longer depends on that text equality.
+
+### 5. Shared physics-free Buddy preview surface
+
+Added `BuddyPreviewSurface : SubViewport` as the one shared offscreen Buddy-preview facade. It owns:
+
+- isolated `World3D`;
+- `StaticBuddyVisualTransformSource`;
+- `BuddyVisualRigView`;
+- orthographic camera;
+- preview light.
+
+It does not create gameplay bodies, solvers, autonomy or reaction authority.
+
+Render lifecycle:
+
+- continuous consumers use `UpdateMode.Always` only while their owning container is visible;
+- hidden continuous previews switch to `UpdateMode.Disabled`;
+- capture-only previews start disabled and request `UpdateMode.Once` explicitly;
+- presentation/camera refresh cannot strand a continuous preview in `Once`.
+
+All three pre-existing duplicated preview stacks are migrated before the tutorial portrait was added:
+
+- Work Mode;
+- Character Editor;
+- Workshop preview capture.
+
+Character Editor keeps the existing `CharacterPreview` container and exact preview-rig instance so editor/session references do not change. Workshop capture is now one-shot rather than permanently rendered.
+
+### 6. Live tutorial Buddy portrait
+
+The previous optional `tutorial_guide.png` / `DemoTutorialCharacterPresenter` placeholder path has been retired.
+
+The tutorial guide is now a live, physics-free 3D Buddy rendered through the shared preview surface. It:
+
+- copies the current live Buddy appearance and painted underlays;
+- uses a shoulders-up portrait camera;
+- uses the existing `BlinkModel` with the game's blink tuning;
+- uses `FaceComposer` / `FaceRenderState` and `BuddyVisualRigView.SetPreviewFaceState`;
+- opens/closes its mouth from the expressive presenter's real `SpeakingChanged` signal;
+- owns only three audited moods: `Neutral`, `Friendly`, `Pleased`;
+- stops portrait animation work while hidden;
+- shares no gameplay physics/reaction/autonomy state with the live Buddy.
+
+### 7. Regression coverage
+
+Added `expressive_presentation` scenario coverage for:
+
+- rebound Drop Tool copy;
+- first-click reveal completion;
+- visible continuous preview = `Always`;
+- hidden preview = `Disabled`;
+- reappearing preview resumes;
+- refresh does not strand continuous surfaces in `Once`;
+- capture-only preview starts disabled and requests one frame;
+- preview world contains no physics/reaction/autonomy authority.
+
+Existing Work, Workshop, Character Editor and tutorial closure scenarios remain the broader integration regression paths.
 
 ## Verification
 
-CI run `1453` / workflow run `34064555514` is green on the presenter head commit:
+Known green checkpoints during implementation:
 
-- solution build: PASS
-- domain unit tests: PASS
-- Steam SDK binary guard: PASS
-- authored SFX import-sidecar guard: PASS
+- presenter/domain/reward foundation: CI run `1453` / workflow `34064555514` — PASS;
+- Workshop/shared preview migration: run `1466` — PASS;
+- Work preview migration: run `1467` — PASS;
+- Character Editor preview migration: run `1468` — PASS;
+- combined portrait + preview lifecycle + regression scenario head before semantic-identity cleanup: run `1477` / workflow `34065957561` — PASS for solution build, domain tests, Steam binary guard and SFX sidecar guard.
 
-The immediately preceding run was also green through the reward/cadence/parser slices.
+Run `1478` validates the final semantic-identity cleanup. A draft PR/full Godot scenario sweep should be used as the release gate before merge.
 
-## Next implementation slice
+## Remaining validation/polish
 
-1. Integrate `ExpressiveTextPresenter` into `FirstSessionGuidanceController` for both the main tutorial window and Work helper window.
-2. Fix the Drop Tool tutorial line to use the live configured binding while touching that controller.
-3. Add semantic emphasis to a deliberately small first set of tutorial lines and verify first-click reveal completion cannot advance tutorial progression.
-4. Then extract/migrate the shared offscreen Buddy preview surface before adding the live tutorial portrait, per the audited plan.
-
-The live tutorial Buddy portrait, shared preview migration, blinking/talking/moods, and tutorial-wide authored emphasis have **not** been implemented yet.
+1. Let final push CI finish green.
+2. Run the repository's pull-request `build-test` suite, especially Workshop preview, Character paint/restart, Work window lifecycle and `tutorial_closure`.
+3. Windowed visual review of:
+   - typewriter speed and emphasis density;
+   - chirp volume/pitch;
+   - WordArt readability;
+   - tutorial Buddy portrait framing, blinking and mouth cadence;
+   - long tutorial lines at supported UI scales.
+4. Only tune presentation constants/copy after that review; do not introduce another text, audio or preview architecture.
