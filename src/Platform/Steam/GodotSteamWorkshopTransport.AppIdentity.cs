@@ -8,9 +8,9 @@ public partial class GodotSteamWorkshopTransport
         Initialize(bridge, identity.RuntimeAppId, identity.WorkshopOwnerAppId);
 
     /// <summary>
-    /// Initializes Steam under the running application, then points UGC create/update/browser
-    /// operations at the distinct Workshop owner. Runtime and Workshop identity remain separate
-    /// fields for the lifetime of the transport; a future demo never changes the meaning of either.
+    /// Initializes Steam under the running application. Consumption (subscriptions/downloads) is
+    /// always scoped to that runtime AppID. A distinct Workshop owner is retained only as an
+    /// explicitly allowed cross-app publish target for the Demo mirror.
     /// </summary>
     public bool Initialize(Node bridge, uint runtimeAppId, uint workshopOwnerAppId)
     {
@@ -23,16 +23,20 @@ public partial class GodotSteamWorkshopTransport
         if (!InitializeSteam(bridge, runtimeAppId))
             return false;
 
+        // Steam subscriptions/download callbacks belong to the running application. Keep the
+        // transport's ordinary Workshop identity on that runtime AppID; targeted publishing can
+        // temporarily select the separately-authorized full-game consumer AppID when mirroring.
         if (!GodotObject.IsInstanceValid(_bridge) ||
-            !_bridge!.Call("configure_workshop_app_id", (long)workshopOwnerAppId).AsBool())
+            !_bridge!.Call("configure_workshop_app_id", (long)runtimeAppId).AsBool())
         {
             if (GodotObject.IsInstanceValid(_bridge))
                 _bridge!.Call("shutdown");
-            SetUnavailable("GodotSteam bridge rejected the Workshop owner AppID.");
+            SetUnavailable("GodotSteam bridge rejected the runtime Workshop AppID.");
             return false;
         }
 
-        _workshopOwnerAppId = workshopOwnerAppId;
+        _workshopOwnerAppId = runtimeAppId;
+        ConfigureCrossAppPublishTarget(runtimeAppId, workshopOwnerAppId);
         return true;
     }
 }
