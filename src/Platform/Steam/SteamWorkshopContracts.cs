@@ -86,7 +86,8 @@ public sealed record PublishedWorkshopItem(
     string DisplayName,
     long TimeUpdated = 0,
     string? ContentType = null,
-    string Description = "");
+    string Description = "",
+    uint ConsumerAppId = 0);
 
 public readonly record struct WorkshopSubscriptionQueryResult(
     WorkshopRemoteStatus Status,
