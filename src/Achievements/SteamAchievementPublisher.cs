@@ -1,4 +1,5 @@
 using System;
+using DesktopBuddy.App;
 using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Platform.Steam;
 using Godot;
@@ -7,9 +8,9 @@ namespace DesktopBuddy.Achievements;
 
 /// <summary>
 /// Thin platform publisher. Qualification is always local-first; this class merely mirrors the
-/// already-qualified set to Steam through the project-owned GodotSteam bridge. Demo runtimes are
-/// hard-disabled and therefore cannot unlock a Steam achievement even when they share the same
-/// progress.json with a later full-game install.
+/// already-qualified set to Steam through the project-owned GodotSteam bridge. Only the shipped
+/// Steam full-release scope may publish: the Demo and editor/development runtimes remain local-only
+/// even if they happen to be configured with the base AppID.
 /// </summary>
 public sealed class SteamAchievementPublisher
 {
@@ -28,6 +29,8 @@ public sealed class SteamAchievementPublisher
     }
 
     public bool PublishingEnabled =>
+        OS.HasFeature("steam") &&
+        DemoScope.IsFullRelease &&
         _identity.RuntimeAppId == SteamAppIdentityResolver.DesktopBuddyBaseAppId &&
         GodotObject.IsInstanceValid(_bridge) &&
         _bridge!.Call("is_available").AsBool() &&
