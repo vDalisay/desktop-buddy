@@ -13,6 +13,19 @@ namespace DesktopBuddy.Platform.Steam;
 /// </summary>
 public partial class GodotSteamWorkshopTransport : ITargetedSteamWorkshopTransport
 {
+    private uint _crossAppPublishTargetAppId;
+
+    // Ordinary Workshop consumption remains scoped to the app that is actually running. The
+    // targeted interface separately exposes the authorized full-game mirror target to the demo
+    // mirroring layer without changing download/subscription identity.
+    uint ITargetedSteamWorkshopTransport.WorkshopOwnerAppId =>
+        _crossAppPublishTargetAppId == 0 ? _runtimeAppId : _crossAppPublishTargetAppId;
+
+    private void ConfigureCrossAppPublishTarget(uint runtimeAppId, uint workshopOwnerAppId)
+    {
+        _crossAppPublishTargetAppId = workshopOwnerAppId == runtimeAppId ? 0 : workshopOwnerAppId;
+    }
+
     public Task<WorkshopCreateRemoteResult> CreateItemAsync(
         uint consumerAppId,
         CancellationToken token)
@@ -164,8 +177,9 @@ public partial class GodotSteamWorkshopTransport : ITargetedSteamWorkshopTranspo
     private bool TrySelectPublishTarget(uint consumerAppId, out string? error)
     {
         error = null;
+        uint mirrorAppId = _crossAppPublishTargetAppId;
         if (consumerAppId == 0 ||
-            (consumerAppId != _runtimeAppId && consumerAppId != _workshopOwnerAppId))
+            (consumerAppId != _runtimeAppId && consumerAppId != mirrorAppId))
         {
             error = $"Consumer AppID {consumerAppId} is not an allowed Desktop Buddy Workshop target.";
             return false;
