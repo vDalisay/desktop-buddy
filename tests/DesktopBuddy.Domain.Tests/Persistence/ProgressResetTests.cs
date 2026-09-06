@@ -2,9 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
+using DesktopBuddy.Achievements;
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Damage;
@@ -18,8 +19,9 @@ namespace DesktopBuddy.Domain.Tests.Persistence;
 
 /// <summary>
 /// The M5 Task 13A reset matrix. Reset takes gameplay progress back to a first run, writes
-/// it, and touches nothing else — in particular it never writes the settings payload, and a
-/// failed write leaves memory and disk exactly as they were.
+/// it, and touches nothing else — in particular it never writes the settings payload. Account-like
+/// achievement progress is retained because a local reset cannot revoke a Steam achievement and
+/// Demo qualification must remain available for full-game reconciliation.
 /// </summary>
 public sealed class ProgressResetTests
 {
@@ -136,21 +138,23 @@ public sealed class ProgressResetTests
     }
 
     [Fact]
-    public void ResetMatrix_HasNoAchievementSurfaceYet()
+    public async Task Reset_PreservesAchievementStateAndDropsUnrelatedExtensions()
     {
-        // 13A-3b: there is no achievements subsystem, so the matrix promises awarded
-        // achievements survive a reset by never speaking to one. When achievements land this
-        // fails, and whoever adds them has to revisit that row rather than discover it later.
-        IEnumerable<string> names = typeof(ProgressStatisticsSave)
-            .GetMembers(BindingFlags.Public | BindingFlags.Instance)
-            .Select(member => member.Name)
-            .Concat(typeof(ProgressSave)
-                .GetMembers(BindingFlags.Public | BindingFlags.Instance)
-                .Select(member => member.Name));
+        (BuddyProgressState progress, SaveCoordinator saves, _, EconomyService economy) = Played();
+        var achievements = new AchievementProgressStore(progress);
+        Assert.True(achievements.Qualify(AchievementIds.FirstImpression));
+        achievements.SetCounter("boxing_glove_hits", 73);
+        progress.SetExtensionValue("future.unrelated.reset_probe", "discard-me");
 
-        Assert.DoesNotContain(
-            names,
-            name => name.Contains("Achievement", StringComparison.OrdinalIgnoreCase));
+        Assert.True(await ProgressReset.ResetAsync(progress, saves, economy));
+
+        Assert.True(achievements.IsQualified(AchievementIds.FirstImpression));
+        Assert.Equal(73, achievements.Counter("boxing_glove_hits"));
+        Assert.NotNull(progress.Extensions?.Values);
+        Assert.DoesNotContain("future.unrelated.reset_probe", progress.Extensions!.Values!.Keys);
+        Assert.All(
+            progress.Extensions.Values.Keys,
+            key => Assert.StartsWith(AchievementProgressStore.Prefix, key, StringComparison.Ordinal));
     }
 
     /// <summary>
