@@ -4,8 +4,8 @@ namespace DesktopBuddy.Platform.Steam;
 
 /// <summary>
 /// Steam identity is deliberately split in two. The running application owns Steam initialization,
-/// while Workshop items may belong to the base game's consumer AppID. They are identical for the
-/// full game today and may differ for the future Steam demo without changing the share format.
+/// while Workshop items may also be mirrored to the base game's consumer AppID. The Steam demo
+/// always runs as its own AppID and mirrors publishes to the canonical full-game Workshop.
 /// </summary>
 public readonly record struct SteamAppIdentity(uint RuntimeAppId, uint WorkshopOwnerAppId)
 {
@@ -16,6 +16,7 @@ public readonly record struct SteamAppIdentity(uint RuntimeAppId, uint WorkshopO
 public static class SteamAppIdentityResolver
 {
     public const uint DesktopBuddyBaseAppId = 5_114_950;
+    public const uint DesktopBuddyDemoAppId = 5_228_990;
 
     // GodotSteam v4.20+ stores the primary application ID under app_data/app_id.
     public const string RuntimeProjectSetting = "steam/initialization/app_data/app_id";
@@ -26,9 +27,11 @@ public static class SteamAppIdentityResolver
     public const string WorkshopOwnerEnvironmentVariable = "DESKTOP_BUDDY_WORKSHOP_OWNER_APP_ID";
 
     /// <summary>
-    /// Runtime overrides are useful for local/depot validation. The base game's Workshop owner is
-    /// public product configuration, not a secret, and intentionally defaults to Desktop Buddy's
-    /// canonical AppID so a later demo only has to override its runtime identity.
+    /// Runtime overrides are useful for local/depot validation. Release Steam demo exports carry
+    /// the <c>steam_demo</c> feature and are pinned to the real Demo AppID so a stale project value,
+    /// local environment variable, or incorrectly configured build variable can never make the Demo
+    /// initialize Steam as the full game and accidentally browse/publish against the wrong Workshop.
+    /// The base game's Workshop owner is public product configuration and defaults to 5114950.
     /// </summary>
     public static SteamAppIdentity Resolve()
     {
@@ -37,6 +40,9 @@ public static class SteamAppIdentityResolver
             runtime = ReadEnvironment(LegacyRuntimeEnvironmentVariable);
         if (runtime == 0)
             runtime = ReadProject(RuntimeProjectSetting);
+
+        if (OS.HasFeature("steam_demo"))
+            runtime = DesktopBuddyDemoAppId;
 
         uint workshopOwner = ReadEnvironment(WorkshopOwnerEnvironmentVariable);
         if (workshopOwner == 0)
