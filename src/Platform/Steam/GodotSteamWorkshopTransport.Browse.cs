@@ -45,6 +45,9 @@ public partial class GodotSteamWorkshopTransport : IWorkshopDiscoveryTransport
         if (_pendingBrowseQuery is not null)
             return new WorkshopBrowsePage(WorkshopRemoteStatus.Failed, [], safePage, 0, "Another Workshop browse query is already pending.");
 
+        Log.Info(
+            "Workshop",
+            $"Browse query; sort={sort} page={safePage} creatorAppId={_runtimeAppId} consumerAppId={_runtimeAppId}.");
         long handle = discovery.Call("query_page", (int)sort, checked((int)safePage)).AsInt64();
         if (handle < 0)
             return new WorkshopBrowsePage(WorkshopRemoteStatus.Failed, [], safePage, 0, "Steam could not start the Workshop browse query.");
@@ -171,6 +174,7 @@ public partial class GodotSteamWorkshopTransport : IWorkshopDiscoveryTransport
         {
             if (result != SteamResultOk)
             {
+                Log.Warn("Workshop", $"Browse query failed; page={pending.Page} eResult={result}.");
                 pending.Completion.TrySetResult(new WorkshopBrowsePage(
                     WorkshopRemoteStatus.Failed,
                     [],
@@ -186,8 +190,21 @@ public partial class GodotSteamWorkshopTransport : IWorkshopDiscoveryTransport
                 Godot.Collections.Dictionary details = DiscoveryDictionary(discovery!, "get_query_item_result", handle, index);
                 WorkshopBrowseItem? parsed = ParseBrowseItem(discovery!, details);
                 if (parsed is not null)
+                {
                     items.Add(parsed);
+                    continue;
+                }
+
+                Log.Warn(
+                    "Workshop",
+                    $"Browse result dropped; item={ReadUInt64(details, "file_id", "published_file_id")} " +
+                    $"consumerAppId={ReadUInt64(details, "consumer_app_id", "consumer_appid", "consumer_id")} " +
+                    $"expected={_runtimeAppId}.");
             }
+
+            Log.Info(
+                "Workshop",
+                $"Browse page {pending.Page} returned; steamResults={resultsReturned} totalMatching={totalMatching} shown={items.Count}.");
 
             pending.Completion.TrySetResult(WorkshopBrowsePage.Success(
                 items,
