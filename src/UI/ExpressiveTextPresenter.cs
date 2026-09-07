@@ -75,10 +75,10 @@ public partial class ExpressiveTextPresenter : RichTextLabel
         _source = semanticMarkup;
         _timing = timing ?? ExpressiveRevealTiming.Default;
 
-        ExpressiveTextDocument document = ExpressiveSemanticMarkup.Parse(semanticMarkup);
-        PlainText = document.PlainText;
+        IReadOnlyList<ExpressiveTextRun> runs = ExpressiveSemanticMarkup.Parse(semanticMarkup);
+        PlainText = ExpressiveSemanticMarkup.PlainText(runs);
         bool animate = Win98MotionPolicy.Allows(settings) && PlainText.Length > 0;
-        Text = BuildBbCode(document.Runs, animate);
+        Text = BuildBbCode(runs, animate);
         BuildCadenceUnits(PlainText);
         ApplyWin98TextStyle();
 
