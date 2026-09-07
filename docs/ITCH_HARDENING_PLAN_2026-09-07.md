@@ -7,7 +7,7 @@ the itch build and is switched off by a runtime boolean.
 | Phase | State |
 | --- | --- |
 | A — exclude the features from the build | **Done.** Buddy Studio UI, Paint Room + Room Decorator, Work Mode, Steam Workshop and Gore Mode are compiled out; their autoloads and assets are dropped from the export. |
-| B — reupload / sitelock | **Blocked on one fact:** the domain itch actually serves the game from. See §4. |
+| B — reupload / sitelock | **Done**, as a referrer check rather than a domain allowlist — it needs no knowledge of itch's CDN host. See §4. |
 | C — obfuscation | Not started, still deferred, still aimed at the native Windows builds rather than the web one. |
 
 **What Phase A actually changed.** `DemoScope` still answers the same questions, but it is no longer
@@ -229,20 +229,24 @@ allow the itch serving domain plus `localhost`, otherwise refuse to boot and lin
 lines of JS. Trivially removable by a determined thief — but the people mass-reuploading web games
 are running scripts, not reverse engineers, so it stops most of them.
 
-**Not implemented, deliberately — this needs one fact I cannot get from the repo.** A blocking
-sitelock with the wrong allowlist does not degrade, it refuses to boot the real game on the real
-store page. itch has served HTML5 builds from more than one host over the years
-(`html-classic.itch.zone`, `*.ssl.hwcdn.net`, and the CDN name varies), and the plan's own guidance
-is that guessing here is the failure mode.
+**Implemented 2026-09-07, but not as an allowlist.** The allowlist needed the CDN host itch actually
+serves the frame from, which has changed over the years and could not be read from the live page. A
+lock with the wrong allowlist does not degrade — it refuses to boot the real game on the real store
+page.
 
-To unblock: open the published game on itch, and from the browser's dev tools read the origin the
-game frame is actually served from (`location.origin` inside the game iframe). With that one string
-this is an afternoon. Two things to keep in the implementation:
+So it asks **who framed it** instead. The legitimate deployment is always embedded by the itch page;
+a rehost is embedded by the thief's. That needs only the itch page URL, which is stable, and no
+knowledge of itch's infrastructure.
 
-- Allow `localhost`/`127.0.0.1`, or CI's browser smoke test — which serves the build from
-  `127.0.0.1:8123` — starts failing.
-- Fail open on anything unexpected rather than closed. A sitelock that wrongly blocks a paying
-  audience costs more than one that lets a thief through.
+The safety property is the important part: it blocks only when it positively identifies **both** a
+non-itch host **and** a non-itch referrer. Everything ambiguous is allowed — unknown host with an
+itch referrer (so an itch CDN change is harmless), missing or unparseable referrer, `file://`,
+`localhost` and `127.0.0.1` (CI's browser smoke test serves from `127.0.0.1:8123`).
+
+Verified against eleven hostname/referrer combinations including a hypothetical future itch CDN and
+both rehost shapes; the test drives the regexes out of the shipped `head_include` rather than a
+copy. Still unverified against the real itch deployment, which cannot be done from here — but by
+construction the worst case there is that it fails open and blocks nothing.
 
 Also worth having: a written DMCA/reporting routine, since itch's own guidance is that reporting is
 the remedy once a build is rehosted.
