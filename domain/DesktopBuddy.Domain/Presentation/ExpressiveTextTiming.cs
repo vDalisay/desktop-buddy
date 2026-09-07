@@ -49,8 +49,10 @@ public static class ExpressiveSemanticTags
 }
 
 /// <summary>
-/// Pure timing policy for the tutorial typewriter. The Godot view owns glyph shaping/reveal;
-/// this model only says how long the reveal should wait after a visible text element.
+/// Pure timing policy for the tutorial typewriter. The Godot view owns shaping, glyph clustering
+/// and reveal; this model only says how long the reveal should wait after a Unicode scalar.
+/// Combining marks deliberately add no delay because Godot's GlyphsAuto reveal keeps them with
+/// their base glyph.
 /// </summary>
 public readonly record struct ExpressiveRevealTiming
 {
@@ -81,15 +83,18 @@ public readonly record struct ExpressiveRevealTiming
         sentencePauseSeconds: 0.16);
 
     /// <summary>
-    /// Delay after one already-shaped visible element. Newlines get a sentence-class pause;
-    /// whitespace itself adds no extra delay beyond the normal reveal cadence.
+    /// Delay after one Unicode scalar. Newlines get a sentence-class pause; whitespace itself
+    /// adds no extra pause beyond the normal cadence. Combining marks add no independent delay.
     /// </summary>
-    public double DelayAfter(string? textElement)
+    public double DelayAfter(string? element)
     {
-        if (string.IsNullOrEmpty(textElement))
+        if (string.IsNullOrEmpty(element))
             return BaseElementSeconds;
 
-        Rune rune = FirstRune(textElement);
+        Rune rune = FirstRune(element);
+        if (IsCombiningMark(rune))
+            return 0.0;
+
         double punctuation = rune.Value switch
         {
             ',' or ';' or ':' => CommaPauseSeconds,
@@ -100,6 +105,11 @@ public readonly record struct ExpressiveRevealTiming
         return BaseElementSeconds + punctuation;
     }
 
+    private static bool IsCombiningMark(Rune rune) => Rune.GetUnicodeCategory(rune) is
+        UnicodeCategory.NonSpacingMark or
+        UnicodeCategory.SpacingCombiningMark or
+        UnicodeCategory.EnclosingMark;
+
     private static Rune FirstRune(string text)
     {
         Rune.DecodeFromUtf16(text.AsSpan(), out Rune rune, out _);
@@ -108,28 +118,32 @@ public readonly record struct ExpressiveRevealTiming
 }
 
 /// <summary>
-/// Stateless speech-chirp cadence. The presenter counts speakable visible elements and calls this
-/// after each reveal; punctuation and whitespace never consume a chirp slot.
+/// Stateless speech-chirp cadence. The presenter counts speakable Unicode scalars and calls this
+/// after each reveal; punctuation, whitespace and combining marks never consume a chirp slot.
 /// </summary>
 public static class ExpressiveVoiceCadence
 {
     public const int DefaultEverySpeakableElements = 3;
 
-    public static bool IsSpeakable(string? textElement)
+    public static bool IsSpeakable(string? element)
     {
-        if (string.IsNullOrEmpty(textElement))
+        if (string.IsNullOrEmpty(element))
             return false;
 
-        Rune rune = FirstRune(textElement);
+        Rune rune = FirstRune(element);
+        UnicodeCategory category = Rune.GetUnicodeCategory(rune);
         return !Rune.IsWhiteSpace(rune) &&
-               Rune.GetUnicodeCategory(rune) is not (
+               category is not (
                    UnicodeCategory.ConnectorPunctuation or
                    UnicodeCategory.DashPunctuation or
                    UnicodeCategory.OpenPunctuation or
                    UnicodeCategory.ClosePunctuation or
                    UnicodeCategory.InitialQuotePunctuation or
                    UnicodeCategory.FinalQuotePunctuation or
-                   UnicodeCategory.OtherPunctuation);
+                   UnicodeCategory.OtherPunctuation or
+                   UnicodeCategory.NonSpacingMark or
+                   UnicodeCategory.SpacingCombiningMark or
+                   UnicodeCategory.EnclosingMark);
     }
 
     /// <summary>
@@ -138,14 +152,14 @@ public static class ExpressiveVoiceCadence
     /// </summary>
     public static bool ShouldChirp(
         int speakableOrdinal,
-        string? textElement,
+        string? element,
         int everySpeakableElements = DefaultEverySpeakableElements)
     {
         if (speakableOrdinal < 1)
             throw new ArgumentOutOfRangeException(nameof(speakableOrdinal));
         if (everySpeakableElements < 1)
             throw new ArgumentOutOfRangeException(nameof(everySpeakableElements));
-        return IsSpeakable(textElement) && ((speakableOrdinal - 1) % everySpeakableElements == 0);
+        return IsSpeakable(element) && ((speakableOrdinal - 1) % everySpeakableElements == 0);
     }
 
     private static Rune FirstRune(string text)
