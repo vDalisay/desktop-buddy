@@ -25,6 +25,8 @@ namespace DesktopBuddy.Achievements;
 /// <summary>
 /// Production adapter from live gameplay to the engine-independent achievement rules. It observes
 /// existing semantic events and state only; no achievement changes damage, physics, economy or UI.
+/// Platform dependencies are injected by the owning composition root rather than discovered from
+/// arbitrary scene-tree paths.
 /// </summary>
 public partial class AchievementBootstrap : Node
 {
@@ -42,6 +44,7 @@ public partial class AchievementBootstrap : Node
     private EnvironmentProgressState? _environment;
     private CharacterSelectionState? _selection;
     private CharacterStore? _characters;
+    private Node? _steamBridge;
     private AchievementCoordinator _coordinator = null!;
     private SteamAchievementPublisher? _publisher;
     private double _persistentCountdown;
@@ -49,6 +52,7 @@ public partial class AchievementBootstrap : Node
     private double _airborneSeconds;
     private bool _burnWasActive;
     private bool _characterRefreshRunning;
+    private bool _steamSyncRequested;
     private int _observedRopeAttachCount;
     private string? _backgroundHash;
 
@@ -57,7 +61,8 @@ public partial class AchievementBootstrap : Node
     public void Configure(
         SandboxRoot sandbox,
         CharacterSelectionState? selection = null,
-        CharacterStore? characters = null)
+        CharacterStore? characters = null,
+        Node? initializedSteamBridge = null)
     {
         if (IsInsideTree())
             throw new InvalidOperationException("AchievementBootstrap must be configured before entering the tree.");
@@ -68,6 +73,7 @@ public partial class AchievementBootstrap : Node
         _environment = sandbox.Saves.EnvironmentProgress;
         _selection = selection ?? sandbox.Saves.CharacterSelection;
         _characters = characters;
+        _steamBridge = initializedSteamBridge;
         _coordinator = new AchievementCoordinator(_progress, _work);
         ProcessMode = ProcessModeEnum.Always;
     }
@@ -102,11 +108,13 @@ public partial class AchievementBootstrap : Node
         EvaluateEnvironment();
         _ = RefreshActiveCharacterAsync();
 
-        Node? bridge = GetTree().Root.FindChild("GodotSteamBridge", true, false) as Node;
         _publisher = new SteamAchievementPublisher(
             _coordinator.Store,
             SteamAppIdentityResolver.Resolve(),
-            bridge);
+            _steamBridge);
+        // Reconcile carried/offline/demo qualification once after the initial local rule pass.
+        // Any qualifications raised during that pass are intentionally collapsed into this batch.
+        _steamSyncRequested = false;
         _publisher.TrySynchronize();
     }
 
@@ -162,6 +170,14 @@ public partial class AchievementBootstrap : Node
             _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
             EvaluateEnvironment();
             _ = RefreshActiveCharacterAsync();
+        }
+
+        // Qualification callbacks may arrive several times in one synchronous rule evaluation.
+        // Collapse them into one desired-state reconciliation on the next process turn.
+        if (_steamSyncRequested)
+        {
+            _steamSyncRequested = false;
+            _publisher?.TrySynchronize();
         }
 
         _steamCountdown -= delta;
@@ -261,7 +277,7 @@ public partial class AchievementBootstrap : Node
     {
         GD.Print($"ACHIEVEMENT_QUALIFIED {definition.SteamApiName} ({definition.DisplayName})");
         _ = FlushQualificationAsync();
-        _publisher?.TrySynchronize();
+        _steamSyncRequested = true;
     }
 
     private async Task FlushQualificationAsync()
@@ -335,9 +351,8 @@ public partial class AchievementBootstrap : Node
         {
             EnvironmentDecorationResource? resource = EnvironmentDecorationRegistry.Find(placed.DefinitionId);
             if (GodotObject.IsInstanceValid(resource))
-                _coordinator.RecordEnvironmentCategory(resource!.Category.ToString());
+                _coordinator.RecordEnvironmentCategory(resource!.Category);
         }
-        _coordinator.EvaluateHomeSweetHome(Enum.GetNames<DecorationCategory>());
     }
 
     private void MarkEnvironmentCustomization()
