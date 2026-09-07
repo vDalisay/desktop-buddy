@@ -40,6 +40,7 @@ namespace DesktopBuddy.Interaction;
 [GlobalClass]
 public partial class GoreComponent : Node2D
 {
+#if !DESKTOP_BUDDY_PUBLIC_WEB
     /// <summary>
     /// Contact impulse that counts as a full-severity wound. Roughly where the shared pain
     /// curve reaches 55 of its 100, so a solid shot opens a proper wound and anything
@@ -79,6 +80,7 @@ public partial class GoreComponent : Node2D
     private BleedingConstants _constants = BleedingConstants.Default;
     private EffectsSettings _effects = EffectsSettings.Default;
     private BloodStainLayer2D _stains = null!;
+#endif
 
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
     [Export] public BuddyRoot Buddy { get; set; } = null!;
@@ -89,6 +91,27 @@ public partial class GoreComponent : Node2D
     /// </summary>
     [Export] public BoundaryController Boundaries { get; set; } = null!;
 
+#if DESKTOP_BUDDY_PUBLIC_WEB
+    // The reduced itch.io distribution does not ship Gore Mode, so the bleeding is not compiled
+    // in rather than switched off behind DemoScope.IncludesGore. A build whose store page is not
+    // rated for it must not be one edited flag away from drawing blood.
+    //
+    // The node itself stays: sandbox.tscn binds this script by path and wires the three exports
+    // above by NodePath, so unlike Buddy Studio, Paint Room and Work Mode this one cannot be an
+    // excluded file — the scene would fail to load. What leaves is every line that draws.
+    public bool IsInitialized { get; private set; }
+
+    public void Initialize() => IsInitialized = true;
+
+    public void ApplyEffectsSettings(EffectsSettings settings)
+    {
+    }
+
+    public void ClearAll()
+    {
+    }
+}
+#else
     public bool IsInitialized { get; private set; }
 
     /// <summary>Wounds opened since the run started. Scenario-observable, never gameplay.</summary>
@@ -350,3 +373,4 @@ public partial class GoreComponent : Node2D
     private static bool IsPiercing(string contentId) =>
         Array.IndexOf(PiercingContentIds, contentId) >= 0;
 }
+#endif
