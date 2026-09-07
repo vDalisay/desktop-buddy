@@ -36,12 +36,13 @@ public sealed class ExpressivePresentationScenario : IScenario
             TutorialStepIds.UnequipTool,
             plainText: string.Empty,
             dropToolBinding: rebound);
-        ExpressiveTextDocument dropDocument = ExpressiveSemanticMarkup.Parse(dropSemantic);
+        IReadOnlyList<ExpressiveTextRun> dropRuns = ExpressiveSemanticMarkup.Parse(dropSemantic);
+        string dropPlainText = ExpressiveSemanticMarkup.PlainText(dropRuns);
         checks.Add(new StartupCheck(
             "expressive_drop_prompt_uses_live_binding",
-            dropDocument.PlainText.Contains($"press {rebound} to drop it", StringComparison.Ordinal) &&
-            !dropDocument.PlainText.Contains("press D to drop it", StringComparison.Ordinal),
-            dropDocument.PlainText));
+            dropPlainText.Contains($"press {rebound} to drop it", StringComparison.Ordinal) &&
+            !dropPlainText.Contains("press D to drop it", StringComparison.Ordinal),
+            dropPlainText));
 
         // The reusable presenter owns first-click behavior. Completing a reveal changes only the
         // presenter; there is deliberately no tutorial-state callback on this path.
