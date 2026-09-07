@@ -6,19 +6,35 @@ using Godot;
 namespace DesktopBuddy.Onboarding;
 
 /// <summary>
-/// Expressive-text integration kept in a partial so the action-driven tutorial controller remains
-/// the sole owner of progression, spotlighting and input gates. This layer only replaces the two
-/// walkthrough body labels with the reusable RichTextLabel presenter after those labels exist.
+/// Expressive-guide integration kept in a partial so the action-driven tutorial controller remains
+/// the sole owner of progression, spotlighting and input gates. This layer owns semantic
+/// presentation identity, the two RichText dialogue hosts, and live portrait coordination.
 /// Context Help deliberately keeps its immediate, non-animated Labels.
 /// </summary>
 public partial class FirstSessionGuidanceController
 {
+    private TutorialSemanticRefreshBridge? _semanticRefreshBridge;
     private TutorialExpressiveBridge? _expressiveBridge;
     private ExpressiveTextPresenter? _expressiveBody;
     private ExpressiveTextPresenter? _expressiveWorkBody;
+    private Control? _workGuidePortraitHost;
+    private string? _semanticPresentationIdentity;
 
     private void InstallExpressiveTextBridge()
     {
+        if (!GodotObject.IsInstanceValid(_semanticRefreshBridge))
+        {
+            _semanticRefreshBridge = new TutorialSemanticRefreshBridge(this)
+            {
+                Name = nameof(TutorialSemanticRefreshBridge),
+                ProcessMode = ProcessModeEnum.Always,
+                // Run before the controller's default priority so the old rendered-text guard is
+                // made inert before FirstSessionGuidanceController._Process evaluates it.
+                ProcessPriority = -100,
+            };
+            AddChild(_semanticRefreshBridge);
+        }
+
         if (GodotObject.IsInstanceValid(_expressiveBridge))
             return;
 
@@ -31,8 +47,36 @@ public partial class FirstSessionGuidanceController
     }
 
     /// <summary>
+    /// Semantic step+variant identity is the refresh authority for conditional tutorial copy.
+    /// The controller still contains its pre-feature rendered-text guard, but this pass mirrors the
+    /// current source into that legacy field before the controller processes, so text equality can
+    /// no longer decide whether a variant re-renders. This also makes a live Drop Tool rebind a
+    /// semantic variant rather than depending on English source-string changes.
+    /// </summary>
+    internal void PrepareSemanticTutorialRefresh()
+    {
+        if (_tutorial is null)
+            return;
+
+        string? stepId = _tutorial.NextIncompleteStepId;
+        string? identity = stepId is null ? null : ResolveTutorialPresentationIdentity(stepId);
+        if (stepId is not null &&
+            string.Equals(stepId, _displayedStepId, StringComparison.Ordinal) &&
+            !string.Equals(identity, _semanticPresentationIdentity, StringComparison.Ordinal))
+        {
+            RefreshHint();
+        }
+
+        _semanticPresentationIdentity = identity;
+        // Neutralize the legacy text-equality refresh path. Step changes are still handled by the
+        // controller's step-id comparison; live variants are handled by identity above.
+        _lastRenderedText = stepId is null ? null : TextFor(stepId);
+    }
+
+    /// <summary>
     /// Called after the controller's own process pass. The hidden fallback Labels keep receiving
-    /// TextFor output, so conditional tutorial copy and future legacy fallbacks remain intact.
+    /// TextFor output for non-expressive fallback/readability, while the visible walkthrough uses
+    /// semantic identity and one reusable RichText presenter per host.
     /// </summary>
     internal void SyncExpressiveTutorialPresentation()
     {
@@ -48,6 +92,7 @@ public partial class FirstSessionGuidanceController
             return;
         }
 
+        _semanticPresentationIdentity = ResolveTutorialPresentationIdentity(stepId);
         bool useWorkSurface = IsWorkTutorialStep(stepId) &&
                               IsWorkActive() &&
                               GodotObject.IsInstanceValid(_workGuideWindow) &&
@@ -60,13 +105,16 @@ public partial class FirstSessionGuidanceController
                 _workGuideBody!, ref _expressiveWorkBody, "TutorialWorkExpressiveBody");
             PresentInto(
                 presenter,
-                ResolveExpressiveIdentity("work", stepId),
+                $"work:{_semanticPresentationIdentity}",
                 stepId,
                 _workGuideBody!.Text);
             presenter.Visible = true;
             _workGuideBody.Visible = false;
             if (GodotObject.IsInstanceValid(_expressiveBody))
                 _expressiveBody!.Visible = false;
+
+            if (_characterPresenter is LiveTutorialBuddyPresenter live)
+                live.PresentWork(EnsureWorkGuidePortraitHost(), stepId);
         }
         else
         {
@@ -74,13 +122,15 @@ public partial class FirstSessionGuidanceController
                 _body, ref _expressiveBody, "TutorialExpressiveBody");
             PresentInto(
                 presenter,
-                ResolveExpressiveIdentity("main", stepId),
+                $"main:{_semanticPresentationIdentity}",
                 stepId,
                 _body.Text);
             presenter.Visible = true;
             _body.Visible = false;
             if (GodotObject.IsInstanceValid(_expressiveWorkBody))
                 _expressiveWorkBody!.Visible = false;
+            if (_characterPresenter is LiveTutorialBuddyPresenter live)
+                live.DismissWork();
         }
 
         // Continue/Goodbye must never turn the same click that finishes a line into progression.
@@ -91,20 +141,17 @@ public partial class FirstSessionGuidanceController
             _dismiss.Disabled = false;
     }
 
-    /// <summary>
-    /// Presentation identity is semantic rather than rendered-text equality. Only the two prompts
-    /// with genuine runtime variants need a suffix; their legacy TextFor comparison is retained
-    /// solely to notice that the runtime condition changed and ask this layer to render again.
-    /// </summary>
-    private string ResolveExpressiveIdentity(string surface, string stepId)
+    private string ResolveTutorialPresentationIdentity(string stepId)
     {
         string variant = stepId switch
         {
             TutorialStepIds.CreateBuddy => CanCreateCharacter() ? "can-create" : "select-existing",
             TutorialStepIds.ExitBuddyStudio => _studioNothingToSave ? "nothing-to-save" : "saved-item",
+            TutorialStepIds.UnequipTool =>
+                "drop-" + LocalSettingsInputBindings.DropTool(_sandbox.Shell.CurrentLocalSettings),
             _ => "default",
         };
-        return $"{surface}:{stepId}:{variant}";
+        return $"{stepId}:{variant}";
     }
 
     internal bool CompleteMainExpressiveRevealAt(Vector2 viewportPosition)
@@ -156,13 +203,32 @@ public partial class FirstSessionGuidanceController
         parent.AddChild(created);
         parent.MoveChild(created, fallbackIndex);
 
-        // _Ready intentionally defaults reusable dialogue to Ignore. Tutorial text is one of the
-        // few surfaces where clicking the words themselves has meaning: reveal the rest now.
         created.MouseFilter = Control.MouseFilterEnum.Stop;
         created.GuiInput += input => OnExpressiveBodyGuiInput(created, input);
         created.SpeakingChanged += OnExpressiveSpeakingChanged;
         fallback.Visible = false;
         return created;
+    }
+
+    private Control EnsureWorkGuidePortraitHost()
+    {
+        if (GodotObject.IsInstanceValid(_workGuidePortraitHost))
+            return _workGuidePortraitHost!;
+        if (!GodotObject.IsInstanceValid(_workGuideBody) ||
+            _workGuideBody!.GetParent()?.GetParent() is not HBoxContainer split)
+        {
+            throw new InvalidOperationException("Work tutorial guide split was not composed.");
+        }
+
+        _workGuidePortraitHost = new Control
+        {
+            Name = "TutorialWorkGuideSlot",
+            CustomMinimumSize = new Vector2(92, 0),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        split.AddChild(_workGuidePortraitHost);
+        return _workGuidePortraitHost;
     }
 
     private void OnExpressiveSpeakingChanged(bool speaking)
@@ -197,14 +263,33 @@ public partial class FirstSessionGuidanceController
         if (GodotObject.IsInstanceValid(_expressiveWorkBody))
             _expressiveWorkBody!.Visible = false;
         if (_characterPresenter is LiveTutorialBuddyPresenter live)
+        {
             live.SetSpeaking(false);
+            live.DismissWork();
+        }
+    }
+}
+
+/// <summary>Pre-controller semantic variant refresh; see PrepareSemanticTutorialRefresh.</summary>
+internal sealed partial class TutorialSemanticRefreshBridge : Node
+{
+    private readonly FirstSessionGuidanceController _owner;
+
+    public TutorialSemanticRefreshBridge(FirstSessionGuidanceController owner) =>
+        _owner = owner ?? throw new ArgumentNullException(nameof(owner));
+
+    public override void _Process(double delta)
+    {
+        _ = delta;
+        if (GodotObject.IsInstanceValid(_owner))
+            _owner.PrepareSemanticTutorialRefresh();
     }
 }
 
 /// <summary>
-/// Runs immediately after its parent controller in tree order. It also catches clicks on the
-/// empty parts of the main tutorial frame so the first click there completes the typewriter.
-/// The separate Work window is covered by the presenter's GuiInput handler above.
+/// Runs after its parent controller in normal tree order. It presents the semantic guide and catches
+/// clicks on empty parts of the main tutorial frame so the first click completes the typewriter.
+/// The separate Work window is covered by the presenter's GuiInput handler.
 /// </summary>
 internal sealed partial class TutorialExpressiveBridge : Node
 {
