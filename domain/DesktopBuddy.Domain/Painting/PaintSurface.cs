@@ -1,5 +1,6 @@
 using System;
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 
 namespace DesktopBuddy.Domain.Painting;
@@ -148,21 +149,33 @@ public sealed class PaintSurface
         {
             double dy = ((y + 0.5) - centerY) * inverseRadiusY;
             double dySquared = dy * dy;
-            for (int x = minX; x <= maxX; x++)
+            if (square ? Math.Abs(dy) > 1.0 : dySquared > 1.0) continue;
+            int first = minX;
+            int last = maxX;
+            while (first <= last)
             {
-                double dx = ((x + 0.5) - centerX) * inverseRadiusX;
-                if (square ? Math.Abs(dx) > 1.0 || Math.Abs(dy) > 1.0 : (dx * dx) + dySquared > 1.0)
-                    continue;
+                double dx = ((first + 0.5) - centerX) * inverseRadiusX;
+                if (square ? Math.Abs(dx) <= 1.0 : dx * dx + dySquared <= 1.0) break;
+                first++;
+            }
+            while (last >= first)
+            {
+                double dx = ((last + 0.5) - centerX) * inverseRadiusX;
+                if (square ? Math.Abs(dx) <= 1.0 : dx * dx + dySquared <= 1.0) break;
+                last--;
+            }
+            if (first > last) continue;
 
-                // Most dabs do not cross a UV seam. Avoid two modulo operations per painted
-                // pixel on that common path; only wrap the few samples that actually leave the
-                // hit's atlas lane.
-                int wrappedX = x >= regionStart && x <= regionEnd ? x : region.WrapPixelX(x);
-                int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
-                Span<byte> pixel = _pixels.AsSpan(index, PaintPolicy.BytesPerPixel);
-                if (BinaryPrimitives.ReadUInt32LittleEndian(pixel) == rgba) continue;
-                BinaryPrimitives.WriteUInt32LittleEndian(pixel, rgba);
-                changed = true;
+            // A circular/square row is contiguous. Compare/fill whole runs, splitting only
+            // at the atlas seam, so overlapping dabs use vectorized span operations.
+            int wrapped = first >= regionStart && first <= regionEnd ? first : region.WrapPixelX(first);
+            int length = last - first + 1;
+            while (length > 0)
+            {
+                int count = Math.Min(length, regionEnd - wrapped + 1);
+                changed |= FillPaintRun(y, wrapped, count, rgba);
+                length -= count;
+                wrapped = regionStart;
             }
         }
 
@@ -173,6 +186,17 @@ public sealed class PaintSurface
         return wrapsRegion
             ? new PaintRect(regionStart, minY, region.PixelWidth, (maxY - minY) + 1)
             : new PaintRect(minX, minY, (maxX - minX) + 1, (maxY - minY) + 1);
+    }
+
+    private bool FillPaintRun(int y, int x, int length, uint rgba)
+    {
+        Span<uint> run = MemoryMarshal.Cast<byte, uint>(_pixels.AsSpan(
+            (y * PaintPolicy.SurfaceSize + x) * PaintPolicy.BytesPerPixel,
+            length * PaintPolicy.BytesPerPixel));
+        uint nativeColor = BitConverter.IsLittleEndian ? rgba : BinaryPrimitives.ReverseEndianness(rgba);
+        if (run.IndexOfAnyExcept(nativeColor) < 0) return false;
+        run.Fill(nativeColor);
+        return true;
     }
 
     /// <summary>Sparse selected-colour dots in a circular envelope. U wraps; V clips.</summary>

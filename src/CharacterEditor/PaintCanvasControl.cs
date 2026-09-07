@@ -30,6 +30,7 @@ public partial class PaintCanvasControl : Control
     private PaintColor _sampledColor;
     private double _sprayPulseAccumulator;
     private readonly List<PaintHit> _screenHits = new();
+    private readonly PaintHit?[] _previousDabRow = new PaintHit?[MaxPenSampleSteps * 2 + 1];
     private PaintStrokeAudio _strokeAudio = null!;
 
     private BuddyPaintCurvePhase _curvePhase;
@@ -54,6 +55,7 @@ public partial class PaintCanvasControl : Control
     private const double SecondCurveBendSensitivity = 0.35;
 
     public PaintWorkspace Workspace { get; } = new();
+    internal int ScreenDabSampleCount => _screenHits.Count;
     public PaintViewState View { get; } = new();
     public PaintPart? HoveredPart { get; private set; }
     public PaintPart? ActivePartFilter { get; set; }
@@ -303,7 +305,7 @@ public partial class PaintCanvasControl : Control
             _sprayPulseAccumulator = 0;
     }
 
-    private void PaintAlongTo(Vector2 canvas)
+    internal void PaintAlongTo(Vector2 canvas)
     {
         Vector2 from = _strokePointer;
         if (from.IsEqualApprox(canvas))
@@ -344,10 +346,9 @@ public partial class PaintCanvasControl : Control
 
     /// <summary>
     /// Whether the tool builds its footprint from screen-space samples rather than stamping one
-    /// shape onto the surface. Those tools land as exactly the outline their cursor draws; the
-    /// brush deliberately does not, and stays the ellipse the owner wants (2026-08-19).
+    /// shape onto the surface. The brush uses an ellipse; the pen uses a circle.
     /// </summary>
-    internal static bool UsesScreenDabs(PaintTool tool) => tool is PaintTool.Pen or PaintTool.Eraser;
+    internal static bool UsesScreenDabs(PaintTool tool) => tool is PaintTool.Brush or PaintTool.Pen or PaintTool.Eraser;
 
     private void PaintPenDab(Vector2 center) =>
         PaintScreenDab(center, Workspace.SelectedTool == PaintTool.Eraser);
@@ -359,17 +360,28 @@ public partial class PaintCanvasControl : Control
     /// </summary>
     private void PaintScreenDab(Vector2 center, bool square)
     {
+        PaintMapContext mapping = CapturePaintMapContext();
         float radius = VisibleBrushDiameter() * 0.5f;
         float texturePixelSize = VisibleBrushDiameter() / Math.Max(1, Workspace.BrushDiameter);
         float sampleRadius = Math.Max(0f, radius - (texturePixelSize * PaintPolicy.MinBrushDiameter * 0.5f));
         int steps = PenSampleSteps(VisibleBrushDiameter(), Workspace.BrushDiameter);
+        // Larger micro-dabs cover the interior; adaptive samples still close stretched UV gaps.
+        if (Workspace.SelectedTool is PaintTool.Brush or PaintTool.Pen)
+            steps = Math.Min(steps, 16);
         if (GodotObject.IsInstanceValid(_host?.PreviewRig) && _host!.PreviewRig.HasGeneratedReplacementPaintParts)
             steps = Math.Min(steps, MaxGeneratedReplacementPenSampleSteps);
         int sampleDiameter = PenSampleDiameter(VisibleBrushDiameter(), Workspace.BrushDiameter, steps);
+        if (Workspace.SelectedTool == PaintTool.Brush)
+            sampleDiameter = Math.Max(PaintPolicy.MinBrushDiameter,
+                (int)Math.Ceiling(sampleDiameter * PaintWorkspace.BrushVerticalScale));
         float spacing = steps <= 0 ? 0f : sampleRadius / steps;
+        float verticalScale = Workspace.SelectedTool == PaintTool.Brush
+            ? (float)PaintWorkspace.BrushVerticalScale : 1f;
         _screenHits.Clear();
+        Array.Clear(_previousDabRow);
         for (int y = -steps; y <= steps; y++)
         {
+            PaintHit? left = null;
             for (int x = -steps; x <= steps; x++)
             {
                 Vector2 offset = new(x * spacing, y * spacing);
@@ -377,16 +389,61 @@ public partial class PaintCanvasControl : Control
                     ? Math.Abs(offset.X) > sampleRadius || Math.Abs(offset.Y) > sampleRadius
                     : offset.LengthSquared() > sampleRadius * sampleRadius)
                 {
+                    left = null;
+                    _previousDabRow[x + steps] = null;
                     continue;
                 }
-                if (Map(center + offset) is PaintHit hit)
+                Vector2 point = center + new Vector2(offset.X, offset.Y * verticalScale);
+                PaintHit? mapped = Map(point, mapping);
+                if (mapped is PaintHit hit)
+                {
                     _screenHits.Add(hit);
+                    if (x > -steps && (square || (offset - new Vector2(spacing, 0)).LengthSquared() <= sampleRadius * sampleRadius))
+                        FillDabSampleGap(point - new Vector2(spacing, 0), left, point, hit, sampleDiameter, mapping);
+                    if (y > -steps && (square || (offset - new Vector2(0, spacing)).LengthSquared() <= sampleRadius * sampleRadius))
+                        FillDabSampleGap(point - new Vector2(0, spacing * verticalScale), _previousDabRow[x + steps], point, hit, sampleDiameter, mapping);
+                }
+                left = mapped;
+                _previousDabRow[x + steps] = mapped;
             }
         }
         Workspace.StampScreenDab(
             _screenHits,
             sampleDiameter,
-            square ? PaintTool.Eraser : PaintTool.Pen);
+            Workspace.SelectedTool);
+    }
+
+    private void FillDabSampleGap(Vector2 from, PaintHit? previous, Vector2 to,
+        PaintHit current, int diameter, PaintMapContext mapping, int depth = 0)
+    {
+        if (depth >= 8 || _screenHits.Count >= 16384)
+            return;
+        if (mapping.HasGeneratedParts &&
+            _host!.PreviewRig.IsGeneratedReplacementPaintPart(current.Part)) return;
+        if (previous is PaintHit boundary &&
+            (boundary.Part != current.Part || boundary.IsConnector != current.IsConnector))
+            previous = null;
+        if (previous is PaintHit prior)
+        {
+            PaintUvRegion region = PaintUvRegion.For(current);
+            double u = Math.Abs(region.LocalU(prior.Uv.X) - region.LocalU(current.Uv.X));
+            double dx = Math.Min(u, 1.0 - u) * (region.PixelWidth - 1);
+            double dy = (prior.Uv.Y - current.Uv.Y) * (PaintPolicy.SurfaceSize - 1);
+            if (dx * dx + dy * dy <= diameter * diameter * 0.25) return;
+        }
+
+        // Sphere poles stretch a uniform screen grid into separated texture rows.
+        // Remap the midpoint instead of interpolating UVs across silhouettes/seams.
+        Vector2 midpoint = (from + to) * 0.5f;
+        if (Map(midpoint, mapping) is not PaintHit middle ||
+            middle.Part != current.Part || middle.IsConnector != current.IsConnector)
+        {
+            FillDabSampleGap(midpoint, null, to, current, diameter, mapping, depth + 1);
+            return;
+        }
+        _screenHits.Add(middle);
+        FillDabSampleGap(from, previous, midpoint, middle, diameter, mapping, depth + 1);
+        FillDabSampleGap(midpoint, middle, to, current, diameter, mapping, depth + 1);
     }
 
     /// <summary>
@@ -699,12 +756,22 @@ public partial class PaintCanvasControl : Control
         return false;
     }
 
-    private PaintHit? Map(Vector2 canvas)
+    private readonly record struct PaintMapContext(Vector2 CanvasSize, double Yaw, bool HasGeneratedParts);
+
+    private PaintMapContext CapturePaintMapContext()
     {
-        PaintPoint point = CanvasToWorld(canvas);
-        double yaw = GodotObject.IsInstanceValid(_host) && GodotObject.IsInstanceValid(_host!.PreviewRig)
-            ? Mathf.DegToRad(_host.PreviewRig.RotationDegrees.Y)
-            : 0.0;
+        var preview = GodotObject.IsInstanceValid(_host) ? _host!.PreviewRig : null;
+        bool valid = GodotObject.IsInstanceValid(preview);
+        return new(Size, valid ? Mathf.DegToRad(preview!.RotationDegrees.Y) : 0,
+            valid && preview!.IsInitialized && preview.HasGeneratedReplacementPaintParts);
+    }
+
+    private PaintHit? Map(Vector2 canvas) => Map(canvas, CapturePaintMapContext());
+
+    private PaintHit? Map(Vector2 canvas, PaintMapContext mapping)
+    {
+        PaintPoint point = CanvasToWorld(canvas, mapping.CanvasSize);
+        double yaw = mapping.Yaw;
 
         PaintHit? hit;
         if (Math.Abs(yaw) <= 0.000001)
@@ -713,15 +780,15 @@ public partial class PaintCanvasControl : Control
             hit = TryMapRotated(point, yaw, out PaintHit rotated) ? rotated : null;
 
         bool generatedReplacementHit = false;
-        if (GodotObject.IsInstanceValid(_host?.PreviewRig) && _host!.PreviewRig.IsInitialized)
+        if (mapping.HasGeneratedParts)
         {
             // A replaced part must not keep accepting paint through its now-hidden legacy
             // sphere/capsule. Ask the visible generated triangles for the exact UV instead.
-            if (hit is PaintHit legacy && _host.PreviewRig.IsGeneratedReplacementPaintPart(legacy.Part))
+            if (hit is PaintHit legacy && _host!.PreviewRig.IsGeneratedReplacementPaintPart(legacy.Part))
                 hit = null;
 
             var worldPoint = new Vector2((float)point.X, (float)point.Y);
-            if (_host.PreviewRig.TryMapGeneratedReplacementPaintHit(worldPoint, out PaintHit generated) &&
+            if (_host!.PreviewRig.TryMapGeneratedReplacementPaintHit(worldPoint, out PaintHit generated) &&
                 (hit is null || generated.Depth > hit.Value.Depth))
             {
                 hit = generated;
@@ -830,10 +897,12 @@ public partial class PaintCanvasControl : Control
         return true;
     }
 
-    private PaintPoint CanvasToWorld(Vector2 canvas)
+    private PaintPoint CanvasToWorld(Vector2 canvas) => CanvasToWorld(canvas, Size);
+
+    private PaintPoint CanvasToWorld(Vector2 canvas, Vector2 canvasSize)
     {
-        double width = Math.Max(1.0, Size.X);
-        double height = Math.Max(1.0, Size.Y);
+        double width = Math.Max(1.0, canvasSize.X);
+        double height = Math.Max(1.0, canvasSize.Y);
         double aspect = width / height;
         double verticalSpan = BaseCameraSize / View.Zoom;
         PaintPoint center = CameraCenter;

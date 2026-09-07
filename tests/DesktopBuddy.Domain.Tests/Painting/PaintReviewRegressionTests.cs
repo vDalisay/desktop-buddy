@@ -10,6 +10,41 @@ public sealed class PaintReviewRegressionTests
     private static readonly EnvironmentColor RoomInk = new(12, 34, 56);
 
     [Fact]
+    public void RowWriterMatchesScalarRasterAtSeamsPolesAndAcrossRepeatedErasing()
+    {
+        var surface = new PaintSurface();
+        byte[] expected = new byte[PaintPolicy.SurfaceBytes];
+        var random = new System.Random(734);
+        for (int stamp = 0; stamp < 90; stamp++)
+        {
+            PaintUvRegion region = stamp % 3 == 0 ? PaintUvRegion.Full :
+                stamp % 3 == 1 ? PaintUvRegion.LimbEnd : new PaintUvRegion(.5, .125);
+            var uv = new PaintPoint(region.AtlasU(stamp % 2 == 0 ? .001 : .999),
+                stamp % 3 == 0 ? 0 : stamp % 3 == 1 ? 1 : random.NextDouble());
+            int diameter = stamp % 2 == 0 ? 128 : 19;
+            double scale = stamp % 2 == 0 ? .5 : 1;
+            bool erase = stamp % 4 == 0;
+            double cx = region.PixelX(uv.X), cy = uv.Y * 511;
+            double rx = diameter / 2.0, ry = rx * scale;
+            for (int y = System.Math.Max(0, (int)System.Math.Floor(cy - ry));
+                y <= System.Math.Min(511, (int)System.Math.Ceiling(cy + ry)); y++)
+            for (int x = (int)System.Math.Floor(cx - rx); x <= System.Math.Ceiling(cx + rx); x++)
+            {
+                double dx = (x + .5 - cx) * (1.0 / rx), dy = (y + .5 - cy) * (1.0 / ry);
+                if (erase ? System.Math.Abs(dx) > 1 || System.Math.Abs(dy) > 1 : dx * dx + dy * dy > 1) continue;
+                int pixel = (y * 512 + region.WrapPixelX(x)) * 4;
+                expected[pixel] = erase ? (byte)0 : (byte)stamp;
+                expected[pixel + 1] = erase ? (byte)0 : (byte)34;
+                expected[pixel + 2] = erase ? (byte)0 : (byte)56;
+                expected[pixel + 3] = erase ? (byte)0 : (byte)255;
+            }
+            surface.Stamp(uv, diameter, erase ? PaintTool.Eraser : PaintTool.Brush,
+                new PaintColor((byte)stamp, 34, 56), scale, region);
+            Assert.True(System.MemoryExtensions.SequenceEqual<byte>(expected, surface.Pixels.Span), $"stamp={stamp}");
+        }
+    }
+
+    [Fact]
     public void PackedRgbaLargeBrushMatchesPreOptimizationPixelsAndSkipsEqualStamps()
     {
         var surface = new PaintSurface();
