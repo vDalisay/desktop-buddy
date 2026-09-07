@@ -160,9 +160,10 @@ public sealed partial class BuddyPreviewSurface : SubViewport
     }
 
     /// <summary>
-    /// Copies the current appearance and painted underlays from a trusted live visual rig. Work
-    /// and the later tutorial portrait use this to match the player's current Buddy without
-    /// sharing any gameplay authority.
+    /// Copies appearance and painted underlays from a trusted live visual rig for consumers that
+    /// intentionally mirror the player's current Buddy, such as Work Mode. Consumers with an
+    /// authored stable appearance (the tutorial guide) apply that appearance directly instead.
+    /// No gameplay authority is shared either way.
     /// </summary>
     public void CopyPresentationFrom(
         BuddyVisualRigView live,
