@@ -67,6 +67,8 @@ public partial class UiFeedbackAudioBootstrap : Node
     private const float PurchasePitchScale = 1.015f;
     private const int VoiceCount = 8;
     private const int LayerVoiceCount = 4;
+    /// <summary>Resting level every pooled voice is built at, and returns to on each play.</summary>
+    private const float VoiceVolumeDb = -14.0f;
 
     private const string HookMeta = "desktop_buddy_ui_feedback_hooked";
     private const string WorkHookMeta = "desktop_buddy_work_feedback_hooked";
@@ -100,7 +102,7 @@ public partial class UiFeedbackAudioBootstrap : Node
             Name = "UiFeedbackPlayer",
             ProcessMode = ProcessModeEnum.Always,
             Bus = AudioMix.Ui,
-            VolumeDb = -14.0f,
+            VolumeDb = VoiceVolumeDb,
             MaxPolyphony = 1,
         };
         AddChild(_player);
@@ -109,7 +111,7 @@ public partial class UiFeedbackAudioBootstrap : Node
             Name = "UiFeedbackLayerPlayer",
             ProcessMode = ProcessModeEnum.Always,
             Bus = AudioMix.Ui,
-            VolumeDb = -14.0f,
+            VolumeDb = VoiceVolumeDb,
             MaxPolyphony = 1,
         };
         AddChild(_layerPlayer);
@@ -266,10 +268,17 @@ public partial class UiFeedbackAudioBootstrap : Node
         }
     }
 
+    /// <summary>
+    /// Sounds one stream on the next free voice. Pitch and level are assigned on every play, never
+    /// only when they differ from the default: the pool is shared, so a voice that kept the last
+    /// caller's pitch would hand it to whatever cue borrowed that voice next.
+    /// </summary>
     private static void PlayOnPool(
         AudioStreamPlayer[] voices,
         ref int nextVoiceIndex,
-        AudioStream stream)
+        AudioStream stream,
+        float pitchScale = 1.0f,
+        float volumeDb = VoiceVolumeDb)
     {
         if (voices.Length == 0)
             return;
@@ -281,6 +290,8 @@ public partial class UiFeedbackAudioBootstrap : Node
             if (!GodotObject.IsInstanceValid(voice) || voice.Playing)
                 continue;
 
+            voice.PitchScale = pitchScale;
+            voice.VolumeDb = volumeDb;
             voice.Stream = stream;
             voice.Play();
             nextVoiceIndex = (index + 1) % voices.Length;
