@@ -94,11 +94,27 @@
     <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStyleTastes.cs" />
     <Compile Remove="src/CharacterEditor/BuddyStudio/CharacterEditorHost.BuddyStudio.cs" />
     <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Studio.cs" />
+
+    <!--
+      Paint Room and Room Decorator: the whole folder. EnvironmentCustomizationBootstrap already
+      returned early under the itch scope, so none of it ran there — no decoration layer and no
+      background presenter was ever constructed. Removing it changes nothing at runtime and takes
+      the room-editing code and the decoration catalogue out of the assembly.
+    -->
+    <Compile Remove="src/Environment/**/*.cs" />
+
+    <!-- Steam Workshop. Already #if'd out of the composition; this takes the source with it. -->
+    <Compile Remove="src/Sharing/**/*.cs" />
+
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Background.cs" />
+    <Compile Remove="src/Buddy/Behavior/RoomInterestBootstrap.Environment.cs" />
   </ItemGroup>
 
   <!-- The "no Buddy Studio" half of that seam is the one build that must not see both. -->
   <ItemGroup Condition=" '$(DesktopBuddyItchScope)' != 'true' ">
     <Compile Remove="src/Onboarding/FirstSessionGuidanceController.StudioAbsent.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.BackgroundAbsent.cs" />
+    <Compile Remove="src/Buddy/Behavior/RoomInterestBootstrap.EnvironmentAbsent.cs" />
   </ItemGroup>
 
   <PropertyGroup>

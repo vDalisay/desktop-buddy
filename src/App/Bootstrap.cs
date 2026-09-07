@@ -267,9 +267,14 @@ public partial class Bootstrap : Node
         // Feature autoloads may exist before the sandbox enters the tree. Give them the
         // composition-root references directly so normal boot does not discover runtime services
         // by recursively walking the scene tree or bypass the injected persistence policy.
+#if !DESKTOP_BUDDY_PUBLIC_WEB
+        // The reduced distribution ships no room workspace, and its autoload is stripped from
+        // project.godot to match, so there is nothing to configure. Its only other consumer is the
+        // Workshop composition below, which that distribution also omits.
         var environmentCustomization = GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
             "/root/EnvironmentCustomizationBootstrap");
         environmentCustomization?.Configure(sandbox);
+#endif
         GetNodeOrNull<DesktopBuddy.CharacterEditor.CharacterSlotUiBootstrap>(
             "/root/CharacterSlotUiBootstrap")?.Configure(sandbox, characters);
         var commandRegistrar = GetNodeOrNull<DesktopBuddy.UI.Win98.Win98CommandBarBootstrap>(

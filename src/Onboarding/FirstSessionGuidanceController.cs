@@ -9,11 +9,9 @@ using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Economy;
-using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
-using DesktopBuddy.Environment;
 using DesktopBuddy.Shop;
 using DesktopBuddy.UI.Win98;
 using DesktopBuddy.Work;
@@ -193,12 +191,9 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private ShopPanel? _shop;
     private Button? _baseballBatAction;
     private WorkCompanionCoordinator? _work;
-    private EnvironmentBackgroundEditor? _backgroundEditor;
-    private EnvironmentBackgroundPresenter? _backgroundPresenter;
 
     private bool _editorSignalsBound;
     private bool _brushSignalBound;
-    private bool _backgroundSignalsBound;
     private bool _wasGrabbing;
     private bool _wasEditorOpen;
     private bool _wasStudioOpen;
@@ -231,7 +226,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _studioNothingToSave;
     private PaintColor? _paintColorOrigin;
     private bool _brushButtonPressed;
-    private EnvironmentColor? _backgroundColorOrigin;
     private Rect2I _workDragOrigin;
     private Rect2I _workResizeOrigin;
     private WorkCompanionView? _workView;
@@ -484,8 +478,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             as Win98BuddyShellController;
         _shop ??= GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel;
         _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
-        _backgroundEditor ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) as EnvironmentBackgroundEditor;
-        _backgroundPresenter ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundPresenter), true, false) as EnvironmentBackgroundPresenter;
+        DiscoverBackground();
         DiscoverStudio();
     }
 
@@ -521,12 +514,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
         BindStudioSignals();
 
-        if (!_backgroundSignalsBound && GodotObject.IsInstanceValid(_backgroundEditor) &&
-            _backgroundEditor!.FindChild("PaintSaveButton", true, false) is Button save)
-        {
-            save.Pressed += OnBackgroundSavePressed;
-            _backgroundSignalsBound = true;
-        }
+        BindBackgroundSignals();
     }
 
     private void UnbindActionSignals()
@@ -543,9 +531,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             _editor.UseButton.Pressed -= OnPaintUsePressed;
         }
         UnbindStudioSignals();
-        if (_backgroundSignalsBound && GodotObject.IsInstanceValid(_backgroundEditor) &&
-            _backgroundEditor!.FindChild("PaintSaveButton", true, false) is Button save)
-            save.Pressed -= OnBackgroundSavePressed;
+        UnbindBackgroundSignals();
     }
 
     /// <summary>
@@ -657,7 +643,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 break;
 
             case TutorialStepIds.SelectBackgroundSpray when IsBackgroundOpen() &&
-                                                              _backgroundPresenter!.Canvas.Tool == EnvironmentPaintTool.Spray:
+                                                              IsBackgroundSpraySelected():
                 CompleteCurrent(step);
                 break;
 
@@ -666,7 +652,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 break;
 
             case TutorialStepIds.PaintBackground when IsBackgroundOpen() &&
-                                                        _backgroundPresenter!.Canvas.IsDirty && !IsPrimaryMouseHeld():
+                                                        IsBackgroundCanvasDirty() && !IsPrimaryMouseHeld():
                 CompleteCurrent(step);
                 break;
 
@@ -675,8 +661,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 break;
 
             case TutorialStepIds.SaveAndExitPaintBackground when _backgroundSaveRequested &&
-                                                                   GodotObject.IsInstanceValid(_backgroundEditor) && !_backgroundEditor!.IsOpen &&
-                                                                   GodotObject.IsInstanceValid(_backgroundPresenter) && !_backgroundPresenter!.Canvas.IsDirty:
+                                                                   IsBackgroundEditorClosed() &&
+                                                                   IsBackgroundCanvasClean():
                 _backgroundSaveRequested = false;
                 CompleteCurrent(step);
                 break;
@@ -767,10 +753,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool IsWorkActive() =>
         GodotObject.IsInstanceValid(_work) && _work!.IsActive;
 
-    private bool IsBackgroundOpen() =>
-        GodotObject.IsInstanceValid(_backgroundEditor) && _backgroundEditor!.IsOpen &&
-        GodotObject.IsInstanceValid(_backgroundPresenter);
-
     private bool IsBackgroundPanelFloating() =>
         GetTree().Root.FindChild("PaintBackgroundPinController", true, false) is Win98PinnablePanel pin &&
         pin.IsFloating;
@@ -789,34 +771,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         return colour != origin;
     }
 
-    /// <summary>Any colour will do here — the lesson is the palette, not a particular hue.</summary>
-    private bool HasChosenBackgroundColor()
-    {
-        if (!IsBackgroundOpen())
-            return false;
-        EnvironmentColor colour = _backgroundPresenter!.Canvas.Color;
-        if (_backgroundColorOrigin is not EnvironmentColor origin)
-        {
-            _backgroundColorOrigin = colour;
-            return false;
-        }
-        return colour != origin;
-    }
-
-    /// <summary>
-    /// The torso surface bumps its revision on any accepted stroke, so the tutorial can require
-    /// paint <em>on the torso</em> without cloning a megabyte of pixels every frame.
-    /// </summary>
-    /// <summary>
-    /// True once the player has painted anything since this step opened. Deliberately every
-    /// surface, not the torso alone: the prompt says "Paint away!" and spotlights the whole
-    /// canvas, so a player who paints the head, a hand or a foot has done what was asked and
-    /// must not be stranded on the step forever (owner report 2026-09-07).
-    ///
-    /// <para>Switching characters mid-step swaps in fresh surfaces whose revisions restart, so a
-    /// total below the recorded baseline means "different buddy", not "un-painted". Rebaselining
-    /// on that drop keeps the step completable instead of permanently unsatisfiable.</para>
-    /// </summary>
     private bool HasPaintedAnySurface()
     {
         if (!IsPaintBuddyOpen())
@@ -948,7 +902,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private void OnPaintSavePressed() => _paintSaveRequested = IsPaintBuddyOpen();
     private void OnPaintUsePressed() => _paintUseRequested = IsPaintBuddyOpen();
     private void OnBackgroundSavePressed() =>
-        _backgroundSaveRequested = GodotObject.IsInstanceValid(_backgroundEditor) && _backgroundEditor!.IsOpen;
+        _backgroundSaveRequested = IsBackgroundEditorOpen();
     private void OnStudioSavePressed() => _studioSaveRequested = IsStudioOpen();
 
     private void CompleteCurrent(string stepId)
@@ -1709,11 +1663,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// </summary>
     private void RefreshFloatingPanelGate()
     {
-        if (!IsBackgroundOpen() ||
-            _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is not Control panel)
-        {
+        if (!IsBackgroundOpen() || BackgroundPanel() is not Control panel)
             return;
-        }
 
         bool gated = string.Equals(
             _displayedStepId, TutorialStepIds.FloatPaintBackgroundPanel, StringComparison.Ordinal);
@@ -1727,11 +1678,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// <summary>Teardown safety net for the gate above; the per-frame pass owns the normal case.</summary>
     private void RestoreFloatingPanelButtons()
     {
-        if (!GodotObject.IsInstanceValid(_backgroundEditor) ||
-            _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is not Control panel)
-        {
+        if (BackgroundPanel() is not Control panel)
             return;
-        }
 
         foreach (string name in TitleBarButtonNames)
         {
@@ -1807,8 +1755,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             // Only the blue bar: that is the part the player has to drag, and ringing the whole
             // panel said nothing about where to grab it.
             case TutorialStepIds.FloatPaintBackgroundPanel when IsBackgroundOpen():
-                return GodotObject.IsInstanceValid(_backgroundEditor) &&
-                       _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is Control panel
+                return BackgroundPanel() is Control panel
                     ? panel.FindChild("TitleBar", true, false) as Control
                     : null;
 
@@ -1832,7 +1779,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         Node? scope = spotlight.Scope switch
         {
             SpotlightScope.PaintBuddy => _editor,
-            SpotlightScope.Background => _backgroundEditor,
+            SpotlightScope.Background => BackgroundScope,
             SpotlightScope.Studio => StudioScope,
             _ => GetTree().Root,
         };
