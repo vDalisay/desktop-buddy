@@ -20,6 +20,9 @@ namespace DesktopBuddy.Onboarding;
 /// </summary>
 public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPresenter
 {
+    private const float PointerLookHorizontalRange = 220.0f;
+    private const float PointerLookVerticalRange = 180.0f;
+
     private readonly FirstSessionGuidanceController _owner;
     private readonly SandboxRoot _sandbox;
     private TutorialBuddyPortraitCard? _card;
@@ -93,6 +96,26 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             _workCard.SetSpeaking(speaking);
     }
 
+    /// <summary>
+    /// Converts a desktop pointer position into the normalized look vector consumed by the
+    /// presentation-only face/head pose. The elliptical range makes horizontal tracking a little
+    /// broader than vertical tracking, then clamps diagonals to one unit so pupils never pin into
+    /// an eye corner. This stays pure so the headless expressive scenario can lock the contract.
+    /// </summary>
+    internal static Vector2 ResolvePointerLook(Vector2 pointerScreenPosition, Vector2 portraitScreenCenter)
+    {
+        if (!pointerScreenPosition.IsFinite() || !portraitScreenCenter.IsFinite())
+            return Vector2.Zero;
+
+        Vector2 delta = pointerScreenPosition - portraitScreenCenter;
+        var look = new Vector2(
+            delta.X / PointerLookHorizontalRange,
+            delta.Y / PointerLookVerticalRange);
+        if (look.LengthSquared() > 1.0f)
+            look = look.Normalized();
+        return look;
+    }
+
     private TutorialBuddyPortraitCard EnsureCard(
         ref TutorialBuddyPortraitCard? card,
         Control host,
@@ -129,7 +152,10 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
     {
         private const double TickRate = 60.0;
         private const double MouthFrameSeconds = 0.085;
-        private const double LookRefreshSeconds = 0.22;
+        private const float PointerLookResponse = 11.0f;
+        private const float PointerHeadTiltRadians = 0.045f;
+        private const float PointerHeadLeanX = 1.35f;
+        private const float PointerHeadLeanY = 0.65f;
         private const ulong BlinkSeed = 0x5455544F5249414CUL; // "TUTORIAL"
 
         private readonly SandboxRoot _sandbox;
@@ -141,7 +167,7 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
         private double _tickRemainder;
         private double _speechElapsed;
         private double _idleSeconds;
-        private double _lookRefreshRemaining;
+        private Vector2 _pointerLook;
         private FaceRenderState? _lastFace;
         private bool _ready;
 
@@ -163,6 +189,7 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             Resized += LayoutPortrait;
             LayoutPortrait();
             _ready = true;
+            _pointerLook = CurrentPointerLook();
             RefreshFace();
             ApplyIdlePose();
         }
@@ -194,12 +221,13 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
                 (int)((_speechElapsed - safeDelta) / MouthFrameSeconds) !=
                 (int)(_speechElapsed / MouthFrameSeconds);
 
-            _lookRefreshRemaining -= safeDelta;
-            bool lookBoundary = _lookRefreshRemaining <= 0.0;
-            if (lookBoundary)
-                _lookRefreshRemaining += LookRefreshSeconds;
+            Vector2 previousLook = _pointerLook;
+            Vector2 targetLook = CurrentPointerLook();
+            float lookBlend = 1.0f - MathF.Exp(-(float)safeDelta * PointerLookResponse);
+            _pointerLook = previousLook.Lerp(targetLook, lookBlend);
+            bool lookChanged = previousLook.DistanceSquaredTo(_pointerLook) > 0.000004f;
 
-            if (oldBlink != _blink.EyesClosed || mouthBoundary || lookBoundary)
+            if (oldBlink != _blink.EyesClosed || mouthBoundary || lookChanged)
                 RefreshFace();
 
             ApplyIdlePose();
@@ -296,14 +324,27 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
                 Math.Max(1.0f, Size.Y - 34.0f));
         }
 
+        private Vector2 CurrentPointerLook()
+        {
+            Window window = GetWindow();
+            Vector2 windowOrigin = GodotObject.IsInstanceValid(window)
+                ? (Vector2)window.Position
+                : Vector2.Zero;
+            Vector2 portraitCenter = windowOrigin + GetGlobalRect().GetCenter();
+            return ResolvePointerLook((Vector2)DisplayServer.MouseGetPosition(), portraitCenter);
+        }
+
         private void ApplyIdlePose()
         {
             if (!GodotObject.IsInstanceValid(_preview))
                 return;
 
-            float bobX = Mathf.Sin((float)(_idleSeconds * 1.17)) * 0.9f;
-            float bobY = Mathf.Sin((float)(_idleSeconds * 1.63 + 0.7)) * 0.7f;
-            float headTilt = Mathf.Sin((float)(_idleSeconds * 0.83 + 0.3)) * 0.035f;
+            bool animate = Win98MotionPolicy.Allows(_sandbox.Shell.CurrentLocalSettings);
+            float bobX = animate ? Mathf.Sin((float)(_idleSeconds * 1.17)) * 0.9f : 0.0f;
+            float bobY = animate ? Mathf.Sin((float)(_idleSeconds * 1.63 + 0.7)) * 0.7f : 0.0f;
+            float idleTilt = animate ? Mathf.Sin((float)(_idleSeconds * 0.83 + 0.3)) * 0.018f : 0.0f;
+            float pointerTilt = animate ? _pointerLook.X * PointerHeadTiltRadians : 0.0f;
+            float headTilt = idleTilt + pointerTilt;
 
             BuddyVisualPartPose Part(BuddyPartId id, Vector2 offset, float rotation = 0.0f)
             {
@@ -318,14 +359,21 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
 
             Vector2 bodyBob = new(bobX * 0.35f, bobY * 0.35f);
             Vector2 headBob = new(bobX, bobY);
+            if (animate)
+            {
+                headBob += new Vector2(
+                    _pointerLook.X * PointerHeadLeanX,
+                    _pointerLook.Y * PointerHeadLeanY);
+            }
+
             FaceRenderState face = _lastFace ?? FaceComposer.Compose(
                 PoseFor(_mood),
                 _blink.EyesClosed,
                 chewActive: false,
                 chewFrame: 0,
                 faceSuppressed: false,
-                pupilX: 0.0f,
-                pupilY: 0.0f);
+                pupilX: _pointerLook.X * 0.82f,
+                pupilY: _pointerLook.Y * 0.62f);
 
             _preview.Rig.ApplyPose(new BuddyVisualPoseFrame(
                 Part(BuddyPartId.Head, headBob, headTilt),
@@ -346,16 +394,14 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
                 return;
 
             FaceFeaturePose pose = PoseFor(_mood);
-            float pupilX = Mathf.Sin((float)(_idleSeconds * 0.71 + 0.4)) * 0.22f;
-            float pupilY = Mathf.Sin((float)(_idleSeconds * 0.53 + 1.1)) * 0.10f;
             FaceRenderState state = FaceComposer.Compose(
                 pose,
                 _blink.EyesClosed,
                 chewActive: false,
                 chewFrame: 0,
                 faceSuppressed: false,
-                pupilX: pupilX,
-                pupilY: pupilY);
+                pupilX: _pointerLook.X * 0.82f,
+                pupilY: _pointerLook.Y * 0.62f);
 
             if (_speaking && !_blink.EyesClosed)
             {
@@ -377,13 +423,17 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             _preview.RequestSingleFrame();
         }
 
-        private static FaceFeaturePose PoseFor(TutorialPortraitMood mood) =>
-            FaceExpressionCatalog.Resolve(mood switch
-            {
-                TutorialPortraitMood.Neutral => ":|",
-                TutorialPortraitMood.Pleased => "^_^",
-                _ => ":)",
-            });
+        private static FaceFeaturePose PoseFor(TutorialPortraitMood mood) => mood switch
+        {
+            TutorialPortraitMood.Neutral => FaceExpressionCatalog.Resolve(":|"),
+            // Keep the pleased read while retaining pupils so the guide can continue following
+            // the pointer. The old ^_^ pose deliberately has no pupils.
+            TutorialPortraitMood.Pleased => new FaceFeaturePose(
+                FaceEyePose.Open,
+                FaceBrowPose.Raised,
+                FaceMouthPose.OpenSmile),
+            _ => FaceExpressionCatalog.Resolve(":)"),
+        };
 
         private static TutorialPortraitMood MoodFor(string stepId) => stepId switch
         {
