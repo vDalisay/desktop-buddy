@@ -13,7 +13,7 @@ namespace DesktopBuddy.Environment;
 /// Reserved composition root for the environment-customization branch. It owns Paint Background
 /// and Environment Decorator composition without widening the shared command-bar bootstrap.
 /// </summary>
-public partial class EnvironmentCustomizationBootstrap : Node
+public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCustomizationEvents
 {
     private const string LogCategory = "EnvironmentCustomization";
     private IDisposable? _registration;
@@ -28,6 +28,12 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
     private bool _workCompanionSubscribed;
     internal EnvironmentPaintStore? PaintStore => _paintStore;
+
+    /// <summary>
+    /// Semantic commit event forwarded from the editor after a genuinely changed background has
+    /// been durably saved. Consumers never need to poll the PNG or know about editor internals.
+    /// </summary>
+    public event Action? BackgroundCommitted;
 
     /// <summary>
     /// Supplies the normal-run composition root directly. Autoload startup can precede the
@@ -121,6 +127,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
             _backgroundPresenter,
             _paintStore,
             GodotObject.IsInstanceValid(_sandbox) ? _sandbox!.Economy : null);
+        _backgroundEditor.BackgroundCommitted += OnBackgroundCommitted;
         GetTree().Root.AddChild(_backgroundEditor);
         _paintIconBootstrap = new EnvironmentPaintToolIconBootstrap { Name = nameof(EnvironmentPaintToolIconBootstrap) };
         GetTree().Root.AddChild(_paintIconBootstrap);
@@ -149,6 +156,8 @@ public partial class EnvironmentCustomizationBootstrap : Node
         SetProcess(false);
         Log.Info(LogCategory, "Paint Background registered in the Paint menu.");
     }
+
+    private void OnBackgroundCommitted() => BackgroundCommitted?.Invoke();
 
     private void SubscribeWorkCompanionState()
     {
@@ -206,6 +215,8 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _registration = null;
         _decoratorRegistration?.Dispose();
         _decoratorRegistration = null;
+        if (GodotObject.IsInstanceValid(_backgroundEditor))
+            _backgroundEditor!.BackgroundCommitted -= OnBackgroundCommitted;
         if (GodotObject.IsInstanceValid(_paintIconBootstrap)) _paintIconBootstrap!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundEditor)) _backgroundEditor!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundPresenter)) _backgroundPresenter!.QueueFree();
