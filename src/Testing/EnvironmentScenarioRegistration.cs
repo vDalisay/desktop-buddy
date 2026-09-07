@@ -19,6 +19,7 @@ internal static class EnvironmentScenarioRegistration
         // implementations so the runner no longer asserts the original six-item/Buy-button slice.
         factories["environment_trusted_definitions"] = () => new EnvironmentTrustedDefinitionsClosureScenario();
         factories["environment_background_editor"] = () => new EnvironmentBackgroundEditorClosureScenario();
+        factories["environment_background_commit_event"] = () => new EnvironmentBackgroundCommitEventScenario();
         factories["environment_startup_registration"] = () => new EnvironmentStartupClosureScenario();
         factories["environment_placement_engine"] = () => new EnvironmentPlacementClosureScenario();
         factories["environment_decorator"] = () => new EnvironmentDecoratorClosureScenario();
