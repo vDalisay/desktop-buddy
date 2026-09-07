@@ -2,9 +2,11 @@ using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Presentation;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
@@ -13,8 +15,8 @@ namespace DesktopBuddy.Onboarding;
 /// <summary>
 /// Presentation-only live Buddy guide for the first-session tutorial. It uses the same
 /// physics-free <see cref="BuddyPreviewSurface"/> as Work, Character Editor and Workshop capture,
-/// copies only the live Buddy's appearance/paint, and owns its own blink/mouth state. No gameplay
-/// body, reaction component, autonomy state or clock is ever shared with the portrait.
+/// owns one stable authored guide appearance plus its own blink/look/mouth state, and never shares
+/// gameplay bodies, reactions, autonomy or clocks with the live Buddy.
 /// </summary>
 public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPresenter
 {
@@ -78,6 +80,7 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
     {
         private const double TickRate = 60.0;
         private const double MouthFrameSeconds = 0.085;
+        private const double LookRefreshSeconds = 0.22;
         private const ulong BlinkSeed = 0x5455544F5249414CUL; // "TUTORIAL"
 
         private readonly SandboxRoot _sandbox;
@@ -88,6 +91,8 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
         private bool _speaking;
         private double _tickRemainder;
         private double _speechElapsed;
+        private double _idleSeconds;
+        private double _lookRefreshRemaining;
         private FaceRenderState? _lastFace;
         private bool _ready;
 
@@ -109,8 +114,8 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             Resized += LayoutPortrait;
             LayoutPortrait();
             _ready = true;
-            SyncLiveAppearance();
             RefreshFace();
+            ApplyIdlePose();
         }
 
         public override void _ExitTree()
@@ -120,10 +125,12 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
 
         public override void _Process(double delta)
         {
+            // The card and its SubViewport both stop doing work when the tutorial guide is hidden.
             if (!_ready || !Visible || !IsVisibleInTree())
                 return;
 
             double safeDelta = Math.Max(0.0, delta);
+            _idleSeconds += safeDelta;
             _tickRemainder += safeDelta * TickRate;
             int ticks = (int)_tickRemainder;
             _tickRemainder -= ticks;
@@ -138,8 +145,18 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             bool mouthBoundary = _speaking &&
                 (int)((_speechElapsed - safeDelta) / MouthFrameSeconds) !=
                 (int)(_speechElapsed / MouthFrameSeconds);
-            if (oldBlink != _blink.EyesClosed || mouthBoundary)
+
+            _lookRefreshRemaining -= safeDelta;
+            bool lookBoundary = _lookRefreshRemaining <= 0.0;
+            if (lookBoundary)
+                _lookRefreshRemaining += LookRefreshSeconds;
+
+            if (oldBlink != _blink.EyesClosed || mouthBoundary || lookBoundary)
                 RefreshFace();
+
+            // Small deterministic head/bob motion makes the portrait feel alive without any
+            // gameplay RNG or autonomy. The rest anatomy remains the trusted static preview pose.
+            ApplyIdlePose();
         }
 
         public void SetStep(string stepId)
@@ -147,11 +164,10 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             TutorialPortraitMood mood = MoodFor(stepId);
             bool changed = mood != _mood;
             _mood = mood;
-            if (_ready)
+            if (_ready && changed)
             {
-                SyncLiveAppearance();
-                if (changed)
-                    RefreshFace();
+                RefreshFace();
+                ApplyIdlePose();
             }
             QueueRedraw();
         }
@@ -163,7 +179,10 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             _speaking = speaking;
             _speechElapsed = 0.0;
             if (_ready)
+            {
                 RefreshFace();
+                ApplyIdlePose();
+            }
         }
 
         public override void _Draw()
@@ -210,6 +229,11 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
                 face: ":)",
                 visibilityOwner: _portraitContainer);
             _portraitContainer.AddChild(_preview);
+
+            // The guide is intentionally a stable authored character, not a mirror of whichever
+            // player Buddy happens to be active. BuiltInCharacterAppearance is the trusted
+            // data-driven baseline and can later be swapped for another authored appearance here.
+            _preview.Rig.ApplyAppearance(BuiltInCharacterAppearance.Value);
             _preview.Rig.ApplyRestPose();
 
             Vector2 head = _preview.Source.ReadTransform(BuddyPartId.Head).Position;
@@ -228,15 +252,48 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
                 Math.Max(1.0f, Size.Y - 34.0f));
         }
 
-        private void SyncLiveAppearance()
+        private void ApplyIdlePose()
         {
-            if (!GodotObject.IsInstanceValid(_preview) ||
-                !GodotObject.IsInstanceValid(_sandbox.VisualPresenter?.RigView))
-            {
+            if (!GodotObject.IsInstanceValid(_preview))
                 return;
+
+            float bobX = Mathf.Sin((float)(_idleSeconds * 1.17)) * 0.9f;
+            float bobY = Mathf.Sin((float)(_idleSeconds * 1.63 + 0.7)) * 0.7f;
+            float headTilt = Mathf.Sin((float)(_idleSeconds * 0.83 + 0.3)) * 0.035f;
+
+            BuddyVisualPartPose Part(BuddyPartId id, Vector2 offset, float rotation = 0.0f)
+            {
+                BuddyVisualTransform source = _preview.Source.ReadTransform(id);
+                Vector2 position = source.Position + offset;
+                var rendered = new BuddyVisualTransform(position, rotation, Vector2.Zero);
+                return new BuddyVisualPartPose(
+                    rendered,
+                    WorldPlaneMapping.To3D(position),
+                    new Vector3(0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(rotation)));
             }
-            _preview.CopyPresentationFrom(_sandbox.VisualPresenter.RigView);
-            _preview.Rig.ApplyRestPose();
+
+            Vector2 bodyBob = new(bobX * 0.35f, bobY * 0.35f);
+            Vector2 headBob = new(bobX, bobY);
+            FaceRenderState face = _lastFace ?? FaceComposer.Compose(
+                PoseFor(_mood),
+                _blink.EyesClosed,
+                chewActive: false,
+                chewFrame: 0,
+                faceSuppressed: false,
+                pupilX: 0.0f,
+                pupilY: 0.0f);
+
+            _preview.Rig.ApplyPose(new BuddyVisualPoseFrame(
+                Part(BuddyPartId.Head, headBob, headTilt),
+                Part(BuddyPartId.Torso, bodyBob),
+                Part(BuddyPartId.LeftHand, bodyBob),
+                Part(BuddyPartId.RightHand, bodyBob),
+                Part(BuddyPartId.LeftFoot, bodyBob),
+                Part(BuddyPartId.RightFoot, bodyBob),
+                bodyYawRadians: 0.0f,
+                faceState: face,
+                fallbackFace: ":)",
+                fallbackFaceRotation: 0.0f));
         }
 
         private void RefreshFace()
@@ -245,14 +302,16 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
                 return;
 
             FaceFeaturePose pose = PoseFor(_mood);
+            float pupilX = Mathf.Sin((float)(_idleSeconds * 0.71 + 0.4)) * 0.22f;
+            float pupilY = Mathf.Sin((float)(_idleSeconds * 0.53 + 1.1)) * 0.10f;
             FaceRenderState state = FaceComposer.Compose(
                 pose,
                 _blink.EyesClosed,
                 chewActive: false,
                 chewFrame: 0,
                 faceSuppressed: false,
-                pupilX: 0.0f,
-                pupilY: 0.0f);
+                pupilX: pupilX,
+                pupilY: pupilY);
 
             if (_speaking && !_blink.EyesClosed)
             {
