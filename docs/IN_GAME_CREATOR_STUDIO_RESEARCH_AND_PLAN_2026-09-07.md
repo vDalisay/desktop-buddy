@@ -7,6 +7,8 @@ Applies to: Next Fest systemic vertical slice planning, Full Release, local cont
 
 Review baseline: `c286b1d9d6bfd8274238bd0ac5bc30cf3a36b15f`. Section 22 records engineering review additions; these are implementation recommendations and gates, not new owner-approved product limits or authorization to expand the existing Workshop v1 whitelist.
 
+Execution companion: [Creator Studio implementation work packets](IN_GAME_CREATOR_STUDIO_IMPLEMENTATION_PLAN_2026-09-07.md).
+
 This document develops the owner-approved direction that Desktop Buddy should make safe mod/content creation unusually accessible by putting a creator workflow **inside the game itself**, styled as another Windows 98-era application.
 
 It supplements `MODDABILITY_AND_WORKSHOP_SECURITY_SOURCE_ALIGNMENT_2026-09-07.md`. All security rules in that document remain binding: Workshop content is hostile declarative data, never arbitrary C#, GDScript, DLLs, Godot Resources/scenes, shaders, native libraries or executable PCKs.
