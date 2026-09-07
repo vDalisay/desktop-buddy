@@ -76,6 +76,17 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     ? "GodotSteam exposes setAchievement/storeStats through the project bridge; RequestCurrentStats is intentionally absent in Steamworks SDK 1.61+."
                     : "Pinned GodotSteam is missing setAchievement or storeStats required by SteamAchievementPublisher."));
 
+            // Recovery classification is part of the anti-corruption boundary. Before an init
+            // attempt there is no failure to retry; after a valid-but-offline steamInitEx failure
+            // the transport must expose retryability without making C# parse GodotSteam prose.
+            bool retryInitiallyFalse = !bridge.Call("can_retry_initialization").AsBool();
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_retry_state_starts_false",
+                retryInitiallyFalse,
+                retryInitiallyFalse
+                    ? "No retry is armed before Steam initialization is attempted."
+                    : "Bridge incorrectly reports a retryable Steam failure before initialization."));
+
             // Discovery is intentionally a separate optional bridge because demos need an in-game
             // Workshop browser even though they have no Community Hub. Probe its exact 4.22 method
             // surface here so createQueryAllUGCRequest / preview URL / subscribe support cannot
@@ -163,6 +174,16 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 capabilityCompatible,
                 initialized ? "Steam initialized on the runner." : $"Expected offline init result: {reason}"));
 
+            bool recoveryClassification = initialized
+                ? !transport.CanRetryInitialization
+                : IsBindingFailure(reason) || transport.CanRetryInitialization;
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_init_failure_recovery_is_classified",
+                recoveryClassification,
+                initialized
+                    ? $"initialized=true retryable={transport.CanRetryInitialization}"
+                    : $"initialized=false bindingFailure={IsBindingFailure(reason)} retryable={transport.CanRetryInitialization} reason={reason}"));
+
             if (initialized)
             {
                 bool identitiesKept =
@@ -211,6 +232,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
             "GodotSteam is missing the",
             "returned an unexpected value",
             "bridge rejected the Workshop owner AppID",
+            "bridge rejected the runtime Workshop AppID",
         ];
         foreach (string marker in markers)
             if (reason.Contains(marker, StringComparison.OrdinalIgnoreCase))
