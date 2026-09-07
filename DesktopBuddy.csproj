@@ -123,8 +123,14 @@
     -->
     <Compile Remove="src/Environment/**/*.cs" />
 
-    <!-- Steam Workshop. Already #if'd out of the composition; this takes the source with it. -->
+    <!--
+      Steam Workshop. Remove the UI/composition, its staging/persistence implementation, and the
+      Steam transport layer. Leaving Platform/Steam compiled would still ship the real Workshop
+      client even though the visible Workshop surface had been removed.
+    -->
     <Compile Remove="src/Sharing/**/*.cs" />
+    <Compile Remove="src/Persistence/Sharing/**/*.cs" />
+    <Compile Remove="src/Platform/Steam/**/*.cs" />
 
     <!--
       Work Mode. Needs real OS transparent windows, which a browser cannot provide, and the itch
