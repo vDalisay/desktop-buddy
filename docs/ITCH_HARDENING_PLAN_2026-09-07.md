@@ -1,8 +1,25 @@
 # itch.io hardening plan — feature exclusion and anti-decompilation
 
-Status: **proposal, nothing implemented.** Written 2026-09-07 after the itch tutorial work
-(`feature/itch-tutorial`) exposed that every held-back feature still ships in the itch build and is
-switched off by a runtime boolean.
+Status: **Phase A implemented and verified. Phases B and C not started.** Written 2026-09-07 after
+the itch tutorial work (`feature/itch-tutorial`) exposed that every held-back feature still ships in
+the itch build and is switched off by a runtime boolean.
+
+| Phase | State |
+| --- | --- |
+| A — exclude the features from the build | **Done.** Buddy Studio UI, Paint Room + Room Decorator, Work Mode, Steam Workshop and Gore Mode are compiled out; their autoloads and assets are dropped from the export. |
+| B — reupload / sitelock | **Blocked on one fact:** the domain itch actually serves the game from. See §4. |
+| C — obfuscation | Not started, still deferred, still aimed at the native Windows builds rather than the web one. |
+
+**What Phase A actually changed.** `DemoScope` still answers the same questions, but it is no longer
+the only thing standing between an itch player and a held-back feature: for four of the five, the
+code is not in the assembly to switch on. A `DesktopBuddyItchScope` MSBuild property compiles the
+reduced surface on the normal desktop target (`dotnet build DesktopBuddy.sln -p:DesktopBuddyItchScope=true`),
+which is how the guarded code is proven to compile without the pinned Web fork.
+
+**Two facts the verification settled**, both recorded in §1.2 and §1.3 below rather than assumed:
+C# source is not packed into the `.pck` — only path strings — so the assembly is the only place the
+code lives. But those path strings do list the entire source tree, including features this build no
+longer ships. That leaks structure and names, not code, and it comes from Godot's own caches.
 
 ---
 
@@ -107,36 +124,65 @@ Split it later, if and only if a second web distribution or a native itch build 
 cost of splitting then is a rename; the cost of carrying two constants now is two things to keep in
 step forever.
 
-### A2. Remove the source from the compile
+### A2. Remove the source from the compile — as implemented
+
+The sketch below was two-thirds right. `src/Work` and `src/Environment` did come out as whole
+folders; `src/CharacterEditor/BuddyStudio` did not, because that folder mixes the workspace UI with
+cosmetic data types the renderer, editor session and character persistence all still need. The buddy
+wears and saves cosmetics on itch — it just cannot edit them there — so `BuddyGeneratedCosmeticRegistry`
+and the two `GeneratedBuddyCosmetic*Resource` types stay and the nine UI files are listed explicitly.
+
+`src/Sharing` came out too: Workshop was already `#if`'d out of the composition, so only its source
+was still being compiled in.
+
+The fastest way to find each seam turned out to be removing the whole folder and letting the
+compiler name every dependency. `src/Environment` looked entangled at 18 files with 22 external
+references; the compiler reduced it to exactly three breakages.
 
 ```xml
-<ItemGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
+<ItemGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">
   <Compile Remove="src/Work/**/*.cs" />
-  <Compile Remove="src/CharacterEditor/BuddyStudio/**/*.cs" />
   <Compile Remove="src/Environment/**/*.cs" />
+  <Compile Remove="src/Sharing/**/*.cs" />
+  <!-- Buddy Studio: the nine workspace-UI files only. -->
 </ItemGroup>
 ```
 
-Then fix the fallout behind `#if !DESKTOP_BUDDY_PUBLIC_WEB` at each composition site: `Bootstrap`,
-`DesktopShellController`, `CharacterEditorHost`, `SandboxRoot`. `DemoScope.Includes*` become
-compile-time constants rather than runtime reads.
+The fallout came in two shapes. Small ones are one-line `#if !DESKTOP_BUDDY_PUBLIC_WEB` guards:
+`Bootstrap`, `Bootstrap.CharacterEditor`, `SandboxRoot`'s Reset Progress, the audio bootstrap's
+coordinator hook.
 
-Expect this to be the bulk of the work. The three subsystems are not cleanly severable today —
-`src/Environment/` also owns non-Paint-Room environment code, and `DesktopShellController` threads
-Work Mode through the shell. **Budget a real refactor, not an afternoon.** Each removal wants its
-own commit and a green quick suite.
+The larger ones are three two-halves **partial-class seams** — `.Studio` / `.StudioAbsent`,
+`.Background` / `.BackgroundAbsent`, `.Work` / `.WorkAbsent` on the guidance controller, and
+`.Environment` / `.EnvironmentAbsent` on `RoomInterestBootstrap`. Each pair puts every reference to
+an excluded type in one file and answers the same questions with "there is no such thing" in the
+other, so the consumer never names the type and compiles against both surfaces. Scattering `#if`
+through a 2100-line controller would have been the smaller diff and the much worse file.
+
+Gore Mode needed a third shape. `sandbox.tscn` binds `GoreComponent` by script path and wires three
+exports by NodePath, so it cannot be an excluded file — the scene would fail to load. Removing it
+would mean programmatic surgery on a 500-line scene: an `ext_resource`, an entry in a 47-element
+`PackedStringArray`, and a node. Instead the node stays and every line that draws leaves, behind two
+`#if` regions, with `Initialize`/`ApplyEffectsSettings`/`ClearAll` kept as no-ops.
+
+**Build both scopes, always.** The itch scope alone hid a missing `using` and a `Node`/`Control`
+mismatch that only the normal build caught.
 
 ### A3. Drop the autoloads
 
 Autoloads live in `project.godot`, which is data — a `#if` cannot touch it. Options:
 
-- **A3a (preferred):** have CI rewrite `project.godot` for the itch export, stripping the
-  Work/Studio/Paint-Room autoload lines. The itch job already rewrites the csproj to `net10.0`, so
-  a second scripted edit fits the existing pipeline shape.
-- **A3b:** move those autoloads out of `project.godot` and register them from `Bootstrap` behind the
-  `#if`. Cleaner long-term, larger blast radius across all builds.
+- **A3a — taken.** `devtools/verification/apply_itch_scope.py` runs against the disposable export
+  copy, right after the step that rewrites the project to `net10.0`. It does *not* repeat the
+  excluded set: it reads the `<Compile Remove>` entries out of the csproj's itch `ItemGroup`, so the
+  compile list stays the single source of truth and the two cannot drift. Adding a file there drops
+  its autoload too, with nothing to keep in step by hand. `--check` reports without writing.
 
-Take A3a first; revisit A3b only if the rewrite gets fragile.
+  One detail worth keeping: it reads and writes without newline translation. The first version
+  normalised CRLF and rewrote all 148 lines, which would have made every CI diff unreadable.
+
+- **A3b:** still available if the rewrite ever gets fragile — move those autoloads out of
+  `project.godot` and register them from `Bootstrap` behind the `#if`.
 
 ### A4. Exclude the assets
 
@@ -150,12 +196,26 @@ Leave `DemoScope` in place. Compile-time exclusion is the lock; the runtime chec
 defence-in-depth and keeps editor runs and scenario tests working, exactly as `IncludesWorkshop` now
 does both.
 
-### Acceptance
+### Acceptance — met 2026-09-07
 
-- `gdsdecomp` on the shipped `.pck` lists no Work Mode / Paint Room / Buddy Studio assets.
-- No Work/Studio/PaintRoom type names in the shipped assembly.
-- Editing feature tags in the pck cannot restore them.
-- Quick suite green; `tutorial_closure` green.
+Verified by exporting a pack with and without the filters and diffing the contents:
+
+- `data/environment` — 14 decoration resources and all 14 exported `.res` blobs gone.
+- `assets/work` — `retro_pc.ctex`, the actual image data, gone.
+- Three autoloads dropped: `WorkMilestoneProgressBootstrap`, `EnvironmentCustomizationBootstrap`,
+  `BuddyStudioBootstrap` — derived from the csproj exclusion list, not a second hand-kept list.
+- Both scopes build 0 warnings / 0 errors. Domain 1542/1542.
+- Green: `tutorial_closure`, `buddy_studio_ui_composition`, `environment_background_editor`,
+  `environment_decorator`, `environment_startup_registration`, `environment_trusted_definitions`,
+  `character_paint_save_use_restart`, `work_mode_resilience`, `work_play_window_behavior`,
+  `gore_mode`.
+
+**Gaps in that acceptance, stated plainly.** The real Web export was never built locally — it needs
+the pinned Godot fork, .NET 10 and `wasm-tools`, so CI is the first place the itch pack is produced
+with these changes. The pack verification above used the Windows preset, which shares
+`export_filter="all_resources"` and the same filter syntax. And no scenario covers
+`RoomInterestBootstrap`, so that extraction rests on the two compiles and on being a straight move
+of two method bodies.
 
 ---
 
@@ -165,9 +225,24 @@ itch already ships a global JS sitelock that shows a banner when a game is loade
 domain, plus automated hotlink prevention. Neither stops a full rehost.
 
 Add our own check in `html/head_include` (the preset already uses that field for the SRI cache fix):
-allow `itch.zone` / `itch.io` / `localhost`, otherwise refuse to boot and link the itch page. ~10
+allow the itch serving domain plus `localhost`, otherwise refuse to boot and link the itch page. ~10
 lines of JS. Trivially removable by a determined thief — but the people mass-reuploading web games
 are running scripts, not reverse engineers, so it stops most of them.
+
+**Not implemented, deliberately — this needs one fact I cannot get from the repo.** A blocking
+sitelock with the wrong allowlist does not degrade, it refuses to boot the real game on the real
+store page. itch has served HTML5 builds from more than one host over the years
+(`html-classic.itch.zone`, `*.ssl.hwcdn.net`, and the CDN name varies), and the plan's own guidance
+is that guessing here is the failure mode.
+
+To unblock: open the published game on itch, and from the browser's dev tools read the origin the
+game frame is actually served from (`location.origin` inside the game iframe). With that one string
+this is an afternoon. Two things to keep in the implementation:
+
+- Allow `localhost`/`127.0.0.1`, or CI's browser smoke test — which serves the build from
+  `127.0.0.1:8123` — starts failing.
+- Fail open on anything unexpected rather than closed. A sitelock that wrongly blocks a paying
+  audience costs more than one that lets a thief through.
 
 Also worth having: a written DMCA/reporting routine, since itch's own guidance is that reporting is
 the remedy once a build is rehosted.
