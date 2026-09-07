@@ -19,11 +19,12 @@ supersedes the older ten-achievement list in FR-018.5–FR-018.14 where the two 
   off at 60s, 120s, 240s, then 300s. A successful batch becomes an in-process no-op until another
   achievement qualifies. This respects Steam's `StoreStats` rate-limit guidance while still
   publishing genuine unlocks promptly.
-- If the GodotSteam addon and binding surface are valid but `steamInitEx` cannot initialize the
-  Steam client/session at startup, the shared Steam composition keeps the same bridge and Workshop
-  transport alive and retries at 30s, 60s, 120s, 240s, then 300s. Recovery makes Workshop and
-  achievement reconciliation available in the same process without rebinding services. Permanent
-  configuration/capability failures are not retried forever.
+- If the GodotSteam addon and binding surface are valid and `steamInitEx` specifically reports
+  `NoConnection` (status `2`) at startup, the shared Steam composition keeps the same bridge and
+  Workshop transport alive and retries at 30s, 60s, 120s, 240s, then 300s. Recovery makes Workshop
+  and achievement reconciliation available in the same process without rebinding services. Generic
+  initialization failure, client-update-required, configuration, and capability failures are not
+  polled indefinitely.
 - `Reset Progress` keeps achievements that are already qualified, because Steam achievements cannot
   be revoked and Demo-qualified awards still need to reconcile. Partial counters/working state
   (for example 73/100 Boxing Glove hits) reset with ordinary progress.
@@ -121,10 +122,10 @@ Before merge/release, verify all of the following:
   Steam achievement unlock for AppID `5228990`.
 - Launching the full game with that carried qualification unlocks the matching achievement under
   AppID `5114950` after Steam becomes available.
-- Starting the full game with a temporarily unavailable Steam client still qualifies locally; if
-  the addon/bindings are valid and the client becomes available while the process remains open,
-  shared Steam initialization recovers in-session and the qualified achievement reconciles without
-  restarting the game. A later launch remains the fallback for genuinely unavailable Steam.
+- Starting the full game while GodotSteam reports `NoConnection` still qualifies locally; if the
+  Steam client becomes reachable while the process remains open, shared Steam initialization
+  recovers in-session and the qualified achievement reconciles without restarting. Other permanent
+  initialization failures remain local-first and reconcile on a later valid launch.
 - Reset Progress keeps qualified awards but clears partial achievement counters and working values.
 - A Steam overlay pause, Work Mode, and editor time cannot advance Air Bud.
 - Bank Shot requires the same thrown baseball to touch a side wall before its accepted Buddy hit.
