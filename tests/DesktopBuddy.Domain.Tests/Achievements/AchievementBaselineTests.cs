@@ -1,8 +1,8 @@
 using System;
 using System.Linq;
-using DesktopBuddy.Achievements;
 using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Work;
 using Xunit;
@@ -34,28 +34,28 @@ public sealed class AchievementBaselineTests
         var achievements = new AchievementCoordinator(progress, work);
 
         work.Record(WorkActivityKind.KeyboardPress, 99);
-        achievements.EvaluatePersistentState();
+        achievements.EvaluatePersistentState(null);
         Assert.False(achievements.Store.IsQualified(AchievementIds.EmployeeDay));
 
         work.Record(WorkActivityKind.KeyboardPress, 1);
-        achievements.EvaluatePersistentState();
+        achievements.EvaluatePersistentState(null);
         Assert.True(achievements.Store.IsQualified(AchievementIds.EmployeeDay));
         Assert.False(achievements.Store.IsQualified(AchievementIds.EmployeeWeek));
 
         work.Record(WorkActivityKind.MouseClick, 900);
-        achievements.EvaluatePersistentState();
+        achievements.EvaluatePersistentState(null);
         Assert.True(achievements.Store.IsQualified(AchievementIds.EmployeeWeek));
 
         work.Record(WorkActivityKind.KeyboardPress, 9_000);
-        achievements.EvaluatePersistentState();
+        achievements.EvaluatePersistentState(null);
         Assert.True(achievements.Store.IsQualified(AchievementIds.EmployeeMonth));
 
         work.Record(WorkActivityKind.MouseClick, 90_000);
-        achievements.EvaluatePersistentState();
+        achievements.EvaluatePersistentState(null);
         Assert.True(achievements.Store.IsQualified(AchievementIds.EmployeeYear));
 
         work.Record(WorkActivityKind.KeyboardPress, 900_000);
-        achievements.EvaluatePersistentState();
+        achievements.EvaluatePersistentState(null);
         Assert.True(achievements.Store.IsQualified(AchievementIds.EmployeeForLife));
     }
 
@@ -65,10 +65,10 @@ public sealed class AchievementBaselineTests
         var achievements = new AchievementCoordinator(new BuddyProgressState(CashPerPain));
 
         for (int hit = 0; hit < 99; hit++)
-            achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, hit * 0.1);
+            achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, hit * 0.1, null);
 
         Assert.False(achievements.Store.IsQualified(AchievementIds.PunchingBag));
-        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 10.0);
+        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 10.0, null);
         Assert.True(achievements.Store.IsQualified(AchievementIds.PunchingBag));
         Assert.True(achievements.Store.IsQualified(AchievementIds.FirstImpression));
     }
@@ -78,16 +78,32 @@ public sealed class AchievementBaselineTests
     {
         var achievements = new AchievementCoordinator(new BuddyProgressState(CashPerPain));
 
-        achievements.RecordDamage(ContentIds.ToolPistol, 1.0f, 1, 10.0);
-        achievements.RecordDamage(ContentIds.ToolBaseball, 1.0f, 1, 12.0);
-        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 15.0);
+        achievements.RecordDamage(ContentIds.ToolPistol, 1.0f, 1, 10.0, null);
+        achievements.RecordDamage(ContentIds.ToolBaseball, 1.0f, 1, 12.0, null);
+        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 15.0, null);
         Assert.True(achievements.Store.IsQualified(AchievementIds.RubeGoldberg));
 
         var outsideWindow = new AchievementCoordinator(new BuddyProgressState(CashPerPain));
-        outsideWindow.RecordDamage(ContentIds.ToolPistol, 1.0f, 1, 10.0);
-        outsideWindow.RecordDamage(ContentIds.ToolBaseball, 1.0f, 1, 16.0);
-        outsideWindow.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 17.0);
+        outsideWindow.RecordDamage(ContentIds.ToolPistol, 1.0f, 1, 10.0, null);
+        outsideWindow.RecordDamage(ContentIds.ToolBaseball, 1.0f, 1, 16.0, null);
+        outsideWindow.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 17.0, null);
         Assert.False(outsideWindow.Store.IsQualified(AchievementIds.RubeGoldberg));
+    }
+
+    [Fact]
+    public void DamageEvaluation_PreservesCharacterArcContext()
+    {
+        Guid character = Guid.Parse("11111111-1111-4111-8111-111111111111");
+        var progress = new BuddyProgressState(CashPerPain);
+        var achievements = new AchievementCoordinator(progress);
+
+        progress.ApplyCareMood(-200.0f);
+        achievements.EvaluatePersistentState(character);
+        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 1.0, character);
+        progress.ApplyCareMood(200.0f);
+        achievements.EvaluatePersistentState(character);
+
+        Assert.True(achievements.Store.IsQualified(AchievementIds.CharacterArc));
     }
 
     [Fact]
@@ -100,8 +116,6 @@ public sealed class AchievementBaselineTests
         var switched = new AchievementCoordinator(switchedProgress);
         switchedProgress.ApplyCareMood(-200.0f);
         switched.EvaluatePersistentState(first);
-        // Switching while at the low endpoint transfers/invalidates the in-progress arc; raising
-        // shared mood on another character may not be inherited by the original after switching back.
         switched.EvaluatePersistentState(second);
         switchedProgress.ApplyCareMood(200.0f);
         switched.EvaluatePersistentState(first);
@@ -135,18 +149,16 @@ public sealed class AchievementBaselineTests
     }
 
     [Fact]
-    public void HomeSweetHome_RemembersCategoriesAcrossRoomEdits()
+    public void HomeSweetHome_UsesAuthoritativeDecorationCategories()
     {
         var achievements = new AchievementCoordinator(new BuddyProgressState(CashPerPain));
-        string[] required = ["Lamp", "Sofa", "Painting", "Wallpaper", "Plant", "Table"];
+        DecorationCategory[] categories = Enum.GetValues<DecorationCategory>();
 
-        foreach (string category in required[..^1])
+        foreach (DecorationCategory category in categories[..^1])
             achievements.RecordEnvironmentCategory(category);
-        achievements.EvaluateHomeSweetHome(required);
         Assert.False(achievements.Store.IsQualified(AchievementIds.HomeSweetHome));
 
-        achievements.RecordEnvironmentCategory(required[^1]);
-        achievements.EvaluateHomeSweetHome(required);
+        achievements.RecordEnvironmentCategory(categories[^1]);
         Assert.True(achievements.Store.IsQualified(AchievementIds.HomeSweetHome));
     }
 }
