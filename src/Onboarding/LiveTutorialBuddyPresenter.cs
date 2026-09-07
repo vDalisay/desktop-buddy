@@ -13,16 +13,17 @@ using Godot;
 namespace DesktopBuddy.Onboarding;
 
 /// <summary>
-/// Presentation-only live Buddy guide for the first-session tutorial. It uses the same
-/// physics-free <see cref="BuddyPreviewSurface"/> as Work, Character Editor and Workshop capture,
-/// owns one stable authored guide appearance plus its own blink/look/mouth state, and never shares
-/// gameplay bodies, reactions, autonomy or clocks with the live Buddy.
+/// Presentation-only live Buddy guide for the first-session tutorial. Main and Work helper hosts
+/// use the same physics-free portrait implementation. Each portrait owns one stable authored guide
+/// appearance plus independent blink/look/mouth state and never shares gameplay bodies, reactions,
+/// autonomy or clocks with the live Buddy.
 /// </summary>
 public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPresenter
 {
     private readonly FirstSessionGuidanceController _owner;
     private readonly SandboxRoot _sandbox;
     private TutorialBuddyPortraitCard? _card;
+    private TutorialBuddyPortraitCard? _workCard;
 
     public LiveTutorialBuddyPresenter(FirstSessionGuidanceController owner, SandboxRoot sandbox)
     {
@@ -39,19 +40,39 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             return;
         }
 
-        if (!GodotObject.IsInstanceValid(_card))
-        {
-            _card = new TutorialBuddyPortraitCard(_sandbox)
-            {
-                Name = "LiveTutorialBuddy",
-                MouseFilter = Control.MouseFilterEnum.Ignore,
-            };
-            _card.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-            _owner.GuideSlot.AddChild(_card);
-        }
+        // Historical node name retained so the long-standing tutorial closure oracle keeps
+        // locating the guide. The node is now the live 3D portrait, not optional PNG art.
+        TutorialBuddyPortraitCard card = EnsureCard(
+            ref _card,
+            _owner.GuideSlot,
+            "DemoTutorialBuddy");
+        card.SetStep(stepId);
+        card.Visible = true;
+        if (GodotObject.IsInstanceValid(_workCard))
+            _workCard!.Visible = false;
+    }
 
-        _card!.SetStep(stepId);
-        _card.Visible = true;
+    public void PresentWork(Control host, string stepId)
+    {
+        if (!GodotObject.IsInstanceValid(host))
+            return;
+        TutorialBuddyPortraitCard card = EnsureCard(
+            ref _workCard,
+            host,
+            "LiveTutorialBuddyWork");
+        card.SetStep(stepId);
+        card.Visible = true;
+        if (GodotObject.IsInstanceValid(_card))
+            _card!.Visible = false;
+    }
+
+    public void DismissWork()
+    {
+        if (GodotObject.IsInstanceValid(_workCard))
+        {
+            _workCard!.SetSpeaking(false);
+            _workCard.Visible = false;
+        }
     }
 
     public void Dismiss()
@@ -61,12 +82,40 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             _card!.SetSpeaking(false);
             _card.Visible = false;
         }
+        DismissWork();
     }
 
     public void SetSpeaking(bool speaking)
     {
-        if (GodotObject.IsInstanceValid(_card))
-            _card!.SetSpeaking(speaking);
+        if (GodotObject.IsInstanceValid(_card) && _card!.IsVisibleInTree())
+            _card.SetSpeaking(speaking);
+        if (GodotObject.IsInstanceValid(_workCard) && _workCard!.IsVisibleInTree())
+            _workCard.SetSpeaking(speaking);
+    }
+
+    private TutorialBuddyPortraitCard EnsureCard(
+        ref TutorialBuddyPortraitCard? card,
+        Control host,
+        string name)
+    {
+        if (GodotObject.IsInstanceValid(card))
+        {
+            if (card!.GetParent() != host)
+            {
+                card.GetParent()?.RemoveChild(card);
+                host.AddChild(card);
+            }
+            return card;
+        }
+
+        card = new TutorialBuddyPortraitCard(_sandbox)
+        {
+            Name = name,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        card.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        host.AddChild(card);
+        return card;
     }
 
     private enum TutorialPortraitMood
@@ -125,7 +174,6 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
 
         public override void _Process(double delta)
         {
-            // The card and its SubViewport both stop doing work when the tutorial guide is hidden.
             if (!_ready || !Visible || !IsVisibleInTree())
                 return;
 
@@ -154,8 +202,6 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
             if (oldBlink != _blink.EyesClosed || mouthBoundary || lookBoundary)
                 RefreshFace();
 
-            // Small deterministic head/bob motion makes the portrait feel alive without any
-            // gameplay RNG or autonomy. The rest anatomy remains the trusted static preview pose.
             ApplyIdlePose();
         }
 
@@ -230,9 +276,7 @@ public sealed partial class LiveTutorialBuddyPresenter : ITutorialCharacterPrese
                 visibilityOwner: _portraitContainer);
             _portraitContainer.AddChild(_preview);
 
-            // The guide is intentionally a stable authored character, not a mirror of whichever
-            // player Buddy happens to be active. BuiltInCharacterAppearance is the trusted
-            // data-driven baseline and can later be swapped for another authored appearance here.
+            // Stable authored guide, not a mirror of whichever player Buddy is active.
             _preview.Rig.ApplyAppearance(BuiltInCharacterAppearance.Value);
             _preview.Rig.ApplyRestPose();
 
