@@ -88,7 +88,12 @@ public partial class WorkshopBootstrap : Node
         }
 
         _achievements = new AchievementBootstrap { Name = nameof(AchievementBootstrap) };
-        _achievements.Configure(_sandbox, _selection, _characters, _steamBridge);
+        _achievements.Configure(
+            _sandbox,
+            _selection,
+            _characters,
+            _environment as IEnvironmentCustomizationEvents,
+            _steamBridge);
         AddChild(_achievements);
     }
 
