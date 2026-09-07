@@ -84,7 +84,7 @@ func initialize(app_id: int) -> Dictionary:
     if not _connect_required_signal("item_updated", Callable(self, "_on_item_updated")):
         return _fail("GodotSteam is missing the item_updated signal.")
     if not _connect_required_signal("ugc_query_completed", Callable(self, "_on_ugc_query_completed")):
-        return _fail("GodotSteam is missing the ugc_query_completed signal.")
+        return _fail("GodotSteam is missing the UGC query completion signal.")
 
     # GodotSteam exposes DownloadItemResult_t as item_downloaded. Keep one compatibility alias
     # for older builds that exposed the SDK callback name instead.
@@ -192,7 +192,7 @@ func create_item(app_id: int) -> bool:
 func start_item_update(app_id: int, file_id: int) -> int:
     if not is_available() or app_id != _workshop_app_id or file_id <= 0:
         return INVALID_UGC_UPDATE_HANDLE
-    return int(_steam.call("startItemUpdate", app_id, WORKSHOP_FILE_TYPE_COMMUNITY)) if false else int(_steam.call("startItemUpdate", app_id, file_id))
+    return int(_steam.call("startItemUpdate", app_id, file_id))
 
 func set_item_title(update_handle: int, title: String) -> bool:
     return _call_bool("setItemTitle", [update_handle, title])
