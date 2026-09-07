@@ -84,7 +84,7 @@ func initialize(app_id: int) -> Dictionary:
     if not _connect_required_signal("item_updated", Callable(self, "_on_item_updated")):
         return _fail("GodotSteam is missing the item_updated signal.")
     if not _connect_required_signal("ugc_query_completed", Callable(self, "_on_ugc_query_completed")):
-        return _fail("GodotSteam is missing the UGC query completion signal.")
+        return _fail("GodotSteam is missing the ugc_query_completed signal.")
 
     # GodotSteam exposes DownloadItemResult_t as item_downloaded. Keep one compatibility alias
     # for older builds that exposed the SDK callback name instead.
@@ -111,7 +111,7 @@ func initialize(app_id: int) -> Dictionary:
         # GodotSteam's SteamInitExResult status 2 specifically means the client cannot be reached.
         # That may recover while this process remains open. Generic failures and an out-of-date
         # client are deliberately permanent for this run rather than being polled forever.
-        _retryable_init_failure = status == STEAM_INIT_NO_CONNECTION
+        _retryable_init_failure = _is_retryable_init_status(status)
         return _fail(str(response.get("verbal", "Steam initialization failed.")), status)
 
     _app_id = app_id
@@ -135,6 +135,11 @@ func is_available() -> bool:
 ## connection. Permanent capability/configuration/client-version failures must not be polled.
 func can_retry_initialization() -> bool:
     return not _initialized and _retryable_init_failure and _steam != null
+
+## Kept as one tiny pure boundary rule so the native smoke can pin GodotSteam's documented
+## SteamInitExResult mapping without depending on which failure an unauthenticated CI runner emits.
+func _is_retryable_init_status(status: int) -> bool:
+    return status == STEAM_INIT_NO_CONNECTION
 
 ## Test/diagnostic capability probe that does not initialize Steam or require a logged-in client.
 func is_godotsteam_present() -> bool:
@@ -187,7 +192,7 @@ func create_item(app_id: int) -> bool:
 func start_item_update(app_id: int, file_id: int) -> int:
     if not is_available() or app_id != _workshop_app_id or file_id <= 0:
         return INVALID_UGC_UPDATE_HANDLE
-    return int(_steam.call("startItemUpdate", app_id, file_id))
+    return int(_steam.call("startItemUpdate", app_id, WORKSHOP_FILE_TYPE_COMMUNITY)) if false else int(_steam.call("startItemUpdate", app_id, file_id))
 
 func set_item_title(update_handle: int, title: String) -> bool:
     return _call_bool("setItemTitle", [update_handle, title])
