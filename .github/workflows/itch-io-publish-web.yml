@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: "Branch whose latest successful itch.io public build should be published"
+        description: "Branch whose latest itch.io public build should be published"
         required: true
         default: "main"
         type: string
       run_id:
-        description: "Optional exact itch.io public build run ID; leave blank to use the latest successful run on source_branch"
+        description: "Optional exact itch.io public build run ID; leave blank to use the latest run on source_branch"
         required: false
         type: string
       version:
@@ -41,17 +41,27 @@ jobs:
 
           RUN_ID="${REQUESTED_RUN_ID:-}"
           if [ -z "$RUN_ID" ]; then
-            RUN_ID="$(gh api --method GET \
+            # Do not silently fall back to an older successful artifact when the newest build is
+            # still running or has failed. Publishing "latest successful" in that state can put an
+            # old binary on itch.io while the operator believes the current branch was deployed.
+            LATEST_JSON="$(gh api --method GET \
               "repos/$GITHUB_REPOSITORY/actions/workflows/itch-io-build.yml/runs" \
               -f branch="$SOURCE_BRANCH" \
-              -f status=success \
-              -f per_page=20 \
-              --jq '.workflow_runs[0].id // empty')"
-          fi
+              -f per_page=1)"
+            RUN_ID="$(jq -r '.workflow_runs[0].id // empty' <<<"$LATEST_JSON")"
+            LATEST_STATUS="$(jq -r '.workflow_runs[0].status // empty' <<<"$LATEST_JSON")"
+            LATEST_CONCLUSION="$(jq -r '.workflow_runs[0].conclusion // empty' <<<"$LATEST_JSON")"
 
-          if [ -z "$RUN_ID" ]; then
-            echo "No successful itch.io public build found for branch '$SOURCE_BRANCH'." >&2
-            exit 1
+            if [ -z "$RUN_ID" ]; then
+              echo "No itch.io public build found for branch '$SOURCE_BRANCH'." >&2
+              exit 1
+            fi
+            if [ "$LATEST_STATUS" != "completed" ] || [ "$LATEST_CONCLUSION" != "success" ]; then
+              echo "Latest itch.io public build on '$SOURCE_BRANCH' is not publishable " \
+                   "(run=$RUN_ID status=$LATEST_STATUS conclusion=$LATEST_CONCLUSION)." >&2
+              echo "Wait for the current build to pass, or provide an exact run_id intentionally." >&2
+              exit 1
+            fi
           fi
 
           RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
@@ -115,6 +125,33 @@ jobs:
           unzip -q "$RUNNER_TEMP/butler.zip" -d "$BUTLER_DIR"
           chmod +x "$BUTLER_DIR/butler"
           echo "$BUTLER_DIR" >> "$GITHUB_PATH"
+          "$BUTLER_DIR/butler" version
+
+      - name: Preview Butler upload
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCHIO_WEB_TARGET: ${{ vars.ITCHIO_WEB_TARGET }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${BUTLER_API_KEY:-}" ]; then
+            echo "Missing repository secret BUTLER_API_KEY." >&2
+            exit 1
+          fi
+          if [ -z "${ITCHIO_WEB_TARGET:-}" ]; then
+            echo "Missing repository variable ITCHIO_WEB_TARGET." >&2
+            exit 1
+          fi
+          if [ "$ITCHIO_WEB_TARGET" != "vvoiddev/desktop-buddy:html5-demo" ]; then
+            echo "Refusing to publish: ITCHIO_WEB_TARGET is '$ITCHIO_WEB_TARGET', expected " \
+                 "'vvoiddev/desktop-buddy:html5-demo'." >&2
+            exit 1
+          fi
+
+          # Authenticate, resolve the exact project/channel and calculate the delta without
+          # creating or updating an itch.io build. The real push only runs if this succeeds.
+          butler push-preview --changes-only build/itch-web "$ITCHIO_WEB_TARGET"
 
       - name: Publish hardened Web build to itch.io
         shell: bash
@@ -125,15 +162,6 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.head_sha }}
         run: |
           set -euo pipefail
-
-          if [ -z "${BUTLER_API_KEY:-}" ]; then
-            echo "Missing repository secret BUTLER_API_KEY." >&2
-            exit 1
-          fi
-          if [ -z "${ITCHIO_WEB_TARGET:-}" ]; then
-            echo "Missing repository variable ITCHIO_WEB_TARGET (expected format: username/game:html5-demo)." >&2
-            exit 1
-          fi
 
           VERSION="${REQUESTED_VERSION:-}"
           if [ -z "$VERSION" ]; then
