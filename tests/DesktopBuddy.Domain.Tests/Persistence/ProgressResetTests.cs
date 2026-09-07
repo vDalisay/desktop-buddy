@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using DesktopBuddy.Achievements;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Autonomy;
