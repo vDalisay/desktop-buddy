@@ -160,3 +160,51 @@ The final mouse-tracking head must pass those same automated checks before merge
    - main tutorial and Work helper behavior;
    - long tutorial lines at supported UI scales.
 3. Only tune presentation constants/copy after that review; do not introduce another text, audio or preview architecture.
+
+## Post-implementation audit fixes — 2026-09-07
+
+A code-verified audit of the implemented branch found five issues; all are fixed here. Domain tests
+1540/1540, and `expressive_presentation`, `tutorial_closure`, `reward_popup_demo` and
+`shop_panel_purchase` all pass locally.
+
+1. **Tutorial copy was duplicated and had already drifted.** `TutorialExpressiveCopy` and
+   `FirstSessionGuidanceController.TextFor` each held their own copy of ~28 lines, and
+   `UsePaintedBuddy` had diverged ("Click on **the** 'Use Character'" versus "Click on 'Use
+   Character'"). The authored semantic copy is now the single source: `TextFor` returns the
+   tag-stripped projection via `TutorialExpressiveCopy.PlainTextFor`, and only the three genuinely
+   conditional lines (`CreateBuddy`, `SelectPaintColor`, `ExitBuddyStudio`) remain in the
+   controller's own switch. This deletes ~135 lines and makes the drift structurally impossible.
+   The one behavioural change is that `UsePaintedBuddy` now reads grammatically.
+
+2. **Per-frame prose rebuilding.** `SyncExpressiveTutorialPresentation` formatted the full semantic
+   line, the identity strings and the Drop Tool binding on every frame of the tutorial purely to
+   discover that `Present` would no-op — against the plan's "no per-frame allocation proportional to
+   full text length". A cheap `cueKey` comparison now gates the rebuild.
+
+3. **The legacy `_lastRenderedText` guard was neutralized rather than removed.** It was kept alive
+   and defeated each frame by writing the expected value into it ahead of the controller, which cost
+   a second full `TextFor` build per frame for a branch that could never fire. The branch and the
+   field are deleted; semantic step+variant identity is now the only refresh authority.
+
+4. **WordArt had no fit rules.** `ApplyWordArtPreset` used the preset font size unconditionally, so
+   generated milestone titles overflowed the plate (`"1,000,000 keystrokes all time"` measures 265px
+   against a 260px plate at size 19) and, with `ClipContents = false`, spilled onto the money line.
+   `FitWordArtFontSize` now measures and steps down to a legibility floor of 12, with the plate
+   reserving height for a wrapped second line. Because fonts scale through `Px()` while dialog
+   widths do not — the convention every `Win98Dialog` caller follows — measuring the scaled string
+   against the unscaled plate also keeps the fit correct at 125–200% UI scale.
+
+5. **Motion policy was latched at Present time.** Toggling Reduced Motion mid-line left `[wave]`
+   running until the step changed, because `Present` early-returns on matching identity and source.
+   Motion is now part of the cue key, so the line re-presents statically at once.
+
+Also added: `expressive_authored_copy_projects_to_clean_prose`, which walks every authored line and
+fails if the plain projection still contains brackets — the check that would have caught issue 1.
+
+Not changed, and deliberately: `PanelSize` and the other `Win98Dialog` sizes stay unscaled while
+fonts scale. That mismatch is pre-existing and project-wide; fixing it belongs in its own pass, and
+the WordArt fit above compensates for it locally.
+
+Still open from "Remaining validation/polish": the windowed visual review, and one cosmetic note —
+`ApplyWin98TextStyle` sets `line_separation` to `Px(1)` while `Label` defaults to 3, so tutorial
+text renders about 9px tighter over four lines than the rest of the shell. Left as an owner call.

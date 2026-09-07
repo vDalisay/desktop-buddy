@@ -55,7 +55,12 @@ public partial class RewardPopup : CanvasLayer
     private static readonly Vector2 PanelSize = new(304, 280);
     private const int HaloHeight = 142;
     private const int MoneyLineHeight = 42;
-    private const int WordArtHeight = 52;
+    /// <summary>Tall enough for two floor-sized lines, so a wrapped title never spills.</summary>
+    private const int WordArtHeight = 62;
+    /// <summary>Below this the title stops shrinking and wraps instead.</summary>
+    private const int MinimumWordArtFontSize = 12;
+    /// <summary>Room for the outline and the offset depth layers on each side of the plate.</summary>
+    private const float WordArtSideAllowance = 22.0f;
 
     private readonly Queue<Request> _queue = new();
     private readonly LocalSettingsSave _fallbackSettings = new();
@@ -373,16 +378,51 @@ public partial class RewardPopup : CanvasLayer
     private void ApplyWordArtPreset(string title)
     {
         string escaped = EscapeBbCode(title);
+        int fontSize = FitWordArtFontSize(title);
         for (int index = 0; index < _wordArtLayers.Length; index++)
         {
             RichTextLabel layer = _wordArtLayers[index];
             bool front = index == _wordArtLayers.Length - 1;
-            layer.AddThemeFontSizeOverride("normal_font_size", Win98ThemeFactory.Px(_wordArtPreset.FontSize));
+            layer.AddThemeFontSizeOverride("normal_font_size", Win98ThemeFactory.Px(fontSize));
             layer.AddThemeColorOverride("default_color", front ? _wordArtPreset.Fill : _wordArtPreset.Extrusion);
             layer.AddThemeColorOverride("font_outline_color", _wordArtPreset.Outline);
             layer.AddThemeConstantOverride("outline_size", front ? Win98ThemeFactory.Px(2) : Win98ThemeFactory.Px(1));
             layer.Text = $"[center]{escaped}[/center]";
         }
+    }
+
+    /// <summary>
+    /// Shrinks the title until one line fits the plate, down to a legibility floor. Milestone
+    /// titles are generated rather than authored — "1,000,000 keystrokes all time" is a real one —
+    /// so a preset's font size is a ceiling, not a promise. Below the floor the title wraps
+    /// instead of shrinking further, which is what the plate's second line of height is for.
+    ///
+    /// <para>Sizes measure through <see cref="Win98ThemeFactory.Px"/> while the dialog's own width
+    /// does not scale — the convention every Win98Dialog caller follows — so a title that fits at
+    /// 100% can overflow at 200%. Measuring the scaled string against the unscaled plate is what
+    /// keeps the fit honest at every UI scale.</para>
+    /// </summary>
+    private int FitWordArtFontSize(string title)
+    {
+        if (string.IsNullOrEmpty(title))
+            return _wordArtPreset.FontSize;
+
+        // The outline grows outward from the glyphs and the depth layers are offset diagonally,
+        // so the usable width is narrower than the plate itself.
+        float available = PanelSize.X - (WordArtSideAllowance * 2);
+        Font font = ThemeDB.FallbackFont;
+        for (int size = _wordArtPreset.FontSize; size > MinimumWordArtFontSize; size--)
+        {
+            float width = font.GetStringSize(
+                title,
+                HorizontalAlignment.Center,
+                width: -1,
+                fontSize: Win98ThemeFactory.Px(size)).X;
+            if (width <= available)
+                return size;
+        }
+
+        return MinimumWordArtFontSize;
     }
 
     private void UpdateWordArtMotion(bool animate)

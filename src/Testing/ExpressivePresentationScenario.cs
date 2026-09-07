@@ -46,10 +46,7 @@ public sealed class ExpressivePresentationScenario : IScenario
             new LocalSettingsSave(),
             "Ctrl+K");
         string rebound = LocalSettingsInputBindings.DropTool(reboundSettings);
-        string dropSemantic = TutorialExpressiveCopy.Format(
-            TutorialStepIds.UnequipTool,
-            plainText: string.Empty,
-            dropToolBinding: rebound);
+        TutorialExpressiveCopy.TryFormat(TutorialStepIds.UnequipTool, rebound, out string dropSemantic);
         IReadOnlyList<ExpressiveTextRun> dropRuns = ExpressiveSemanticMarkup.Parse(dropSemantic);
         string dropPlainText = ExpressiveSemanticMarkup.PlainText(dropRuns);
         checks.Add(new StartupCheck(
@@ -57,6 +54,23 @@ public sealed class ExpressivePresentationScenario : IScenario
             dropPlainText.Contains($"press {rebound} to drop it", StringComparison.Ordinal) &&
             !dropPlainText.Contains("press D to drop it", StringComparison.Ordinal),
             dropPlainText));
+
+        // Authored copy is the single source of the plain prompt, so every semantic line must
+        // still parse back to readable prose with no markup left in it. This is what stops a
+        // stray or misspelled tag from shipping as literal text in a tutorial instruction.
+        var markupLeaks = new List<string>();
+        foreach (string stepId in TutorialStepIds.Ordered)
+        {
+            if (!TutorialExpressiveCopy.TryFormat(stepId, "D", out string semantic))
+                continue;
+            string plain = ExpressiveSemanticMarkup.PlainText(ExpressiveSemanticMarkup.Parse(semantic));
+            if (plain.Contains('[') || plain.Contains(']') || plain.Length == 0)
+                markupLeaks.Add(stepId);
+        }
+        checks.Add(new StartupCheck(
+            "expressive_authored_copy_projects_to_clean_prose",
+            markupLeaks.Count == 0,
+            markupLeaks.Count == 0 ? "all authored lines clean" : string.Join(",", markupLeaks)));
 
         // The reusable presenter owns first-click behavior. Completing a reveal changes only the
         // presenter; there is deliberately no tutorial-state callback on this path.

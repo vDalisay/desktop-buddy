@@ -7,12 +7,31 @@ namespace DesktopBuddy.Onboarding;
 /// <summary>
 /// English authored tutorial copy for the lines that intentionally use semantic emphasis. The
 /// semantic tags describe meaning rather than effects; the RichText presenter owns the visual
-/// mapping. Untouched/conditional lines fall back to TextFor so there is no second progression or
-/// variant system hiding here.
+/// mapping. Conditional lines are not authored here and stay in the controller's own switch, so
+/// there is no second progression or variant system hiding here.
+///
+/// <para>This is the single source of truth for every line it names: the controller's plain text
+/// is the tag-stripped projection of these same strings rather than a second hand-maintained
+/// copy. Two tables of the same prose drift silently — one already had before they were merged.</para>
 /// </summary>
 internal static class TutorialExpressiveCopy
 {
-    public static string Format(string stepId, string? plainText, string dropToolBinding) => stepId switch
+    /// <summary>
+    /// True when this step has authored emphasis. Steps that return false are owned entirely by
+    /// the controller's conditional copy.
+    /// </summary>
+    public static bool TryFormat(string stepId, string dropToolBinding, out string semantic)
+    {
+        semantic = Format(stepId, dropToolBinding);
+        return semantic.Length > 0;
+    }
+
+    /// <summary>Player-readable text for an authored line, with the semantic tags removed.</summary>
+    public static string PlainTextFor(string stepId, string dropToolBinding) =>
+        ExpressiveSemanticMarkup.PlainText(
+            ExpressiveSemanticMarkup.Parse(Format(stepId, dropToolBinding)));
+
+    private static string Format(string stepId, string dropToolBinding) => stepId switch
     {
         TutorialStepIds.GrabBuddy =>
             "Hi! Let me introduce you to your buddy. Click and hold your [input]left mouse button[/input] on " +
@@ -91,7 +110,7 @@ internal static class TutorialExpressiveCopy
             "Well that was it, I hope you'll become the [playful]best of buds![/playful] If you ever need help, " +
             "click on the [input]'?'[/input] in the title bar and hover over anything on screen for context, " +
             "or restart the tutorial from the settings screen. [playful]Have fun with your Buddy![/playful]",
-        _ => plainText ?? string.Empty,
+        _ => string.Empty,
     };
 
     private static string DropToolLine(string binding)

@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.UI.Win98;
 using Godot;
 
 namespace DesktopBuddy.Onboarding;
@@ -16,6 +17,7 @@ public partial class FirstSessionGuidanceController
     private TutorialGuideView? _guideView;
     private Control? _workGuidePortraitHost;
     private string? _semanticPresentationIdentity;
+    private string? _presentedCueKey;
 
     private void InstallExpressiveTextBridge()
     {
@@ -34,8 +36,8 @@ public partial class FirstSessionGuidanceController
             {
                 Name = nameof(TutorialSemanticRefreshBridge),
                 ProcessMode = ProcessModeEnum.Always,
-                // Run before the controller's default priority so the old rendered-text guard is
-                // made inert before FirstSessionGuidanceController._Process evaluates it.
+                // Run before the controller's default priority so a variant change is noticed in
+                // the same frame the controller renders it, not one frame late.
                 ProcessPriority = -100,
             };
             AddChild(_semanticRefreshBridge);
@@ -53,11 +55,10 @@ public partial class FirstSessionGuidanceController
     }
 
     /// <summary>
-    /// Semantic step+variant identity is the refresh authority for conditional tutorial copy.
-    /// The controller still contains its pre-feature rendered-text guard, but this pass mirrors the
-    /// current source into that legacy field before the controller processes, so text equality can
-    /// no longer decide whether a variant re-renders. This also makes a live Drop Tool rebind a
-    /// semantic variant rather than depending on English source-string changes.
+    /// Semantic step+variant identity is the sole refresh authority for conditional tutorial copy;
+    /// the pre-feature rendered-text guard it replaced has been removed. Identity covers the live
+    /// Drop Tool binding, so a rebind re-renders the prompt without depending on English
+    /// source-string changes.
     /// </summary>
     internal void PrepareSemanticTutorialRefresh()
     {
@@ -74,9 +75,6 @@ public partial class FirstSessionGuidanceController
         }
 
         _semanticPresentationIdentity = identity;
-        // Neutralize the legacy text-equality refresh path. Step changes are still handled by the
-        // controller's step-id comparison; live variants are handled by identity above.
-        _lastRenderedText = stepId is null ? null : TextFor(stepId);
     }
 
     /// <summary>Publishes the current semantic guide cue into the active main/Work host.</summary>
@@ -93,6 +91,9 @@ public partial class FirstSessionGuidanceController
         if (_helpActive || stepId is null)
         {
             _guideView!.Hide();
+            // Hide only clears visibility, so the next Present must actually run rather than
+            // being short-circuited by a cue key left over from before the guide was hidden.
+            _presentedCueKey = null;
             if (GodotObject.IsInstanceValid(_dismiss))
                 _dismiss.Disabled = false;
             return;
@@ -108,32 +109,51 @@ public partial class FirstSessionGuidanceController
                               GodotObject.IsInstanceValid(_workGuideBody) &&
                               _workGuideWindow!.Visible;
 
+        // Presenting is idempotent, but formatting the line to discover that is not: this runs
+        // every frame for the whole tutorial. The cue key is the cheap comparison that decides
+        // whether the prose is worth rebuilding at all. Motion is part of the key because the
+        // animated/static tag choice is baked in when the line is presented.
+        string cueKey = string.Concat(
+            useWorkSurface ? "work:" : "main:",
+            _semanticPresentationIdentity,
+            Win98MotionPolicy.Allows(settings) ? ":motion" : ":still");
+        if (string.Equals(cueKey, _presentedCueKey, StringComparison.Ordinal))
+        {
+            UpdateDismissGate();
+            return;
+        }
+        _presentedCueKey = cueKey;
+
+        string semantic = TutorialExpressiveCopy.TryFormat(stepId, dropBinding, out string authored)
+            ? authored
+            : TextFor(stepId);
+
         if (useWorkSurface)
         {
-            string semantic = TutorialExpressiveCopy.Format(stepId, _workGuideBody!.Text, dropBinding);
             _guideView!.PresentWork(
-                _workGuideBody,
+                _workGuideBody!,
                 EnsureWorkGuidePortraitHost(),
-                $"work:{_semanticPresentationIdentity}",
+                cueKey,
                 stepId,
                 semantic,
                 settings);
         }
         else
         {
-            string semantic = TutorialExpressiveCopy.Format(stepId, _body.Text, dropBinding);
-            _guideView!.PresentMain(
-                _body,
-                $"main:{_semanticPresentationIdentity}",
-                semantic,
-                settings);
+            _guideView!.PresentMain(_body, cueKey, semantic, settings);
         }
 
-        // Continue/Goodbye must never turn the same click that finishes a line into progression.
-        if (GodotObject.IsInstanceValid(_dismiss) && _dismiss.Visible)
-            _dismiss.Disabled = _guideView!.MainIsRevealing;
-        else if (GodotObject.IsInstanceValid(_dismiss))
-            _dismiss.Disabled = false;
+        UpdateDismissGate();
+    }
+
+    /// <summary>
+    /// Continue/Goodbye must never turn the same click that finishes a line into progression.
+    /// </summary>
+    private void UpdateDismissGate()
+    {
+        if (!GodotObject.IsInstanceValid(_dismiss))
+            return;
+        _dismiss.Disabled = _dismiss.Visible && _guideView!.MainIsRevealing;
     }
 
     private string ResolveTutorialPresentationIdentity(string stepId)
