@@ -27,12 +27,15 @@ public sealed class ExpressivePresentationScenario : IScenario
         var messages = new List<string> { $"seed={seed}" };
 
         Vector2 portraitCenter = new(500, 400);
+        // Half-extent is the display half-size at runtime; the contract is the same shape at any
+        // screen size, so the check pins direction and clamping rather than a pixel window.
+        Vector2 halfExtent = new(220, 180);
         Vector2 lookRight = LiveTutorialBuddyPresenter.ResolvePointerLook(
-            new Vector2(720, 400), portraitCenter);
+            new Vector2(720, 400), portraitCenter, halfExtent);
         Vector2 lookUp = LiveTutorialBuddyPresenter.ResolvePointerLook(
-            new Vector2(500, 220), portraitCenter);
+            new Vector2(500, 220), portraitCenter, halfExtent);
         Vector2 lookFarDiagonal = LiveTutorialBuddyPresenter.ResolvePointerLook(
-            new Vector2(5000, 5000), portraitCenter);
+            new Vector2(5000, 5000), portraitCenter, halfExtent);
         checks.Add(new StartupCheck(
             "expressive_tutorial_pointer_look_is_directional_and_clamped",
             lookRight.X > 0.95f && Math.Abs(lookRight.Y) < 0.001f &&

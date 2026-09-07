@@ -208,3 +208,60 @@ the WordArt fit above compensates for it locally.
 Still open from "Remaining validation/polish": the windowed visual review, and one cosmetic note —
 `ApplyWin98TextStyle` sets `line_separation` to `Px(1)` while `Label` defaults to 3, so tutorial
 text renders about 9px tighter over four lines than the rest of the shell. Left as an owner call.
+
+## Windowed visual review fixes — 2026-09-07
+
+The "Remaining validation/polish" windowed review was run by the owner. Five defects it found, all
+fixed. Domain 1540/1540; `expressive_presentation`, `tutorial_closure`,
+`character_paint_save_use_restart`, `reward_popup_demo`, `shop_panel_purchase`,
+`work_mode_resilience` and `work_play_window_behavior` pass.
+
+1. **Portrait framed the legs instead of the head.** `BuildPortrait` computed the right focus point
+   and then passed the 2D (Y-down) Y straight into the preview camera, which is Y-up — mirroring the
+   focus through the torso. Head rest is `(0,-50)`, torso `(0,0)`, feet `(±22,55)`, so the focus
+   `(0,-34)` put the camera at 3D Y **-34** framing -93..+25: head above the frame, feet filling it.
+   Routed through `WorldPlaneMapping.To3D` as every other boundary crossing in that file already is.
+
+2. **Portrait was too wide.** Camera size is now `headRadius * 2.9` with the focus biased 10% toward
+   the torso, derived from the rig's own head radius rather than a literal, so a rig change carries
+   the crop with it. `PortraitHeadFillFactor` is the single dial.
+
+3. **Cursor tracking was bespoke and did not match the live Buddy.** The portrait now drives the same
+   `LookAtModel` gameplay uses for the cursor gaze — same cone, easing and quantized pupils — and
+   applies it as `Vector3(pitch, yaw, roll)` on the head socket exactly like `BuddyVisualPresenter`.
+   The lateral head lean, the cursor-driven roll and the input pre-smoothing are gone; the model owns
+   the easing. Two deliberate differences: the guide is always engaged (gameplay engages only within
+   `EngagementRange` of the head) and the sweep normalizes against the display, so the cone limit is
+   reached at the screen edge. The pure model is reused, never `HeadLookAtComponent`, which samples
+   damage, care, activities and reactions and would give the portrait gameplay authority.
+
+4. **Paint → Save could not be completed.** The gate required the **torso** revision to advance, so a
+   player who painted the head, a hand or a foot satisfied "Paint away!" but never the step, and with
+   the save already applied nothing could re-trigger it. Now any surface counts
+   (`HasPaintedAnySurface`), and a revision total *below* the recorded baseline rebaselines rather
+   than deadlocking — switching characters mid-step swaps in fresh surfaces whose revisions restart.
+   `character_paint_save_use_restart` never caught this because it paints the torso.
+
+5. **The farewell portrait pulled an open-mouthed "oh" face.** `Farewell` mapped to the `Pleased`
+   mood, whose mouth is `OpenSmile`. It now uses `Friendly`, the closed smile the guide wears
+   throughout. Note the literal `:3` pose is `(HappyArc, None, CatSmile)` and has **no pupils**, so it
+   would end the tutorial with the gaze tracking dead — the same reason the code already avoids `^_^`.
+
+Two further owner requests in the same pass:
+
+- **The Work drag lesson completed mid-drag.** It advanced on the first moved pixel; it now waits for
+  the release, via a new `WorkCompanionView.IsDragging`, matching the let-go rule the grab and paint
+  steps already follow. Polled rather than bound to `DragFinished`, because the companion is destroyed
+  and rebuilt on every Work entry and a polled check cannot go stale across that.
+- **The tutorial click lock blocked window resizing.** The Win98 corner grips answer through
+  `GuiInput`, which runs after this node's `_Input`, so `SetInputAsHandled` ate the press. Resize input
+  now bypasses the lock, above the Help-mode branch as well. `Win98BuddyShellController.IsResizingWindow`
+  exists because a rect test alone would swallow the *release* once the pointer left the grip.
+
+Known and deliberately not changed, pending an owner call:
+
+- the title-bar window *move* is still blocked while a step spotlights something;
+- `ResizeWorkCompanion` still completes on the first pixel of size change rather than on release;
+- `[WARN] [Onboarding] Tutorial step 'demo.onboarding.paint_buddy' found no 'Win98PaintViewportFrame'`
+  appears at runtime, so that step draws no spotlight ring. The node exists
+  (`CharacterEditorHost.Win98PaintLayout.cs:238`), so this is a lookup/timing issue, not a rename.

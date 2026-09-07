@@ -214,7 +214,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _chargedBatSwingObserved;
     private bool _swingReleaseSignalBound;
     private bool _hasGrabbedBuddy;
-    private long? _torsoRevisionOrigin;
+    private long? _paintRevisionOrigin;
 
     /// <summary>Set when a colour step's palette is clicked; cleared as each step opens.</summary>
     private bool _paletteClicked;
@@ -238,6 +238,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private Rect2I _workDragOrigin;
     private Rect2I _workResizeOrigin;
     private WorkCompanionView? _workView;
+    private Control? _resizeGrips;
+    private Win98BuddyShellController? _shell;
     private bool? _workCounterOrigin;
 
     private string? _displayedStepId;
@@ -327,6 +329,13 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         if (input is not InputEventMouseButton mouse)
             return;
 
+        // Resizing the window is never part of a lesson and never something a lesson should take
+        // away: the player is stuck with whatever size they had when the prompt appeared
+        // otherwise (owner report 2026-09-07). This sits above Help mode as well, because Help is
+        // just as capable of trapping the window at an awkward size.
+        if (IsWindowResizeInput(mouse.Position))
+            return;
+
         // Help mode is observational: hovering is allowed, clicking underlying gameplay/UI is not.
         // The Help button itself remains clickable so the mode can always be closed.
         if (_helpActive)
@@ -389,6 +398,32 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         GetViewport().SetInputAsHandled();
     }
 
+    /// <summary>
+    /// True while the pointer is over one of the shell's corner resize grips, or while a resize
+    /// that started on one is still running. The grips answer through GuiInput, which runs after
+    /// this node's _Input, so swallowing the event here is what blocked them.
+    /// </summary>
+    private bool IsWindowResizeInput(Vector2 position)
+    {
+        if (GodotObject.IsInstanceValid(_shell) && _shell!.IsResizingWindow)
+            return true;
+
+        if (!GodotObject.IsInstanceValid(_resizeGrips))
+            _resizeGrips = GetTree().Root.FindChild("ResizeGrips", true, false) as Control;
+        if (!GodotObject.IsInstanceValid(_resizeGrips) || !_resizeGrips!.IsVisibleInTree())
+            return false;
+
+        foreach (Node child in _resizeGrips.GetChildren())
+        {
+            if (child is Control grip && grip.IsVisibleInTree() &&
+                grip.GetGlobalRect().HasPoint(position))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public override void _ExitTree()
     {
         // The gate outlives this node, so a teardown that forgot this would leave the palette
@@ -413,7 +448,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _wasGrabbing = false;
         _baseballBatActionObserved = false;
         _chargedBatSwingObserved = false;
-        _torsoRevisionOrigin = null;
+        _paintRevisionOrigin = null;
         _hasSeenWorkActive = false;
         _workCounterOrigin = null;
         RequestImmediateFlush();
@@ -448,6 +483,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 _workHelpLayer = null;
             }
         }
+        _shell ??= GetTree().Root.FindChild(nameof(Win98BuddyShellController), true, false)
+            as Win98BuddyShellController;
         _shop ??= GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel;
         _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
         _backgroundEditor ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) as EnvironmentBackgroundEditor;
@@ -580,7 +617,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 _paintUseRequested = false;
                 _hasCreateOrigin = false;
                 _characterListClicked = false;
-                _torsoRevisionOrigin = null;
+                _paintRevisionOrigin = null;
                 _paintColorOrigin = null;
                 _brushButtonPressed = false;
                 CompleteCurrent(step);
@@ -610,7 +647,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             // was still dragging the brush. Wait for the button.
             // Paint and save are one step. The let-go rule the paint half used to need is gone
             // with it: the save click is the gate now, so there is no way to advance mid-stroke.
-            case TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() && HasPaintedTorso() &&
+            case TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() && HasPaintedAnySurface() &&
                                                    _paintSaveRequested && !_editor!.Session.IsDirty:
                 _paintSaveRequested = false;
                 CompleteCurrent(step);
@@ -707,8 +744,13 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
+            // The same let-go rule the grab and paint steps follow. Completing on the first moved
+            // pixel spotlighted the next lesson while the player was still holding the companion,
+            // so the instruction "drag it wherever you want" was over before they had (owner
+            // report 2026-09-07). Waiting for the release lets them actually place it.
             case TutorialStepIds.DragWorkCompanion when IsWorkActive() &&
-                                                         _sandbox.Window.WorkCompanionRect.Position != _workDragOrigin.Position:
+                                                         _sandbox.Window.WorkCompanionRect.Position != _workDragOrigin.Position &&
+                                                         !(GodotObject.IsInstanceValid(_workView) && _workView!.IsDragging):
                 _workResizeOrigin = _sandbox.Window.WorkCompanionRect;
                 CompleteCurrent(step);
                 break;
@@ -777,19 +819,31 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// The torso surface bumps its revision on any accepted stroke, so the tutorial can require
     /// paint <em>on the torso</em> without cloning a megabyte of pixels every frame.
     /// </summary>
-    private bool HasPaintedTorso()
+    /// <summary>
+    /// True once the player has painted anything since this step opened. Deliberately every
+    /// surface, not the torso alone: the prompt says "Paint away!" and spotlights the whole
+    /// canvas, so a player who paints the head, a hand or a foot has done what was asked and
+    /// must not be stranded on the step forever (owner report 2026-09-07).
+    ///
+    /// <para>Switching characters mid-step swaps in fresh surfaces whose revisions restart, so a
+    /// total below the recorded baseline means "different buddy", not "un-painted". Rebaselining
+    /// on that drop keeps the step completable instead of permanently unsatisfiable.</para>
+    /// </summary>
+    private bool HasPaintedAnySurface()
     {
-        if (!IsPaintBuddyOpen() ||
-            !_editor!.PaintWorkspace.Surfaces.TryGetValue(PaintPart.Torso, out PaintSurface? torso))
+        if (!IsPaintBuddyOpen())
+            return false;
+
+        long total = 0;
+        foreach (PaintSurface surface in _editor!.PaintWorkspace.Surfaces.Values)
+            total += surface.Revision;
+
+        if (_paintRevisionOrigin is not long origin || total < origin)
         {
+            _paintRevisionOrigin = total;
             return false;
         }
-        if (_torsoRevisionOrigin is not long origin)
-        {
-            _torsoRevisionOrigin = torso.Revision;
-            return false;
-        }
-        return torso.Revision > origin;
+        return total > origin;
     }
 
     /// <summary>

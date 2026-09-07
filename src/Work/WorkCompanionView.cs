@@ -94,6 +94,13 @@ public partial class WorkCompanionView : CanvasLayer
     public event Action<Vector2I>? DraggedBy;
     public event Action? DragFinished;
 
+    /// <summary>
+    /// True while the player is actually dragging the companion, between crossing the drag
+    /// threshold and letting the button go. The tutorial reads this so its drag lesson completes
+    /// on release rather than on the first moved pixel.
+    /// </summary>
+    public bool IsDragging => _dragging;
+
     public bool ShowLifetime => _showLifetime;
     public bool AnimationsEnabled => _animationsEnabled;
 
