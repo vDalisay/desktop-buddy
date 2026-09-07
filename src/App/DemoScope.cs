@@ -35,17 +35,39 @@ public static class DemoScope
     internal static bool? ItchIoOverride { get; set; }
 
     /// <summary>
+    /// Local preview seam: a desktop run started with <c>--itch</c> adopts the reduced scope, so
+    /// the itch surface can be inspected without a Web export and the pinned fork it needs.
+    ///
+    /// <para>Deliberately one-way. This can only turn the reduction <em>on</em>; there is no flag
+    /// that turns it off, so no command line can widen what a shipped build offers. Read once —
+    /// autoloads consult <see cref="IsItchIo"/> during their own <c>_Ready</c>, which runs before
+    /// the main scene, so this cannot depend on anything that boots.</para>
+    /// </summary>
+    private static readonly bool ItchIoRequestedLocally =
+        Array.IndexOf(OS.GetCmdlineUserArgs(), "--itch") >= 0;
+
+    /// <summary>
     /// The itch build is intentionally the strictest public scope. If an export is accidentally
     /// tagged with both <c>itch_io</c> and <c>full_release</c>, itch wins so held-back features
     /// cannot leak into that distribution.
     /// </summary>
-    public static bool IsItchIo => ItchIoOverride ?? OS.HasFeature("itch_io");
+    public static bool IsItchIo =>
+        ItchIoOverride ?? (ItchIoRequestedLocally || OS.HasFeature("itch_io"));
 
     public static bool IsFullRelease =>
         !IsItchIo && (FullReleaseOverride ?? OS.HasFeature("full_release"));
 
-    /// <summary>Workshop ships only in Steam exports; editor runs keep it for development and verification.</summary>
-    public static bool IncludesWorkshop => OS.HasFeature("editor") || OS.HasFeature("steam");
+    /// <summary>
+    /// Workshop ships only in Steam exports; editor runs keep it for development and verification.
+    ///
+    /// <para>itch.io is excluded here rather than only by the <c>DESKTOP_BUDDY_PUBLIC_WEB</c>
+    /// compile guard around the composition. That guard covers the Web export alone, so an editor
+    /// run — and any future native itch build — still composed Workshop and showed its command
+    /// (owner report 2026-09-07). The scope answers it now, and the compile guard stays as the
+    /// second layer that keeps the code out of the public browser assembly entirely.</para>
+    /// </summary>
+    public static bool IncludesWorkshop =>
+        !IsItchIo && (OS.HasFeature("editor") || OS.HasFeature("steam"));
 
     /// <summary>False for catalogue entries this build holds back.</summary>
     public static bool Includes(string? contentId) =>

@@ -290,7 +290,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         EnsureWorkHelpSurface();
         AdvanceCurrentStep();
 
-        string? next = _tutorial.NextIncompleteStepId;
+        string? next = CurrentStepId;
         if (!string.Equals(next, _displayedStepId, StringComparison.Ordinal))
         {
             RefreshHint();
@@ -1238,9 +1238,30 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             CompleteCurrent(_displayedStepId!);
     }
 
+    /// <summary>
+    /// Whether the itch.io welcome dialog is still up. It is modal and lands on the same first
+    /// frame as Grab Buddy, so the two used to talk over each other (owner report 2026-09-07).
+    /// </summary>
+    private bool IsWelcomeDialogOpen() =>
+        GetTree().Root.FindChild("ItchWishlistWelcomeBlocker", true, false) is Control { Visible: true };
+
+    /// <summary>
+    /// The step the walkthrough should be showing right now, or null while it must stand down.
+    ///
+    /// <para>One thing to read at a time: the itch welcome dialog is modal and lands on the same
+    /// frame as Grab Buddy, so the walkthrough waits behind it and opens when it is dismissed
+    /// (owner report 2026-09-07). Reported as "no step" rather than as a hidden panel, so the
+    /// input gate and the spotlight stand down too and Continue stays clickable.</para>
+    ///
+    /// <para>Both the per-frame change check and the render read this, never the raw progress.
+    /// The dialog appears a frame or two after the first prompt, and a check that only the render
+    /// consulted would already have been latched by then and never re-run.</para>
+    /// </summary>
+    private string? CurrentStepId => IsWelcomeDialogOpen() ? null : _tutorial.NextIncompleteStepId;
+
     private void RefreshHint()
     {
-        string? stepId = _tutorial.NextIncompleteStepId;
+        string? stepId = CurrentStepId;
         // A click belongs to the step that was on screen when it happened; the next colour step
         // must not inherit it and complete itself the instant it opens.
         if (!string.Equals(stepId, _displayedStepId, StringComparison.Ordinal))
