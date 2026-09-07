@@ -8,26 +8,17 @@ namespace DesktopBuddy.Domain.Presentation;
 public readonly record struct ExpressiveTextRun(string Text, ExpressiveSemanticRole? Role);
 
 /// <summary>
-/// Parsed expressive copy. <see cref="PlainText"/> is the exact player-readable text with valid
-/// semantic markers removed; malformed/unknown markers remain literal so bad authoring can never
-/// make instructions disappear.
-/// </summary>
-public sealed record ExpressiveTextDocument(
-    string PlainText,
-    IReadOnlyList<ExpressiveTextRun> Runs);
-
-/// <summary>
 /// Tiny, deliberately non-general semantic markup parser. It recognizes only Desktop Buddy's
-/// approved emphasis tags and does not execute arbitrary BBCode. Tags may not nest; a malformed
-/// known tag is emitted literally as plain text instead of being partially interpreted.
+/// approved emphasis tags and returns semantic runs directly; there is no message/document/template
+/// pipeline. Tags may not nest, and malformed/unknown markers remain literal so bad authoring can
+/// never make tutorial instructions disappear or execute arbitrary BBCode.
 /// </summary>
 public static class ExpressiveSemanticMarkup
 {
-    public static ExpressiveTextDocument Parse(string? source)
+    public static IReadOnlyList<ExpressiveTextRun> Parse(string? source)
     {
         source ??= string.Empty;
         var runs = new List<ExpressiveTextRun>();
-        var plain = new StringBuilder(source.Length);
         int cursor = 0;
 
         while (cursor < source.Length)
@@ -35,17 +26,17 @@ public static class ExpressiveSemanticMarkup
             int open = source.IndexOf('[', cursor);
             if (open < 0)
             {
-                AddRun(runs, plain, source[cursor..], role: null);
+                AddRun(runs, source[cursor..], role: null);
                 break;
             }
 
             if (open > cursor)
-                AddRun(runs, plain, source[cursor..open], role: null);
+                AddRun(runs, source[cursor..open], role: null);
 
             int closeBracket = source.IndexOf(']', open + 1);
             if (closeBracket < 0)
             {
-                AddRun(runs, plain, source[open..], role: null);
+                AddRun(runs, source[open..], role: null);
                 break;
             }
 
@@ -53,9 +44,7 @@ public static class ExpressiveSemanticMarkup
             if (tag.StartsWith("/", StringComparison.Ordinal) ||
                 !ExpressiveSemanticTags.TryParse(tag, out ExpressiveSemanticRole role))
             {
-                // Unknown/stray closing marker: show it exactly as authored and continue looking
-                // for a later valid marker.
-                AddRun(runs, plain, source[open..(closeBracket + 1)], role: null);
+                AddRun(runs, source[open..(closeBracket + 1)], role: null);
                 cursor = closeBracket + 1;
                 continue;
             }
@@ -64,39 +53,44 @@ public static class ExpressiveSemanticMarkup
             int close = source.IndexOf(closingTag, closeBracket + 1, StringComparison.Ordinal);
             if (close < 0)
             {
-                // A recognized opening marker without its close is one authoring mistake. Keep
-                // the entire remainder literal rather than hiding the opening marker only.
-                AddRun(runs, plain, source[open..], role: null);
+                AddRun(runs, source[open..], role: null);
                 break;
             }
 
             string inner = source[(closeBracket + 1)..close];
             if (inner.IndexOf("[", StringComparison.Ordinal) >= 0)
             {
-                // Nested/general markup is outside this language. Preserve the whole construct.
                 int end = close + closingTag.Length;
-                AddRun(runs, plain, source[open..end], role: null);
+                AddRun(runs, source[open..end], role: null);
                 cursor = end;
                 continue;
             }
 
-            AddRun(runs, plain, inner, role);
+            AddRun(runs, inner, role);
             cursor = close + closingTag.Length;
         }
 
-        return new ExpressiveTextDocument(plain.ToString(), runs);
+        return runs;
+    }
+
+    /// <summary>Projects semantic runs back to exactly the player-readable text.</summary>
+    public static string PlainText(IReadOnlyList<ExpressiveTextRun> runs)
+    {
+        ArgumentNullException.ThrowIfNull(runs);
+        var plain = new StringBuilder();
+        foreach (ExpressiveTextRun run in runs)
+            plain.Append(run.Text);
+        return plain.ToString();
     }
 
     private static void AddRun(
         List<ExpressiveTextRun> runs,
-        StringBuilder plain,
         string text,
         ExpressiveSemanticRole? role)
     {
         if (text.Length == 0)
             return;
 
-        plain.Append(text);
         if (runs.Count > 0 && runs[^1].Role == role)
         {
             ExpressiveTextRun previous = runs[^1];
