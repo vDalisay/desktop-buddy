@@ -92,6 +92,19 @@ public sealed class AchievementBaselineTests
     }
 
     [Fact]
+    public void ResetTransientObservations_BreaksTheRubeGoldbergWindow()
+    {
+        var achievements = new AchievementCoordinator(new BuddyProgressState(CashPerPain));
+
+        achievements.RecordDamage(ContentIds.ToolPistol, 1.0f, 1, 10.0, null);
+        achievements.RecordDamage(ContentIds.ToolBaseball, 1.0f, 1, 11.0, null);
+        achievements.ResetTransientObservations();
+        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 12.0, null);
+
+        Assert.False(achievements.Store.IsQualified(AchievementIds.RubeGoldberg));
+    }
+
+    [Fact]
     public void DamageEvaluation_PreservesCharacterArcContext()
     {
         Guid character = Guid.Parse("11111111-1111-4111-8111-111111111111");
