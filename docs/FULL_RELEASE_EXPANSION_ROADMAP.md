@@ -1,11 +1,12 @@
 # Desktop Buddy — Full Release Expansion Roadmap
 
 Status: **Owner-approved direction; begins after the Steam demo ships**  
-Recorded: 2026-08-11
+Recorded: 2026-08-11  
+Updated: 2026-09-07 — multi-Buddy Scenes promoted to high-priority Full Release foundation
 
-This roadmap collects the currently approved post-demo expansion directions into one sequence. Detailed implementation plans remain authoritative for the systems that already have them, especially Potion Shop, Environment Customization and Buddy Studio.
+This roadmap collects the currently approved post-demo expansion directions into one sequence. Detailed implementation plans remain authoritative for the systems that already have them, especially `docs/FULL_RELEASE_MULTI_BUDDY_SCENES_SOURCE_ALIGNMENT_2026-09-07.md`, Potion Shop, Environment Customization, Buddy Studio, and the Full Release systemic-sandbox plans.
 
-The Steam demo is intentionally narrower: one room/profile, authored non-physical room items, the current Buddy Studio, Work Mode, Paint Buddy/Background, core tools, and data-only Workshop v1 sharing for room paintings and Buddy Studio configuration plus declared buddy paint. **Potion Shop temporary effects are now Full Release scope and must not be pulled back into the Steam Demo unless the owner explicitly reverses that decision.**
+The Steam demo is intentionally narrower: one room/profile, one live Buddy, authored non-physical room items, the current Buddy Studio, Work Mode, Paint Buddy/Background, core tools, and data-only Workshop v1 sharing for room paintings and Buddy Studio configuration plus declared buddy paint. **All multi-Buddy Scene work and the systemic-sandbox expansion are Full Release-only.** Potion Shop temporary effects are also Full Release scope and must not be pulled back into the Steam Demo unless the owner explicitly reverses that decision.
 
 ---
 
@@ -24,11 +25,83 @@ No arbitrary script/mod loader is introduced as a prerequisite for these feature
 
 ---
 
+## RELEASE-SCENE — multi-Buddy Scenes / RP foundation
+
+Reference: `docs/FULL_RELEASE_MULTI_BUDDY_SCENES_SOURCE_ALIGNMENT_2026-09-07.md`.
+
+This is promoted to a high-priority Full Release architecture foundation because later room, systemic-sandbox and contraption persistence should be Scene-owned from their first durable implementation rather than being built around one global room and migrated immediately afterwards.
+
+### RELEASE-SCENE0 — account/Buddy state separation
+
+Split the current single-Buddy persistent semantics so the player retains one shared account economy/tool inventory while each Buddy identity can retain its own mood, hunger/fullness, harmful memory, traits/preferences and fun/novelty state.
+
+The existing one-Buddy Demo behavior must remain bit-for-bit compatible through migration/facade seams.
+
+### RELEASE-SCENE1 — multiple live Buddy actors
+
+- productionize the existing two-`BuddyRoot` laboratory proof into normal Play Mode;
+- support several created Buddies in one active room;
+- each Buddy has its own appearance/paint binding, autonomy, recovery, reactions and Buddy-specific persistent state;
+- shared player tools/pointer/grab can target any Buddy;
+- no intentional Buddy-to-Buddy behavior or relationship system yet;
+- initial Buddy bodies continue not to collide with Buddy bodies, matching the existing collision-layer contract and keeping Buddy-to-Buddy interaction out of scope;
+- use **4 simultaneously active Buddies** as the first engineering/performance target, not yet a permanent product cap.
+
+### RELEASE-SCENE2 — Scene library and Win98 Scene tabs
+
+A Scene is a complete roleplay setup rather than merely a room profile:
+
+- named Scene;
+- painted background;
+- wallpaper/decorations;
+- Buddy roster and safe placement anchors;
+- later systemic-sandbox/contraption state.
+
+Provide Win98-styled fast switching, conceptually:
+
+```text
+[ Home ] [ Garage ] [ Lab ] [ + ]
+```
+
+Initial operations:
+
+- create;
+- rename;
+- duplicate;
+- delete;
+- switch;
+- add/remove/place Buddies.
+
+Only one Scene simulates at a time. Inactive Scenes are persisted and paused rather than hidden live physics worlds.
+
+### RELEASE-SCENE3 — deterministic Demo migration
+
+On first Full Release load:
+
+- convert the Demo's one environment into a default Scene;
+- convert the existing persistent Buddy into one Buddy identity/placement;
+- retain its selected Character appearance;
+- preserve wallet, unlocks, statistics, Work data and other account progress;
+- migrate the current painted background into the Scene-specific asset root atomically.
+
+### RELEASE-SCENE4 — switch/persistence/polish gate
+
+- safe placement-anchor persistence without serializing six-body ragdoll poses/velocities;
+- save/restart restores Scenes and rosters;
+- Work Mode uses one focused Buddy and suspends the rest of normal Play Mode;
+- character deletion/missing appearance references degrade safely;
+- character paint residency is explicitly budgeted for multiple active Buddies;
+- Scene switching is tested under resize/DPI/modal-editor and repeated-switch soak conditions.
+
+Buddy-to-Buddy conversations, relationships, coordinated activities, fighting, shared-object behavior and other social AI remain a later program.
+
+---
+
 ## RELEASE-POTION — Potion Shop / temporary buddy effects
 
 Reference: `docs/POTION_SHOP_CONCEPT.md`.
 
-Potion Shop is the first newly promoted Full Release feature after the Steam Demo ships/stabilizes. It provides temporary, highly visible buddy effects without mutating permanent Paint Buddy or Buddy Studio data.
+Potion Shop remains an early Full Release feature after the Steam demo ships/stabilizes. It provides temporary, highly visible buddy effects without mutating permanent Paint Buddy or Buddy Studio data.
 
 Start with a small polished initial set rather than a large catalogue. Candidate ideas include:
 
@@ -64,24 +137,26 @@ Exit gate:
 
 ---
 
-## RELEASE-ENV — Environment expansion
+## RELEASE-ENV — Scene environment expansion
 
-Existing approved Environment full-release scope remains:
+Environment expansion now builds on RELEASE-SCENE rather than introducing a separate competing room-profile system.
 
-### RELEASE-ENV1 — multiple local room profiles
+### RELEASE-ENV1 — Scene-owned environment editing
 
-- multiple named local rooms/environments;
-- create, rename, duplicate, delete and switch rooms;
-- active-room selection persists safely;
-- room assets remain isolated and atomic;
-- migration from the demo's single-room save is deterministic.
+- each Scene owns its own environment layout and painted background;
+- existing Environment Decorator/Paint Background target the active Scene;
+- Scene duplication duplicates the environment configuration and local painted-background asset safely;
+- environment assets remain isolated and atomic.
 
-### RELEASE-ENV2 — complete-room sharing through Steam
+### RELEASE-ENV2 — complete Scene/room sharing through Steam
 
-- safe versioned room package;
+Only after the local Scene format is stable:
+
+- safe versioned room/Scene package policy;
 - share wallpaper/background paint plus placed decoration configuration and compatible authored content references;
+- decide separately whether Buddy roster references belong in the first shared Scene package;
 - validate imported package paths, dimensions, IDs and size caps;
-- downloaded rooms receive safe local identities;
+- downloaded content receives safe local identities;
 - missing content uses non-destructive fallback behavior.
 
 ### RELEASE-ENV3 — authored buddy/furniture interactions
@@ -96,6 +171,34 @@ Examples include:
 - context-sensitive idle activities around room objects.
 
 These are project-authored capabilities, not arbitrary scripts embedded in room files. Furniture interactions must preserve ragdoll safety and provide deterministic escape/recovery when an item is moved/deleted while in use.
+
+---
+
+## RELEASE-SBX — systemic sandbox / construction
+
+References:
+
+- `docs/FULL_RELEASE_SYSTEMIC_SANDBOX_IMPLEMENTATION_PLAN.md`;
+- `docs/FULL_RELEASE_SYSTEMIC_SANDBOX_CODEBASE_AUDIT_2026-09-07.md`.
+
+The initial systemic-sandbox vertical slice follows the Scene foundation so all durable construction state is Scene-owned from day one.
+
+Initial slice remains intentionally smaller than the long-term MaD2/People Playground-inspired backlog:
+
+- Build/Edit mode;
+- select, move, rotate, freeze, duplicate, delete, Properties;
+- Beam, Block, Wheel;
+- Mass, Bounce, Gravity Scale, Frozen;
+- Shotgun Fire Rate, Spread, Knockback customization;
+- project-owned routed constraints: Weld, passive Hinge, Rope/World Anchor;
+- Button, Timer, Piston, Weapon Trigger;
+- Wood and Metal with basic durability;
+- one reliable Wood breakage path;
+- Buddy structural integrity before physical limb detachment;
+- Repair Kit + System Restore recovery;
+- Scene-local contraption persistence/local blueprints before Workshop sharing.
+
+Broader materials, logic gates, sensors, electricity, heat, physical limb detachment, advanced Room Physics, functional furniture, scene posing and Workshop contraptions follow after this slice proves the reusable system architecture.
 
 ---
 
@@ -226,16 +329,11 @@ Do not copy Microsoft's Clippy character, wording, animation, art or presentatio
 
 ## RELEASE-UGC — consolidated Steam sharing experience
 
-After safe local formats exist for rooms and custom cosmetics, unify the player-facing Steam sharing/install experience without creating an unrestricted mod loader.
+After safe local formats exist for Scenes/rooms and custom cosmetics, unify the player-facing Steam sharing/install experience without creating an unrestricted mod loader.
 
-Approved shareable units currently are:
-
-- complete room configurations;
-- player-created Buddy Studio cosmetics.
+Approved/considered shareable units must each pass their own owner gate and validator. Existing approved units remain room paintings and Buddy Studio configuration + declared paint. Full Scene packages, contraptions and customized-item presets are added only after their local declarative formats are stable and separately source-aligned.
 
 Each format keeps its own validator and schema. Shared content must be declarative, bounded and recoverable when unavailable.
-
-Potential full Workshop/custom-buddy packages remain a separate future policy gate rather than an automatic consequence of these two sharing systems.
 
 ---
 
@@ -245,9 +343,11 @@ After the expansion systems are real, run another deliberate polish phase rather
 
 Include:
 
+- multi-Buddy Scene performance, persistence and switching polish;
 - Potion Shop lifecycle/economy/VFX/SFX polish;
 - full Buddy Studio UX revamp verification;
-- large cosmetic/room library performance;
+- large cosmetic/Scene library performance;
+- systemic-sandbox/contraption performance and safety;
 - interactive accessory/furniture animation polish;
 - voice recording UX/audio polish;
 - tutorial helper timing/copy polish;
@@ -267,7 +367,7 @@ Unless promoted by a later owner decision:
 
 - unrestricted scripting/mod loader;
 - arbitrary user-authored meshes/shaders/scenes;
-- multiple simultaneous buddies;
+- Buddy-to-Buddy social AI/relationships/coordination;
 - multiplayer;
 - Linux/macOS ports;
 - broad advanced painting suite such as unrestricted 3D orbit painting, tablet pressure, arbitrary custom brushes, blend-mode/layer systems and generalized material editing;
