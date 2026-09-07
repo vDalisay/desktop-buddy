@@ -14,8 +14,8 @@ namespace DesktopBuddy.Testing;
 
 /// <summary>
 /// Regression oracle for the expressive-presentation seams that are easy to accidentally undo:
-/// live Drop Tool copy, first-click reveal completion, and the shared physics-free preview's
-/// visible/hidden/capture render lifecycle.
+/// live Drop Tool copy, first-click reveal completion, reduced-motion fallback, and the shared
+/// physics-free preview's visible/hidden/capture render lifecycle.
 /// </summary>
 public sealed class ExpressivePresentationScenario : IScenario
 {
@@ -26,9 +26,12 @@ public sealed class ExpressivePresentationScenario : IScenario
         var checks = new List<StartupCheck>();
         var messages = new List<string> { $"seed={seed}" };
 
-        // Dynamic input copy is resolved before semantic markup reaches the renderer. A rebound
-        // chord must survive both the authoring layer and its plain-text projection.
-        string rebound = "Ctrl+K";
+        // Exercise the real persistence seam rather than passing a pretend chord straight to copy.
+        // A rebound value must survive LocalSettingsInputBindings and the semantic/plain projection.
+        LocalSettingsSave reboundSettings = LocalSettingsInputBindings.WithDropTool(
+            new LocalSettingsSave(),
+            "Ctrl+K");
+        string rebound = LocalSettingsInputBindings.DropTool(reboundSettings);
         string dropSemantic = TutorialExpressiveCopy.Format(
             TutorialStepIds.UnequipTool,
             plainText: string.Empty,
@@ -58,8 +61,19 @@ public sealed class ExpressivePresentationScenario : IScenario
         bool consumed = presenter.CompleteReveal();
         checks.Add(new StartupCheck(
             "expressive_first_click_completes_only_reveal",
-            wasRevealing && consumed && !presenter.IsRevealing && presenter.VisibleCharacters == -1,
-            $"started={wasRevealing} consumed={consumed} revealing={presenter.IsRevealing} visible={presenter.VisibleCharacters}"));
+            wasRevealing && consumed && !presenter.IsRevealing && presenter.VisibleRatio >= 0.999f,
+            $"started={wasRevealing} consumed={consumed} revealing={presenter.IsRevealing} ratio={presenter.VisibleRatio:0.###}"));
+
+        var reducedSettings = settings with { ReducedMotion = true };
+        presenter.Present(
+            "scenario:reduced",
+            "A [playful]quiet wave[/playful] becomes static.",
+            reducedSettings);
+        checks.Add(new StartupCheck(
+            "expressive_reduced_motion_is_immediate_static_and_silent",
+            !presenter.IsRevealing && !presenter.IsSpeaking && presenter.VisibleRatio >= 0.999f &&
+            !presenter.Text.Contains("[wave", StringComparison.Ordinal),
+            $"revealing={presenter.IsRevealing} speaking={presenter.IsSpeaking} ratio={presenter.VisibleRatio:0.###} text={presenter.Text}"));
         presenter.QueueFree();
 
         var loaded = await M4LifecycleScenarioSupport.Load(tree, new ManualMonotonicTimeSource());
