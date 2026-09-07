@@ -25,8 +25,8 @@ namespace DesktopBuddy.Achievements;
 /// <summary>
 /// Production adapter from live gameplay to the engine-independent achievement rules. It observes
 /// existing semantic events and state only; no achievement changes damage, physics, economy or UI.
-/// Platform dependencies are injected by the owning composition root rather than discovered from
-/// arbitrary scene-tree paths.
+/// Platform/feature dependencies are injected by the owning composition root rather than discovered
+/// from arbitrary scene-tree paths or inferred by polling persistence files.
 /// </summary>
 public partial class AchievementBootstrap : Node
 {
@@ -34,7 +34,6 @@ public partial class AchievementBootstrap : Node
     private const double SteamRetrySeconds = 5.0;
     private const float AirborneFloorClearancePixels = 3.0f;
     private const float BankShotWallTolerancePixels = 3.0f;
-    private const string BackgroundPath = "user://environment/background.png";
 
     private readonly HashSet<int> _baseballsThatTouchedWall = [];
     private SandboxRoot _sandbox = null!;
@@ -44,6 +43,7 @@ public partial class AchievementBootstrap : Node
     private EnvironmentProgressState? _environment;
     private CharacterSelectionState? _selection;
     private CharacterStore? _characters;
+    private IEnvironmentCustomizationEvents? _environmentEvents;
     private Node? _steamBridge;
     private AchievementCoordinator _coordinator = null!;
     private SteamAchievementPublisher? _publisher;
@@ -56,7 +56,6 @@ public partial class AchievementBootstrap : Node
     private bool _characterRefreshRunning;
     private bool _steamSyncRequested;
     private int _observedRopeAttachCount;
-    private string? _backgroundHash;
 
     public AchievementCoordinator Coordinator => _coordinator;
 
@@ -64,6 +63,7 @@ public partial class AchievementBootstrap : Node
         SandboxRoot sandbox,
         CharacterSelectionState? selection = null,
         CharacterStore? characters = null,
+        IEnvironmentCustomizationEvents? environmentEvents = null,
         Node? initializedSteamBridge = null)
     {
         if (IsInsideTree())
@@ -75,6 +75,7 @@ public partial class AchievementBootstrap : Node
         _environment = sandbox.Saves.EnvironmentProgress;
         _selection = selection ?? sandbox.Saves.CharacterSelection;
         _characters = characters;
+        _environmentEvents = environmentEvents;
         _steamBridge = initializedSteamBridge;
         _coordinator = new AchievementCoordinator(_progress, _work);
         ProcessMode = ProcessModeEnum.Always;
@@ -99,13 +100,11 @@ public partial class AchievementBootstrap : Node
             _characters.LibraryChanged += OnCharacterLibraryChanged;
         if (_selection is not null)
             _selection.Changed += OnCharacterSelectionChanged;
+        if (_environmentEvents is not null)
+            _environmentEvents.BackgroundCommitted += OnBackgroundCommitted;
 
         _observedRopeAttachCount = _sandbox.Ropes.AttachCount;
         CaptureProgressMonotonicState();
-        // Existing room art predates this runtime observation. Make It Yours records which
-        // character was active when a customization actually changes; merely selecting another
-        // character beside an already-painted room must not transfer that credit.
-        _backgroundHash = CurrentBackgroundHash();
         _coordinator.Store.Qualified += OnQualified;
         _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
         EvaluateEnvironment();
@@ -151,6 +150,8 @@ public partial class AchievementBootstrap : Node
             _characters.LibraryChanged -= OnCharacterLibraryChanged;
         if (_selection is not null)
             _selection.Changed -= OnCharacterSelectionChanged;
+        if (_environmentEvents is not null)
+            _environmentEvents.BackgroundCommitted -= OnBackgroundCommitted;
         _coordinator.Store.Qualified -= OnQualified;
     }
 
@@ -170,7 +171,6 @@ public partial class AchievementBootstrap : Node
         if (_persistentCountdown <= 0.0)
         {
             _persistentCountdown = PersistentEvaluationSeconds;
-            ObserveBackgroundCustomization();
             _coordinator.EvaluatePersistentState(_selection?.ActiveCharacterId);
             EvaluateEnvironment();
             _ = RefreshActiveCharacterAsync();
@@ -268,6 +268,11 @@ public partial class AchievementBootstrap : Node
         EvaluateEnvironment();
         MarkEnvironmentCustomization();
     }
+
+    private void OnBackgroundCommitted() =>
+        _coordinator.RecordCustomization(
+            _selection?.ActiveCharacterId,
+            CustomizationArea.PaintBackground);
 
     private void OnCharacterLibraryChanged() => _ = RefreshActiveCharacterAsync();
 
@@ -391,30 +396,6 @@ public partial class AchievementBootstrap : Node
             _coordinator.RecordCustomization(
                 _selection?.ActiveCharacterId,
                 CustomizationArea.EnvironmentDecorator);
-    }
-
-    private void ObserveBackgroundCustomization()
-    {
-        string? current = CurrentBackgroundHash();
-        if (string.Equals(current, _backgroundHash, StringComparison.Ordinal))
-            return;
-
-        _backgroundHash = current;
-        // Deletion is Reset Progress / explicit clearing, not customization. A new or changed
-        // background file is a completed Paint Background save and belongs to the character active
-        // at that moment; the resulting bit is persisted by AchievementProgressStore.
-        if (!string.IsNullOrEmpty(current))
-            _coordinator.RecordCustomization(
-                _selection?.ActiveCharacterId,
-                CustomizationArea.PaintBackground);
-    }
-
-    private static string? CurrentBackgroundHash()
-    {
-        if (!FileAccess.FileExists(BackgroundPath))
-            return null;
-        string hash = FileAccess.GetSha256(BackgroundPath);
-        return string.IsNullOrEmpty(hash) ? null : hash;
     }
 
     private async Task RefreshActiveCharacterAsync()
