@@ -1,27 +1,33 @@
 using System;
 using DesktopBuddy.Domain.Persistence;
-using DesktopBuddy.UI;
 using Godot;
 
 namespace DesktopBuddy.Onboarding;
 
 /// <summary>
-/// Expressive-guide integration kept in a partial so the action-driven tutorial controller remains
-/// the sole owner of progression, spotlighting and input gates. This layer owns semantic
-/// presentation identity, the two RichText dialogue hosts, and live portrait coordination.
-/// Context Help deliberately keeps its immediate, non-animated Labels.
+/// Integration seam between action-driven onboarding and <see cref="TutorialGuideView"/>. The
+/// controller keeps progress, semantic variant selection, spotlighting and input authority; the
+/// guide view owns expressive text/reveal/speaking/portrait presentation.
 /// </summary>
 public partial class FirstSessionGuidanceController
 {
     private TutorialSemanticRefreshBridge? _semanticRefreshBridge;
     private TutorialExpressiveBridge? _expressiveBridge;
-    private ExpressiveTextPresenter? _expressiveBody;
-    private ExpressiveTextPresenter? _expressiveWorkBody;
+    private TutorialGuideView? _guideView;
     private Control? _workGuidePortraitHost;
     private string? _semanticPresentationIdentity;
 
     private void InstallExpressiveTextBridge()
     {
+        if (!GodotObject.IsInstanceValid(_guideView))
+        {
+            _guideView = new TutorialGuideView(_characterPresenter)
+            {
+                Name = nameof(TutorialGuideView),
+            };
+            AddChild(_guideView);
+        }
+
         if (!GodotObject.IsInstanceValid(_semanticRefreshBridge))
         {
             _semanticRefreshBridge = new TutorialSemanticRefreshBridge(this)
@@ -73,26 +79,29 @@ public partial class FirstSessionGuidanceController
         _lastRenderedText = stepId is null ? null : TextFor(stepId);
     }
 
-    /// <summary>
-    /// Called after the controller's own process pass. The hidden fallback Labels keep receiving
-    /// TextFor output for non-expressive fallback/readability, while the visible walkthrough uses
-    /// semantic identity and one reusable RichText presenter per host.
-    /// </summary>
+    /// <summary>Publishes the current semantic guide cue into the active main/Work host.</summary>
     internal void SyncExpressiveTutorialPresentation()
     {
-        if (!GodotObject.IsInstanceValid(_body) || !GodotObject.IsInstanceValid(_panel))
+        if (!GodotObject.IsInstanceValid(_body) ||
+            !GodotObject.IsInstanceValid(_panel) ||
+            !GodotObject.IsInstanceValid(_guideView))
+        {
             return;
+        }
 
         string? stepId = _displayedStepId;
         if (_helpActive || stepId is null)
         {
-            HideExpressivePresenters();
+            _guideView!.Hide();
             if (GodotObject.IsInstanceValid(_dismiss))
                 _dismiss.Disabled = false;
             return;
         }
 
         _semanticPresentationIdentity = ResolveTutorialPresentationIdentity(stepId);
+        LocalSettingsSave settings = _sandbox.Shell.CurrentLocalSettings;
+        string dropBinding = LocalSettingsInputBindings.DropTool(settings);
+
         bool useWorkSurface = IsWorkTutorialStep(stepId) &&
                               IsWorkActive() &&
                               GodotObject.IsInstanceValid(_workGuideWindow) &&
@@ -101,42 +110,28 @@ public partial class FirstSessionGuidanceController
 
         if (useWorkSurface)
         {
-            ExpressiveTextPresenter presenter = EnsureExpressivePresenter(
-                _workGuideBody!, ref _expressiveWorkBody, "TutorialWorkExpressiveBody");
-            PresentInto(
-                presenter,
+            string semantic = TutorialExpressiveCopy.Format(stepId, _workGuideBody!.Text, dropBinding);
+            _guideView!.PresentWork(
+                _workGuideBody,
+                EnsureWorkGuidePortraitHost(),
                 $"work:{_semanticPresentationIdentity}",
                 stepId,
-                _workGuideBody!.Text);
-            presenter.Visible = true;
-            _workGuideBody.Visible = false;
-            if (GodotObject.IsInstanceValid(_expressiveBody))
-                _expressiveBody!.Visible = false;
-
-            if (_characterPresenter is LiveTutorialBuddyPresenter live)
-                live.PresentWork(EnsureWorkGuidePortraitHost(), stepId);
+                semantic,
+                settings);
         }
         else
         {
-            ExpressiveTextPresenter presenter = EnsureExpressivePresenter(
-                _body, ref _expressiveBody, "TutorialExpressiveBody");
-            PresentInto(
-                presenter,
+            string semantic = TutorialExpressiveCopy.Format(stepId, _body.Text, dropBinding);
+            _guideView!.PresentMain(
+                _body,
                 $"main:{_semanticPresentationIdentity}",
-                stepId,
-                _body.Text);
-            presenter.Visible = true;
-            _body.Visible = false;
-            if (GodotObject.IsInstanceValid(_expressiveWorkBody))
-                _expressiveWorkBody!.Visible = false;
-            if (_characterPresenter is LiveTutorialBuddyPresenter live)
-                live.DismissWork();
+                semantic,
+                settings);
         }
 
         // Continue/Goodbye must never turn the same click that finishes a line into progression.
-        // Action-driven steps do not show this button and remain playable while text is revealing.
         if (GodotObject.IsInstanceValid(_dismiss) && _dismiss.Visible)
-            _dismiss.Disabled = _expressiveBody is { IsRevealing: true };
+            _dismiss.Disabled = _guideView!.MainIsRevealing;
         else if (GodotObject.IsInstanceValid(_dismiss))
             _dismiss.Disabled = false;
     }
@@ -158,56 +153,15 @@ public partial class FirstSessionGuidanceController
     {
         if (!GodotObject.IsInstanceValid(_panel) || !_panel.Visible ||
             !_panel.GetGlobalRect().HasPoint(viewportPosition) ||
-            !GodotObject.IsInstanceValid(_expressiveBody))
+            !GodotObject.IsInstanceValid(_guideView))
         {
             return false;
         }
 
-        bool completed = _expressiveBody!.CompleteReveal();
+        bool completed = _guideView!.CompleteMainReveal();
         if (completed && GodotObject.IsInstanceValid(_dismiss))
             _dismiss.Disabled = false;
         return completed;
-    }
-
-    private void PresentInto(
-        ExpressiveTextPresenter presenter,
-        string identity,
-        string stepId,
-        string plainText)
-    {
-        string dropBinding = LocalSettingsInputBindings.DropTool(_sandbox.Shell.CurrentLocalSettings);
-        string semantic = TutorialExpressiveCopy.Format(stepId, plainText, dropBinding);
-        presenter.Present(identity, semantic, _sandbox.Shell.CurrentLocalSettings);
-    }
-
-    private ExpressiveTextPresenter EnsureExpressivePresenter(
-        Label fallback,
-        ref ExpressiveTextPresenter? presenter,
-        string name)
-    {
-        if (GodotObject.IsInstanceValid(presenter))
-            return presenter!;
-
-        Node parent = fallback.GetParent()
-            ?? throw new InvalidOperationException($"Tutorial body '{fallback.Name}' has no parent.");
-        int fallbackIndex = fallback.GetIndex();
-        var created = new ExpressiveTextPresenter
-        {
-            Name = name,
-            CustomMinimumSize = fallback.CustomMinimumSize,
-            SizeFlagsHorizontal = fallback.SizeFlagsHorizontal,
-            SizeFlagsVertical = fallback.SizeFlagsVertical,
-            Visible = false,
-        };
-        presenter = created;
-        parent.AddChild(created);
-        parent.MoveChild(created, fallbackIndex);
-
-        created.MouseFilter = Control.MouseFilterEnum.Stop;
-        created.GuiInput += input => OnExpressiveBodyGuiInput(created, input);
-        created.SpeakingChanged += OnExpressiveSpeakingChanged;
-        fallback.Visible = false;
-        return created;
     }
 
     private Control EnsureWorkGuidePortraitHost()
@@ -230,44 +184,6 @@ public partial class FirstSessionGuidanceController
         split.AddChild(_workGuidePortraitHost);
         return _workGuidePortraitHost;
     }
-
-    private void OnExpressiveSpeakingChanged(bool speaking)
-    {
-        if (_characterPresenter is LiveTutorialBuddyPresenter live)
-            live.SetSpeaking(speaking);
-    }
-
-    private void OnExpressiveBodyGuiInput(ExpressiveTextPresenter presenter, InputEvent input)
-    {
-        if (input is not InputEventMouseButton
-            {
-                Pressed: true,
-                ButtonIndex: MouseButton.Left,
-            })
-        {
-            return;
-        }
-
-        if (!presenter.CompleteReveal())
-            return;
-
-        if (ReferenceEquals(presenter, _expressiveBody) && GodotObject.IsInstanceValid(_dismiss))
-            _dismiss.Disabled = false;
-        presenter.AcceptEvent();
-    }
-
-    private void HideExpressivePresenters()
-    {
-        if (GodotObject.IsInstanceValid(_expressiveBody))
-            _expressiveBody!.Visible = false;
-        if (GodotObject.IsInstanceValid(_expressiveWorkBody))
-            _expressiveWorkBody!.Visible = false;
-        if (_characterPresenter is LiveTutorialBuddyPresenter live)
-        {
-            live.SetSpeaking(false);
-            live.DismissWork();
-        }
-    }
 }
 
 /// <summary>Pre-controller semantic variant refresh; see PrepareSemanticTutorialRefresh.</summary>
@@ -287,9 +203,9 @@ internal sealed partial class TutorialSemanticRefreshBridge : Node
 }
 
 /// <summary>
-/// Runs after its parent controller in normal tree order. It presents the semantic guide and catches
-/// clicks on empty parts of the main tutorial frame so the first click completes the typewriter.
-/// The separate Work window is covered by the presenter's GuiInput handler.
+/// Runs after its parent controller in normal tree order and catches clicks on empty parts of the
+/// main tutorial frame so the first click completes the typewriter. The guide view owns the text
+/// control's own click-to-complete path in both main and Work hosts.
 /// </summary>
 internal sealed partial class TutorialExpressiveBridge : Node
 {
