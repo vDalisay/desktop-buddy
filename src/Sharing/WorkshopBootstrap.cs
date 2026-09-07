@@ -14,14 +14,19 @@ namespace DesktopBuddy.Sharing;
 
 /// <summary>
 /// Optional Steam social composition root. Failure to find GodotSteam, Steam, an AppID, or a
-/// network connection only selects the null transport; it never participates in sandbox startup.
+/// network connection only disables remote features; it never participates in sandbox startup.
 /// UI/application dependencies are injected by the main composition root rather than discovered
-/// by polling absolute scene-tree paths.
+/// by polling absolute scene-tree paths. A Steam client/session initialization failure keeps the
+/// same bridge and transport alive and retries with backoff so Workshop and achievements recover
+/// together without rebinding application services.
 /// </summary>
 public partial class WorkshopBootstrap : Node
 {
     private const string Category = "Workshop";
     private const string BridgeScriptPath = "res://src/Platform/Steam/GodotSteamBridge.gd";
+    private const double SteamInitialRetrySeconds = 30.0;
+    private const double SteamMaximumRetrySeconds = 300.0;
+
     private CharacterStore? _characters;
     private CharacterSelectionState? _selection;
     private IRoomPaintingSharingHost? _environment;
@@ -36,6 +41,10 @@ public partial class WorkshopBootstrap : Node
     private IDisposable? _commandRegistration;
     private ISteamWorkshopTransport? _transport;
     private Node? _steamBridge;
+    private GodotSteamWorkshopTransport? _retrySteamTransport;
+    private SteamAppIdentity? _retrySteamIdentity;
+    private double _steamRetryCountdown;
+    private double _steamRetryDelay = SteamInitialRetrySeconds;
     private bool _servicesComposed;
 
     internal WorkshopSharingCoordinator? Sharing => _sharing;
@@ -65,11 +74,28 @@ public partial class WorkshopBootstrap : Node
         ComposeAchievements();
         if (DisplayServer.GetName() != "headless")
             ComposeUi();
-        SetProcess(false);
+        SetProcess(_retrySteamTransport is not null);
+    }
+
+    public override void _Process(double delta)
+    {
+        if (_retrySteamTransport is null || !_retrySteamIdentity.HasValue ||
+            !GodotObject.IsInstanceValid(_steamBridge))
+        {
+            ClearSteamRetry();
+            return;
+        }
+
+        _steamRetryCountdown -= Math.Max(0.0, delta);
+        if (_steamRetryCountdown > 0.0)
+            return;
+
+        TryRecoverSteam();
     }
 
     public override void _ExitTree()
     {
+        ClearSteamRetry();
         _commandRegistration?.Dispose();
         _commandRegistration = null;
         if (GodotObject.IsInstanceValid(_panel)) _panel!.QueueFree();
@@ -196,30 +222,31 @@ public partial class WorkshopBootstrap : Node
 
             transport = new GodotSteamWorkshopTransport { Name = nameof(GodotSteamWorkshopTransport) };
             AddChild(transport);
-            if (!transport.Initialize(bridge, identity))
+
+            bool initialized = transport.Initialize(bridge, identity);
+            if (!initialized && !transport.CanRetryInitialization)
             {
-                string reason = transport.UnavailableReason ?? "GodotSteam initialization failed.";
-                Log.Warn(Category, reason);
+                string permanentReason = transport.UnavailableReason ?? "GodotSteam initialization failed.";
+                Log.Warn(Category, permanentReason);
                 DisposeFailedTransport(bridge, transport);
-                return new NullSteamWorkshopTransport(reason);
+                return new NullSteamWorkshopTransport(permanentReason);
             }
 
-            // One initialized Steam bridge is owned by this composition root and injected into
-            // all optional Steam adapters. Nothing else searches the scene tree or initializes
-            // Steam a second time.
+            // One Steam bridge is owned by this composition root and injected into all optional
+            // Steam adapters. A retryable initialization failure deliberately keeps this exact
+            // bridge + transport object graph alive so existing coordinators recover in place.
             _steamBridge = bridge;
             ConnectOverlayPause(bridge);
 
-            ISteamWorkshopTransport composed = transport;
-            if (identity.IsCrossApp)
+            ISteamWorkshopTransport composed = WrapSteamTransport(transport, identity);
+            if (!initialized)
             {
-                // Steam does not let one Workshop item be consumed by both a demo and the full
-                // game. Publish two synchronized initial copies instead: the running Demo owns the
-                // primary item, while the canonical full-game Workshop receives a mirror.
-                composed = new MirroringSteamWorkshopTransport(
-                    transport,
-                    identity.RuntimeAppId,
-                    identity.WorkshopOwnerAppId);
+                ArmSteamRetry(transport, identity);
+                Log.Warn(
+                    Category,
+                    $"Steam client/session unavailable: {transport.UnavailableReason ?? "initialization failed"} " +
+                    $"Retrying in {SteamInitialRetrySeconds:0}s while local play remains available.");
+                return composed;
             }
 
             Log.Info(
@@ -233,6 +260,70 @@ public partial class WorkshopBootstrap : Node
             Log.Warn(Category, $"Steam integration disabled: {exception.Message}");
             return new NullSteamWorkshopTransport(exception.Message);
         }
+    }
+
+    private static ISteamWorkshopTransport WrapSteamTransport(
+        GodotSteamWorkshopTransport transport,
+        SteamAppIdentity identity)
+    {
+        if (!identity.IsCrossApp)
+            return transport;
+
+        // The transport captures the two authorized identities before steamInitEx. That lets this
+        // wrapper be constructed even while initialization is retrying, while every actual remote
+        // operation remains unavailable until the inner transport becomes initialized.
+        return new MirroringSteamWorkshopTransport(
+            transport,
+            identity.RuntimeAppId,
+            identity.WorkshopOwnerAppId);
+    }
+
+    private void ArmSteamRetry(GodotSteamWorkshopTransport transport, SteamAppIdentity identity)
+    {
+        _retrySteamTransport = transport;
+        _retrySteamIdentity = identity;
+        _steamRetryDelay = SteamInitialRetrySeconds;
+        _steamRetryCountdown = SteamInitialRetrySeconds;
+        SetProcess(true);
+    }
+
+    private void TryRecoverSteam()
+    {
+        GodotSteamWorkshopTransport transport = _retrySteamTransport!;
+        SteamAppIdentity identity = _retrySteamIdentity!.Value;
+        Node bridge = _steamBridge!;
+
+        if (transport.Initialize(bridge, identity))
+        {
+            Log.Info(
+                Category,
+                $"Steam recovered in-session; runtimeAppId={identity.RuntimeAppId} workshopOwnerAppId={identity.WorkshopOwnerAppId}. " +
+                "Workshop and pending achievement reconciliation are available without restarting.");
+            ClearSteamRetry();
+            return;
+        }
+
+        string reason = transport.UnavailableReason ?? "Steam initialization failed.";
+        if (!transport.CanRetryInitialization)
+        {
+            Log.Warn(Category, $"Steam recovery stopped after a permanent initialization failure: {reason}");
+            ClearSteamRetry();
+            return;
+        }
+
+        _steamRetryDelay = Math.Min(SteamMaximumRetrySeconds, _steamRetryDelay * 2.0);
+        _steamRetryCountdown = _steamRetryDelay;
+        Log.Warn(Category, $"Steam is still unavailable: {reason} Retrying in {_steamRetryDelay:0}s.");
+    }
+
+    private void ClearSteamRetry()
+    {
+        _retrySteamTransport = null;
+        _retrySteamIdentity = null;
+        _steamRetryCountdown = 0.0;
+        _steamRetryDelay = SteamInitialRetrySeconds;
+        if (IsInsideTree())
+            SetProcess(false);
     }
 
     /// <summary>
