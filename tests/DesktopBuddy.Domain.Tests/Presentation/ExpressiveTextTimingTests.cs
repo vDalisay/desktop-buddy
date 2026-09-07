@@ -78,6 +78,13 @@ public sealed class ExpressiveRevealTimingTests
         Assert.Equal(0.11, timing.DelayAfter(punctuation), precision: 8);
     }
 
+    [Fact]
+    public void CombiningMark_AddsNoIndependentDelay()
+    {
+        var timing = new ExpressiveRevealTiming(0.01, 0.05, 0.1);
+        Assert.Equal(0.0, timing.DelayAfter("\u0301"), precision: 8);
+    }
+
     [Theory]
     [InlineData(0.0, 0.0, 0.0)]
     [InlineData(-0.01, 0.0, 0.0)]
@@ -100,7 +107,8 @@ public sealed class ExpressiveVoiceCadenceTests
     [InlineData(".", false)]
     [InlineData("!", false)]
     [InlineData("—", false)]
-    public void SpeakableClassification_SkipsWhitespaceAndPunctuation(string element, bool expected) =>
+    [InlineData("\u0301", false)]
+    public void SpeakableClassification_SkipsWhitespacePunctuationAndCombiningMarks(string element, bool expected) =>
         Assert.Equal(expected, ExpressiveVoiceCadence.IsSpeakable(element));
 
     [Fact]
@@ -116,6 +124,10 @@ public sealed class ExpressiveVoiceCadenceTests
     [Fact]
     public void PunctuationNeverChirpsEvenOnCadenceBoundary() =>
         Assert.False(ExpressiveVoiceCadence.ShouldChirp(4, "!"));
+
+    [Fact]
+    public void CombiningMarkNeverChirpsEvenOnCadenceBoundary() =>
+        Assert.False(ExpressiveVoiceCadence.ShouldChirp(4, "\u0301"));
 
     [Theory]
     [InlineData(0, 3)]
