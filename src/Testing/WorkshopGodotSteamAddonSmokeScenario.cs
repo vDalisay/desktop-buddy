@@ -77,8 +77,8 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     : "Pinned GodotSteam is missing setAchievement or storeStats required by SteamAchievementPublisher."));
 
             // Recovery classification is part of the anti-corruption boundary. Before an init
-            // attempt there is no failure to retry; after a valid-but-offline steamInitEx failure
-            // the transport must expose retryability without making C# parse GodotSteam prose.
+            // attempt there is no failure to retry; the pure mapping below pins GodotSteam's
+            // SteamInitExResult contract independently of whichever failure this CI host produces.
             bool retryInitiallyFalse = !bridge.Call("can_retry_initialization").AsBool();
             checks.Add(new StartupCheck(
                 "workshop_godotsteam_retry_state_starts_false",
@@ -86,6 +86,17 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 retryInitiallyFalse
                     ? "No retry is armed before Steam initialization is attempted."
                     : "Bridge incorrectly reports a retryable Steam failure before initialization."));
+
+            bool retryMapping =
+                !bridge.Call("_is_retryable_init_status", 1L).AsBool() &&
+                bridge.Call("_is_retryable_init_status", 2L).AsBool() &&
+                !bridge.Call("_is_retryable_init_status", 3L).AsBool();
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_retryable_init_status_mapping",
+                retryMapping,
+                retryMapping
+                    ? "Only SteamInitExResult NoConnection (2) is retryable; generic failure (1) and client update required (3) are permanent for this process."
+                    : "GodotSteam retry classification no longer matches the documented SteamInitExResult mapping."));
 
             // Discovery is intentionally a separate optional bridge because demos need an in-game
             // Workshop browser even though they have no Community Hub. Probe its exact 4.22 method
@@ -174,12 +185,16 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 capabilityCompatible,
                 initialized ? "Steam initialized on the runner." : $"Expected offline init result: {reason}"));
 
-            bool recoveryClassification = initialized
+            // This host may report NoConnection (retryable), generic init failure, or a missing
+            // Steam client module (permanent). The pure status check above owns that distinction;
+            // this live probe only verifies that valid-but-unavailable Steam falls back cleanly and
+            // that a binding failure never gets mislabeled as retryable.
+            bool liveFallbackClean = initialized
                 ? !transport.CanRetryInitialization
-                : IsBindingFailure(reason) || transport.CanRetryInitialization;
+                : !IsBindingFailure(reason) || !transport.CanRetryInitialization;
             checks.Add(new StartupCheck(
-                "workshop_godotsteam_init_failure_recovery_is_classified",
-                recoveryClassification,
+                "workshop_godotsteam_live_init_failure_falls_back_cleanly",
+                liveFallbackClean,
                 initialized
                     ? $"initialized=true retryable={transport.CanRetryInitialization}"
                     : $"initialized=false bindingFailure={IsBindingFailure(reason)} retryable={transport.CanRetryInitialization} reason={reason}"));
