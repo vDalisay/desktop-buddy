@@ -354,15 +354,12 @@ public partial class CharacterEditorHost
             DataGroup,
             buttonText: "Reset...");
 
-        if (DemoScope.IncludesTutorial)
-        {
-            _settingsPanel.AddAction(
-                "Show Tutorial Again",
-                "Restarts the first-session tutorial. Nothing else is reset.",
-                RestartTutorial,
-                DataGroup,
-                buttonText: "Show");
-        }
+        _settingsPanel.AddAction(
+            "Show Tutorial Again",
+            "Restarts the first-session tutorial. Nothing else is reset.",
+            RestartTutorial,
+            DataGroup,
+            buttonText: "Show");
     }
 
     /// <summary>

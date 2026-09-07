@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Persistence;
 using Godot;
 
 namespace DesktopBuddy.App;
@@ -71,10 +73,12 @@ public static class DemoScope
     public static bool IncludesBuddyStudio => !IsItchIo;
 
     /// <summary>
-    /// The itch.io build omits the first-session tutorial because its authored walkthrough covers
-    /// Work Mode, Paint Room and Buddy Studio, all of which are intentionally absent there.
+    /// The first-session walkthrough this build teaches. Every distribution gets one; itch.io gets
+    /// the shorter sequence, because its chapters on Work Mode, Paint Room and Buddy Studio would
+    /// point at features that distribution does not ship (owner request 2026-09-07).
     /// </summary>
-    public static bool IncludesTutorial => !IsItchIo;
+    public static IReadOnlyList<string> TutorialSteps =>
+        IsItchIo ? TutorialStepIds.ItchIo : TutorialStepIds.Ordered;
 
     /// <summary>Whether the Room Decorator command is offered at all.</summary>
     public static bool IncludesRoomDecorator => IsFullRelease && !IsItchIo;

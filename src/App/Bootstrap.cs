@@ -287,11 +287,16 @@ public partial class Bootstrap : Node
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
-        // Keep the reusable contextual ? Help surface in every distribution, but make the authored
-        // first-session walkthrough session-complete in itch.io without writing a durable skip.
-        TutorialProgressState.RuntimeDisabled = !DemoScope.IncludesTutorial;
-        if (!DemoScope.IncludesTutorial)
-            Log.Info(Category, "First-session tutorial omitted by the active itch.io distribution scope.");
+        // Every distribution walks the player through what it actually ships: itch.io drops the
+        // Paint Room, Buddy Studio and Work Mode chapters rather than the whole walkthrough.
+        TutorialStepIds.Active = DemoScope.TutorialSteps;
+        if (TutorialStepIds.Active.Count < TutorialStepIds.Ordered.Count)
+        {
+            Log.Info(
+                Category,
+                $"First-session tutorial scoped to {TutorialStepIds.Active.Count} of " +
+                $"{TutorialStepIds.Ordered.Count} steps by the active distribution scope.");
+        }
 
 #if !DESKTOP_BUDDY_PUBLIC_WEB
         if (DemoScope.IncludesWorkshop)
