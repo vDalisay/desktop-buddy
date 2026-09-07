@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
-using DesktopBuddy.Achievements;
+using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
