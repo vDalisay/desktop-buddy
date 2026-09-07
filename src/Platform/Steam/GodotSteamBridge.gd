@@ -27,6 +27,7 @@ var _initialized := false
 var _app_id := 0
 var _workshop_app_id := 0
 var _reason := "GodotSteam has not been initialized."
+var _retryable_init_failure := false
 
 var _required_methods := PackedStringArray([
     "steamInitEx",
@@ -62,6 +63,7 @@ func _ready() -> void:
 func initialize(app_id: int) -> Dictionary:
     if _initialized:
         return {"status": 0, "verbal": "Steam is already initialized.", "version": EXPECTED_GODOTSTEAM}
+    _retryable_init_failure = false
     if app_id <= 0:
         return _fail("No Steam AppID is configured.")
 
@@ -105,11 +107,16 @@ func initialize(app_id: int) -> Dictionary:
     var response: Dictionary = init_result
     var status := int(response.get("status", -1))
     if status != 0:
+        # At this point the addon, bindings, methods and callback signals are all valid; only the
+        # Steam client/session initialization failed. That is the one startup failure class which
+        # may become healthy later in this same process, so the composition root may retry it.
+        _retryable_init_failure = true
         return _fail(str(response.get("verbal", "Steam initialization failed.")), status)
 
     _app_id = app_id
     _workshop_app_id = app_id
     _initialized = true
+    _retryable_init_failure = false
     _reason = ""
     bridge_state_changed.emit(true, "")
     return {"status": 0, "verbal": str(response.get("verbal", "Steam initialized.")), "version": EXPECTED_GODOTSTEAM}
@@ -122,6 +129,11 @@ func configure_workshop_app_id(app_id: int) -> bool:
 
 func is_available() -> bool:
     return _initialized and _steam != null
+
+## True only when the addon/binding surface was valid but steamInitEx could not initialize the
+## client/session. Permanent capability/configuration failures must not be polled forever.
+func can_retry_initialization() -> bool:
+    return not _initialized and _retryable_init_failure and _steam != null
 
 ## Test/diagnostic capability probe that does not initialize Steam or require a logged-in client.
 func is_godotsteam_present() -> bool:
@@ -161,6 +173,7 @@ func shutdown() -> void:
     if _initialized and _steam != null and _steam.has_method("steamShutdown"):
         _steam.call("steamShutdown")
     _initialized = false
+    _retryable_init_failure = false
     _app_id = 0
     _workshop_app_id = 0
 
