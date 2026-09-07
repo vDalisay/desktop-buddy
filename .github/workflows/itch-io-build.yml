@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - ".github/workflows/itch-io-build.yml"
+      # Load-bearing for this export: it strips the autoloads of subsystems the itch scope
+      # compiles out. A change to it alone must still rebuild and re-verify the package.
+      - "devtools/verification/apply_itch_scope.py"
       - "export_presets.cfg"
       - "project.godot"
       - "DesktopBuddy.csproj"
