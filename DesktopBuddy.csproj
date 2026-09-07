@@ -106,6 +106,14 @@
     <!-- Steam Workshop. Already #if'd out of the composition; this takes the source with it. -->
     <Compile Remove="src/Sharing/**/*.cs" />
 
+    <!--
+      Work Mode. Needs real OS transparent windows, which a browser cannot provide, and the itch
+      scope has always hidden it — Bootstrap.CharacterEditor already skipped its coordinator and
+      ItchDistributionScopeBootstrap hid the command button after the fact.
+    -->
+    <Compile Remove="src/Work/**/*.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Work.cs" />
+
     <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Background.cs" />
     <Compile Remove="src/Buddy/Behavior/RoomInterestBootstrap.Environment.cs" />
   </ItemGroup>
@@ -115,6 +123,7 @@
     <Compile Remove="src/Onboarding/FirstSessionGuidanceController.StudioAbsent.cs" />
     <Compile Remove="src/Onboarding/FirstSessionGuidanceController.BackgroundAbsent.cs" />
     <Compile Remove="src/Buddy/Behavior/RoomInterestBootstrap.EnvironmentAbsent.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.WorkAbsent.cs" />
   </ItemGroup>
 
   <PropertyGroup>

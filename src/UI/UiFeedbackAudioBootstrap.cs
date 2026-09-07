@@ -1,7 +1,9 @@
 using System;
 using DesktopBuddy.Platform;
 using DesktopBuddy.Ui;
+#if !DESKTOP_BUDDY_PUBLIC_WEB
 using DesktopBuddy.Work;
+#endif
 using Godot;
 
 namespace DesktopBuddy.UI;
@@ -316,8 +318,10 @@ public partial class UiFeedbackAudioBootstrap : Node
             HookPopup(popup);
         else if (node is ItemList list)
             HookItemList(list);
+#if !DESKTOP_BUDDY_PUBLIC_WEB
         else if (node is WorkCompanionCoordinator work)
             HookWork(work);
+#endif
     }
 
     private void HookButton(BaseButton button)
@@ -375,6 +379,7 @@ public partial class UiFeedbackAudioBootstrap : Node
         list.ItemSelected += _ => Play(UiFeedbackCue.MenuClick);
     }
 
+#if !DESKTOP_BUDDY_PUBLIC_WEB
     private void HookWork(WorkCompanionCoordinator work)
     {
         if (work.HasMeta(WorkHookMeta))
@@ -399,6 +404,7 @@ public partial class UiFeedbackAudioBootstrap : Node
             Play(UiFeedbackCue.MenuExit);
         };
     }
+#endif
 
     private static UiFeedbackCue CueFor(BaseButton button)
     {

@@ -2,7 +2,9 @@ using System;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Persistence.Characters;
+#if !DESKTOP_BUDDY_PUBLIC_WEB
 using DesktopBuddy.Work;
+#endif
 using Godot;
 
 namespace DesktopBuddy.App;
@@ -55,6 +57,7 @@ public partial class Bootstrap
             // this needlessly constructs a native-desktop subsystem before the inventory and
             // Paint Buddy UI can exist. The normal Windows demo/full build keeps the exact
             // existing coordinator path.
+#if !DESKTOP_BUDDY_PUBLIC_WEB
             if (DemoScope.IncludesWorkMode)
             {
                 var workCoordinator = new WorkCompanionCoordinator
@@ -67,6 +70,7 @@ public partial class Bootstrap
                     $"WorkCompanionCoordinator added successfully: path={workCoordinator.GetPath()} insideTree={workCoordinator.IsInsideTree()}.");
             }
             else
+#endif
             {
                 Log.Info(CharacterEditorStartupCategory,
                     "WorkCompanionCoordinator omitted by the active distribution scope.");

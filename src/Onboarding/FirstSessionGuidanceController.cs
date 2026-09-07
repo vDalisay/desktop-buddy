@@ -14,7 +14,6 @@ using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Shop;
 using DesktopBuddy.UI.Win98;
-using DesktopBuddy.Work;
 using Godot;
 
 namespace DesktopBuddy.Onboarding;
@@ -190,7 +189,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private CharacterEditorHost? _editor;
     private ShopPanel? _shop;
     private Button? _baseballBatAction;
-    private WorkCompanionCoordinator? _work;
 
     private bool _editorSignalsBound;
     private bool _brushSignalBound;
@@ -228,10 +226,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _brushButtonPressed;
     private Rect2I _workDragOrigin;
     private Rect2I _workResizeOrigin;
-    private WorkCompanionView? _workView;
     private Control? _resizeGrips;
     private Win98BuddyShellController? _shell;
-    private bool? _workCounterOrigin;
 
     private string? _displayedStepId;
 
@@ -441,7 +437,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _chargedBatSwingObserved = false;
         _paintRevisionOrigin = null;
         _hasSeenWorkActive = false;
-        _workCounterOrigin = null;
+        ResetWorkCounterBaseline();
         RequestImmediateFlush();
         RefreshHint();
     }
@@ -458,26 +454,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private void DiscoverRuntimeNodes()
     {
         _editor ??= GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
-        // Not ??=: the Work companion is destroyed on exit and rebuilt on the next entry, and a
-        // freed Godot object is invalid but not null. The stale reference then failed every
-        // IsInstanceValid check, so the counter step could never complete and the walkthrough
-        // stopped dead on the second visit to Work Mode (owner report 2026-08-20).
-        if (!GodotObject.IsInstanceValid(_workView))
-        {
-            var rediscovered = GetTree().Root.FindChild(nameof(WorkCompanionView), true, false) as WorkCompanionView;
-            if (!ReferenceEquals(rediscovered, _workView))
-            {
-                _workView = rediscovered;
-                // A fresh companion starts the counter lesson over: the baseline belonged to the
-                // instance that just went away.
-                _workCounterOrigin = null;
-                _workHelpLayer = null;
-            }
-        }
+        DiscoverWork();
         _shell ??= GetTree().Root.FindChild(nameof(Win98BuddyShellController), true, false)
             as Win98BuddyShellController;
         _shop ??= GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel;
-        _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
         DiscoverBackground();
         DiscoverStudio();
     }
@@ -717,7 +697,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             case TutorialStepIds.EnterWorkMode when IsWorkActive():
                 _hasSeenWorkActive = true;
                 _workDragOrigin = _sandbox.Window.WorkCompanionRect;
-                _workCounterOrigin = null;
+                ResetWorkCounterBaseline();
                 CompleteCurrent(step);
                 break;
 
@@ -727,7 +707,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             // report 2026-09-07). Waiting for the release lets them actually place it.
             case TutorialStepIds.DragWorkCompanion when IsWorkActive() &&
                                                          _sandbox.Window.WorkCompanionRect.Position != _workDragOrigin.Position &&
-                                                         !(GodotObject.IsInstanceValid(_workView) && _workView!.IsDragging):
+                                                         !IsWorkCompanionDragging():
                 _workResizeOrigin = _sandbox.Window.WorkCompanionRect;
                 CompleteCurrent(step);
                 break;
@@ -749,9 +729,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private bool IsPaintBuddyOpen() =>
         GodotObject.IsInstanceValid(_editor) && _editor!.IsEditorOpen && _editor.IsPaintMode && !IsStudioOpen();
-
-    private bool IsWorkActive() =>
-        GodotObject.IsInstanceValid(_work) && _work!.IsActive;
 
     private bool IsBackgroundPanelFloating() =>
         GetTree().Root.FindChild("PaintBackgroundPinController", true, false) is Win98PinnablePanel pin &&
@@ -853,24 +830,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             CharacterDocumentEditor.ReadFeatureId(document, CharacterFeatureSlot.Nose),
             contentId,
             StringComparison.Ordinal);
-
-    /// <summary>
-    /// True once the player has flipped the Work CRT between session and lifetime totals. The
-    /// baseline is captured on the first frame the counter is observable rather than at Work
-    /// entry, because the view is built asynchronously with the companion window.
-    /// </summary>
-    private bool HasSwitchedWorkCounter()
-    {
-        if (!IsWorkActive() || !GodotObject.IsInstanceValid(_workView))
-            return false;
-        bool showLifetime = _workView!.ShowLifetime;
-        if (_workCounterOrigin is not bool origin)
-        {
-            _workCounterOrigin = showLifetime;
-            return false;
-        }
-        return showLifetime != origin;
-    }
 
     private void OnSwingReleased(float releasedCharge, int swingEpoch)
     {
@@ -1383,9 +1342,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// </summary>
     private void EnsureWorkHelpSurface()
     {
-        if (_workHelpLayer is not null || !GodotObject.IsInstanceValid(_workView))
+        if (_workHelpLayer is not null || WorkCompanionWindow() is not Window window)
             return;
-        Window window = _workView!.GetWindow();
         // Before Work Mode is entered the companion view still hangs off the main window, so
         // GetWindow() returns the shell. Building here would drop a second `?` on the shell's
         // own title bar, on top of the close box. Wait for the real companion window.
@@ -1802,7 +1760,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     {
         // Work Mode hides the shell, so Help runs against the companion's own window instead.
         bool work = UseWorkHelpSurface();
-        Viewport viewport = work ? _workView!.GetWindow() : GetViewport();
+        Viewport viewport = work ? WorkCompanionWindow() ?? GetViewport() : GetViewport();
         HelpSpotlightOverlay spotlight = work ? _workHelpSpotlight! : _helpSpotlight;
         PanelContainer popup = work ? _workHelpPopup! : _helpPopup;
         Label? title = work ? _workHelpTitle : _helpTitle;
