@@ -14,9 +14,14 @@ switched off by a runtime boolean.
 | Full Release | `preset.1` | Windows Desktop | **Plain IL `DesktopBuddy.dll`** | `encrypt_pck=false` |
 | itch.io | `preset.2` | **Web (wasm)** | AOT wasm + Webcil, IL stripped, trimmed | `encrypt_pck=false` |
 
-The itch build is a *Web* export, built in CI by a pinned Godot fork (PR #118976) and pushed with
-`butler push build/itch-web`. This matters: almost every "protect your Godot game" article assumes a
-native export, and the advice does not transfer cleanly.
+The itch build is a *Web* export, built in CI by a pinned Godot fork (PR #118976). CI zips
+`build/itch-web/` verbatim into `DesktopBuddy-itch-web-experimental.zip`, which is uploaded to itch
+and served with "This file will be played in the browser" (owner, 2026-09-07). So the shipped
+artifact is exactly `index.html`, `index.pck`, the wasm and `_framework/` — every byte of it handed
+to the browser, and re-downloadable by anyone who loads the page.
+
+This matters: almost every "protect your Godot game" article assumes a native export, and the advice
+does not transfer cleanly.
 
 ### 1.1 The feature leak
 
@@ -90,16 +95,17 @@ there is no boolean to flip. This is the only work that actually closes §1.1.
 Surface: ~30 files in `src/Work/`, 12 in `src/CharacterEditor/BuddyStudio/`, 18 in
 `src/Environment/`, 5 gore-related, plus autoload entries and assets.
 
-### A1. Introduce a compile constant
+### A1. Reuse the existing compile constant
 
-Add to the existing `net10.0` PropertyGroup (the itch/web block) in `DesktopBuddy.csproj`:
+**No new constant.** Owner confirmed 2026-09-07: itch is served from
+`DesktopBuddy-itch-web-experimental.zip` via itch's "play in the browser" hosting, and there is no
+native itch build. `preset.2` is also the only Web preset. So *web ⟺ itch* — `DESKTOP_BUDDY_PUBLIC_WEB`
+already means exactly "the public itch web build", and a second constant would be an abstraction
+with one implementation.
 
-```xml
-<DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ITCH</DefineConstants>
-```
-
-Do **not** reuse `DESKTOP_BUDDY_PUBLIC_WEB`. Keep "this is the browser runtime" and "this is the
-reduced distribution" as separate ideas, or a future native itch build silently gets the wrong set.
+Split it later, if and only if a second web distribution or a native itch build ever appears. The
+cost of splitting then is a rename; the cost of carrying two constants now is two things to keep in
+step forever.
 
 ### A2. Remove the source from the compile
 
@@ -111,7 +117,7 @@ reduced distribution" as separate ideas, or a future native itch build silently 
 </ItemGroup>
 ```
 
-Then fix the fallout behind `#if !DESKTOP_BUDDY_ITCH` at each composition site: `Bootstrap`,
+Then fix the fallout behind `#if !DESKTOP_BUDDY_PUBLIC_WEB` at each composition site: `Bootstrap`,
 `DesktopShellController`, `CharacterEditorHost`, `SandboxRoot`. `DemoScope.Includes*` become
 compile-time constants rather than runtime reads.
 
@@ -241,9 +247,9 @@ that the pinned Web fork even supports it.
 3. **Phase C** — defer. If pursued, aim it at the **native Windows builds**, which are the soft
    target, not at the web build the question started from.
 
-One thing to decide before Phase A: whether a **native itch build** is ever planned. If yes, the
-`#if` constant must key off the distribution and not the web target, and the autoload rewrite (A3a)
-needs to run for that export too. The plan above assumes web-only and flags A1 accordingly.
+Resolved 2026-09-07: itch is **web-only**, hosted from the CI zip with "play in the browser", and
+`preset.2` is the only Web preset. Phase A therefore keys off the existing `DESKTOP_BUDDY_PUBLIC_WEB`
+and needs no new constant (§A1). Nothing else in the plan is blocked.
 
 ### Honest ceiling
 
