@@ -63,7 +63,7 @@ CS-01 creates a recorded decision table with source, owner/tuning authority, cho
 | D-PHYS | Approved/tuned primitive dimensions, mass/material/speed/impulse combinations, marker units/axes and collision policy for each enabled template | CS-03 and template exposure in CS-16. |
 | D-PAINT | Item dimensions, bounded layer count, permitted source tools/compositing, history policy, source/decoded/GPU caps and total application residency | CS-10/11; no change to locked Buddy budgets. |
 | D-TEST | Evidence-backed isolated test-world activation, pause and lifecycle design at Godot 4.6.1 | CS-13, resolved by CS-04 spike. |
-| D-SOURCE | Exact local source schema, schema version, storage root/whitelist, save/recovery and dependency lock representation | CS-09/18. Reuse upstream policy where already specified. |
+| D-SOURCE | Exact local source schema, schema version, storage root/whitelist, save/recovery, immutable local runtime snapshot format/retention and dependency lock representation | CS-09/17/18. Reuse upstream policy where already specified. |
 | D-GRAPH | Initial allowed event/action vocabulary, scheduling/overflow rules and measured global/per-pack/instance limits | CS-20/21; no general expression language. |
 | D-PACK | Separate runtime Content Pack schema/version, exact declared-path grammar, count/byte caps, tag/build policy and explicit M6-extension authority | CS-23/24. Local pack compiler does not authorize Workshop admission. |
 
@@ -74,12 +74,14 @@ CS-01 creates a recorded decision table with source, owner/tuning authority, cho
 | CREATOR-0 | CS-01–04 | Requirements mapped, shared semantic seam usable, physics policy tested, isolated-test feasibility proven. |
 | CREATOR-1 | CS-05–07 | Local Blueprint save/place/library journey. This is the required creator value for the systemic slice. |
 | CREATOR-2 | CS-08–17 | Local painted Prop, then approved Melee/Gun templates; safe one-click test and local use. Optional for Next Fest. |
-| CREATOR-3 | CS-18–19 | Deterministic local packs and resilient dependency versions. |
+| CREATOR-3 | CS-18–19 | In-game multi-item pack authoring, deterministic compilation and resilient dependency versions. |
 | CREATOR-4 | CS-20–22 | Bounded graph runtime and visual authoring. Off the Next Fest critical path. |
-| CREATOR-5 | CS-23–26 | Separate hostile package pipeline, publish/import/update and release evidence. |
+| CREATOR-5 | CS-23–25, then CS-26 | Separate hostile package pipeline and publish/import/update; CS-26 also closes earlier local-only slices independently. |
 | CREATOR-6 | CS-27 | Individually gated expansions; no blanket implementation authorization. |
 
 Recommended sequence is ascending packet number. Dependencies inside each packet are authoritative. Blueprint work does not depend on the optional item editor or the isolated-test spike succeeding. Do not turn the foundation into a graph framework just to reserve future extension points.
+
+Run CS-26 whenever an advertised slice is ready, using only that slice's dependencies. Its packet number does not require completing optional graph or Content Pack Workshop work before accepting local features.
 
 ## 4. Detailed work packets
 
@@ -253,27 +255,29 @@ Recommended sequence is ascending packet number. Dependencies inside each packet
 
 **Deliver:** Melee then Gun as separately reviewable substeps. Template compiles existing trusted behavior; markers define handle/muzzle through validated rules. Projectile choice, rate/spread/recoil use approved bounds and transitive build checks. Reward-safe attribution applies to every emitted descendant and contact.
 
-**Checks:** firing cadence and cooldown at 120 Hz; projectile lifetime/CCD; muzzle obstruction/self-hit rules; maximum legal recoil and mass combination; sleeping/removed owner cleanup; contact deduplication; no reward amplification; indirect Full-only projectile rejects. **Exit:** research beginner painted-gun journey, including restart and explicit use. **Exclude:** new reload/magazine/explosive semantics absent from upstream capability.
+**Checks:** firing cadence and cooldown at 120 Hz; projectile lifetime/CCD; muzzle obstruction/self-hit rules; maximum legal recoil and mass combination; sleeping/removed owner cleanup; contact deduplication; no reward amplification; indirect Full-only projectile rejects. **Exit:** research beginner painted-gun journey through edit -> Test Spawn -> pick up/fire -> edit -> Test Spawn again (steps 1–10). Persistent library use and restart acceptance belong to CS-17. **Exclude:** new reload/magazine/explosive semantics absent from upstream capability.
 
 ### CS-17 — Local item library and CREATOR-2 acceptance
 
-**Depends on:** CS-15; CS-16 for Melee/Gun acceptance; U-SCENE/U-BUILD. **Lane:** library + end-to-end + Windows/performance.
+**Depends on:** CS-15; CS-16 for Melee/Gun acceptance; U-SCENE/U-BUILD; D-SOURCE covering immutable local runtime snapshots and retained dependency hashes. **Lane:** library + end-to-end + Windows/performance.
 
 **Touch:** Creator library provider and upstream spawn browser. Reuse source metadata paging.
 
 **Deliver:** saved local items in eligible build library, explicit use, duplicate/variant with new PackId and internal remapping, rename/delete policy and bounded thumbnail cache. Appearance-only variant keeps trusted physics. Deletion cannot free resources still in use.
 
-**Checks:** local/offline restart; unavailable provider placeholder; duplicate preserves external refs; source-save failure doesn't replace runtime artifact; direct spawn enforces build policy; repeated editor/test/use cycles; Normal Demo unchanged. Run research section 20 beginner journey and section 22 phase gates. **Exit:** accept the exact enabled template set and resource envelope; missing Gun gate does not invalidate completed Prop work. **Exclude:** dependency auto-enable or Workshop UI.
+**Before enabling Scene use:** implement or verify the narrow single-item runtime snapshot store and resolver. Persist immutable compiled definitions/assets with exact-byte hashes; Scene/Blueprint references pin the resolved hashes. Retain versions referenced by saved documents as well as live instances. Saving edited source creates a candidate revision and cannot replace a pinned runtime artifact; switching an existing instance is explicit and transactional. Missing snapshots preserve inert references, never silently resolve to the latest source. Reuse the upstream provider/store and D-SOURCE policy; broader multi-pack resolution remains CS-19. If this contract is unavailable, keep library spawning disabled.
 
-### CS-18 — Deterministic local Content Pack compiler
+**Checks:** local/offline restart; unavailable provider placeholder; duplicate preserves external refs; source-save failure doesn't replace runtime artifact; direct spawn enforces build policy; repeated editor/test/use cycles; Normal Demo unchanged. Save a Scene and Blueprint with item revision A, edit/save revision B, exit and reopen both: they retain A's exact definition/assets. Cover failed snapshot writes, explicit replacement failure and deletion while only a saved document references A. Run research section 22 phase gates and the complete section 20 beginner journey, including local save, restart and explicit library use, for Gun acceptance; use the equivalent Prop journey when Gun is deferred. **Exit:** accept the exact enabled template set and resource envelope; missing Gun gate does not invalidate completed Prop work. **Exclude:** dependency auto-enable or Workshop UI.
 
-**Depends on:** CS-17, D-SOURCE and approved local runtime schema from MOD-2. **Lane:** domain/store.
+### CS-18 — Deterministic local Content Pack compiler and authoring UI
 
-**Touch:** upstream MOD compiler; proposed source-to-runtime adapter only where absent.
+**Depends on:** CS-17, D-SOURCE and approved local runtime schema from MOD-2. **Lane:** domain/store + real-input journey.
 
-**Deliver:** multiple definitions grouped under PackId/version; immutable runtime assets; canonical serialization and exact-byte hashes; source/runtime schemas version independently. Preserve one-definition projects through sequential migration. Expose validation through the existing headless/CLI convention.
+**Touch:** upstream MOD compiler; proposed source-to-runtime adapter only where absent; Creator General page and local library commands.
 
-**Checks:** repeated compile and source-layout-only edit produce identical runtime bytes; one-pixel/runtime-property change alters hash; sorted references; unsupported schema/capability; malformed asset; no source editor metadata in runtime; local compile/import parity. **Exit:** one real first-party-compatible sample pack compiles offline without engine Resources in the result. **Exclude:** Workshop admission and executable metadata.
+**Deliver:** extend CS-17's immutable artifacts and hash identity to multiple definitions grouped under PackId/version; canonical serialization; source/runtime schemas version independently. Preserve one-definition projects through sequential migration. Expose validation through the existing headless/CLI convention. Provide in-game Create Pack, add copies of existing local items, choose destination pack, edit author version and Save/Validate controls. Reuse duplicate/remapping rules for copied definitions and their internal references; preserve external references and original items so existing Scenes remain intact. Show identity/version conflicts as diagnostics. No external JSON editing is required.
+
+**Checks:** repeated compile and source-layout-only edit produce identical runtime bytes; one-pixel/runtime-property change alters hash; sorted references; unsupported schema/capability; malformed asset; no source editor metadata in runtime; local compile/import parity. Real-input journey: create a pack, add two existing local items, set its version, save/validate, restart and reopen with both items and references intact; original items and saved Scene references remain unchanged. **Exit:** the two-item pack is authored entirely in game and compiles offline without engine Resources in the result. **Exclude:** Workshop admission and executable metadata.
 
 ### CS-19 — Dependency lock, update and enable transactions
 
@@ -281,7 +285,7 @@ Recommended sequence is ascending packet number. Dependencies inside each packet
 
 **Touch:** upstream provider resolver and Scene/Blueprint dependency records.
 
-**Deliver:** bounded transitive resolution, exact hash lock, typed identity/version conflict and last-known-good version retention. Enable/update is explicit and atomic; existing live instances retain their resolved version/assets until safe retirement. Missing versions preserve inert bounded payloads.
+**Deliver:** extend CS-17's snapshot retention and pinned references to bounded transitive multi-pack resolution, exact hash locks, typed identity/version conflicts and last-known-good version retention. Enable/update is explicit and atomic; existing live instances and saved documents retain their resolved versions/assets until their references are safely retired. Missing versions preserve inert bounded payloads.
 
 **Checks:** cycle/depth/count/byte limits; same PackId/version different hash; transitive incompatible build; offline resolution; interrupted update; deleting/disable while instances live; reinstall restores placeholder references; save/load does not erase unknown state. **Exit:** proposed `creator_pack_update_retention` passes. **Exclude:** automatic downloads or silent latest-version substitution.
 
@@ -347,11 +351,13 @@ Recommended sequence is ascending packet number. Dependencies inside each packet
 
 ### CS-26 — Creator release verification and closeout
 
-**Depends on:** CS-25 and all packets for the advertised feature set. **Lane:** full regression, performance, Windows and external Steam matrix.
+**Depends on:** the advertised feature set and its transitive prerequisites: CS-07 for local Blueprints; CS-17 for local items (CS-16 only for advertised Melee/Gun); CS-19 for multi-pack enable/update; CS-22 for Advanced Behavior; CS-25 only for Content Pack Workshop sharing. **Lane:** applicable full regression, performance, Windows and external Steam matrix.
 
 **Deliver:** exact-commit acceptance report with scenario/journey IDs, build matrix, hardware, p95/p99 timings, peak memory, allocations, queue/contact counts and external gate status. Keep the Normal Demo intact; Next Fest optional item authoring must not block its required Blueprint/systemic slice.
 
 **Checks:** existing painting/character/window/physics/Workshop suites; item limits combined with legal Scene load; repeated test/enable/update/delete; malformed pack sweep; addon absent and present/no-Steam; itch.io exclusion; all three content builds reject indirect unavailable capabilities. Standalone Windows 10/11 DPI 100/125/150/200%, monitor recovery, compact/fullscreen and input ownership. Live two-account publish/legal/subscribe/import/update requires configured Steam and remains explicitly external if unavailable.
+
+Select new-feature checks from the advertised slice: omit Creator graph/Content Pack checks only when those features are absent, recording them as not applicable with the reason. Preserve existing Workshop v1 and other baseline regressions. A local-only release does not require CS-23–25 or live Content Pack Steam validation; required external checks for shipped features remain named gates. Record each slice's acceptance separately and rerun CS-26 when its advertised feature set expands.
 
 **Exit:** no selectable unfinished features; exact head passes required PR gates; measured locked budgets preserved; only named external gates may remain. **Exclude:** slow steps added to push `CI / quick`, self-hosted runners, claimed passes without evidence.
 
