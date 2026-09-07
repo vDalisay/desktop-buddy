@@ -15,6 +15,7 @@ signal steam_overlay_toggled(active: bool)
 const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
 const INVALID_UGC_UPDATE_HANDLE := -1
+const STEAM_INIT_NO_CONNECTION := 2
 
 const INTERNAL_ROOM_TAG := "DesktopBuddy.RoomPainting"
 const INTERNAL_BUDDY_TAG := "DesktopBuddy.BuddyCharacter"
@@ -107,10 +108,10 @@ func initialize(app_id: int) -> Dictionary:
     var response: Dictionary = init_result
     var status := int(response.get("status", -1))
     if status != 0:
-        # At this point the addon, bindings, methods and callback signals are all valid; only the
-        # Steam client/session initialization failed. That is the one startup failure class which
-        # may become healthy later in this same process, so the composition root may retry it.
-        _retryable_init_failure = true
+        # GodotSteam's SteamInitExResult status 2 specifically means the client cannot be reached.
+        # That may recover while this process remains open. Generic failures and an out-of-date
+        # client are deliberately permanent for this run rather than being polled forever.
+        _retryable_init_failure = status == STEAM_INIT_NO_CONNECTION
         return _fail(str(response.get("verbal", "Steam initialization failed.")), status)
 
     _app_id = app_id
@@ -130,8 +131,8 @@ func configure_workshop_app_id(app_id: int) -> bool:
 func is_available() -> bool:
     return _initialized and _steam != null
 
-## True only when the addon/binding surface was valid but steamInitEx could not initialize the
-## client/session. Permanent capability/configuration failures must not be polled forever.
+## True only when the addon/binding surface was valid but SteamInitEx reported no client
+## connection. Permanent capability/configuration/client-version failures must not be polled.
 func can_retry_initialization() -> bool:
     return not _initialized and _retryable_init_failure and _steam != null
 
