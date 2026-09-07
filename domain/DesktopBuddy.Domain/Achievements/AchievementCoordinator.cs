@@ -51,11 +51,99 @@ public sealed class AchievementCoordinator
     public AchievementProgressStore Store => _store;
 
     /// <summary>
-    /// Reconciles rules reconstructible from durable state. Active-character context is mandatory
-    /// at the call site (null explicitly means the built-in Buddy) so character-scoped rules can
-    /// never silently run under the wrong identity.
+    /// Reconciles rules reconstructible from durable state. Active-character context is explicit
+    /// (null means the built-in Buddy), preventing character-scoped rules from silently running
+    /// under a default identity.
     /// </summary>
     public void EvaluatePersistentState(Guid? activeCharacterId)
+    {
+        EvaluateGlobalPersistentState();
+        ObserveCharacterArc(activeCharacterId, _progress.Mood);
+    }
+
+    /// <summary>
+    /// Compatibility entry point for runtime impact adapters that do not own character selection.
+    /// It evaluates only account/global rules; character-scoped state is handled by the regular
+    /// persistent evaluation path where the active character identity is known.
+    /// </summary>
+    public void RecordDamage(string contentId, float pain, long milliCredits, double nowSeconds)
+    {
+        RecordDamageCore(contentId, pain, milliCredits, nowSeconds);
+        EvaluateGlobalPersistentState();
+    }
+
+    /// <summary>Character-aware variant used by domain tests and callers that own identity.</summary>
+    public void RecordDamage(
+        string contentId,
+        float pain,
+        long milliCredits,
+        double nowSeconds,
+        Guid? activeCharacterId)
+    {
+        RecordDamageCore(contentId, pain, milliCredits, nowSeconds);
+        EvaluatePersistentState(activeCharacterId);
+    }
+
+    public void RecordFireDrill() => _store.Qualify(AchievementIds.FireDrill);
+    public void RecordBankShot() => _store.Qualify(AchievementIds.BankShot);
+
+    public void RecordAirborneSeconds(double seconds)
+    {
+        if (seconds >= 30.0)
+            _store.Qualify(AchievementIds.AirBud);
+    }
+
+    public void RecordFullyDressed(bool headwear, bool top, bool shoes, bool glasses)
+    {
+        if (headwear && top && shoes && glasses)
+            _store.Qualify(AchievementIds.FullyDressed);
+    }
+
+    public void RecordCustomization(Guid? activeCharacterId, CustomizationArea area)
+    {
+        if (area == CustomizationArea.None)
+            return;
+
+        string character = CharacterKey(activeCharacterId);
+        string key = CustomizationPrefix + character;
+        int prior = 0;
+        _ = int.TryParse(_store.Value(key), NumberStyles.Integer, CultureInfo.InvariantCulture, out prior);
+        int updated = prior | (int)area;
+        _store.SetValue(key, updated.ToString(CultureInfo.InvariantCulture));
+        if ((updated & (int)CustomizationArea.All) == (int)CustomizationArea.All)
+            _store.Qualify(AchievementIds.MakeItYours);
+    }
+
+    /// <summary>
+    /// Records an actually present decoration category. The rule engine owns the complete category
+    /// set, so callers cannot accidentally qualify Home Sweet Home with an incomplete checklist.
+    /// </summary>
+    public void RecordEnvironmentCategory(DecorationCategory category)
+    {
+        int prior = ReadHomeCategoriesMask();
+        int updated = prior | CategoryBit(category);
+        _store.SetValue(HomeCategoriesMaskKey, updated.ToString(CultureInfo.InvariantCulture));
+        EvaluateHomeSweetHome();
+    }
+
+    /// <summary>Legacy adapter overload; new callers should pass the typed category.</summary>
+    public void RecordEnvironmentCategory(string categoryId)
+    {
+        if (Enum.TryParse(categoryId, ignoreCase: false, out DecorationCategory category))
+            RecordEnvironmentCategory(category);
+    }
+
+    /// <summary>
+    /// Legacy adapter seam retained for the current runtime bootstrap. The authoritative domain
+    /// enum, not the caller-provided list, defines completion.
+    /// </summary>
+    public void EvaluateHomeSweetHome(IEnumerable<string> requiredCategoryIds)
+    {
+        ArgumentNullException.ThrowIfNull(requiredCategoryIds);
+        EvaluateHomeSweetHome();
+    }
+
+    private void EvaluateGlobalPersistentState()
     {
         ProgressStatistics statistics = _progress.Statistics;
 
@@ -109,17 +197,9 @@ public sealed class AchievementCoordinator
             if (actions >= 100_000) _store.Qualify(AchievementIds.EmployeeYear);
             if (actions >= 1_000_000) _store.Qualify(AchievementIds.EmployeeForLife);
         }
-
-        ObserveCharacterArc(activeCharacterId, _progress.Mood);
     }
 
-    /// <summary>Reports one accepted positive-pain event from the authoritative impact pipeline.</summary>
-    public void RecordDamage(
-        string contentId,
-        float pain,
-        long milliCredits,
-        double nowSeconds,
-        Guid? activeCharacterId)
+    private void RecordDamageCore(string contentId, float pain, long milliCredits, double nowSeconds)
     {
         if (pain <= 0.0f || string.IsNullOrWhiteSpace(contentId))
             return;
@@ -152,57 +232,24 @@ public sealed class AchievementCoordinator
         _recentDamageSources[contentId] = nowSeconds;
         if (_recentDamageSources.Count >= 3)
             _store.Qualify(AchievementIds.RubeGoldberg);
-
-        EvaluatePersistentState(activeCharacterId);
     }
 
-    public void RecordFireDrill() => _store.Qualify(AchievementIds.FireDrill);
-    public void RecordBankShot() => _store.Qualify(AchievementIds.BankShot);
-
-    public void RecordAirborneSeconds(double seconds)
+    private void EvaluateHomeSweetHome()
     {
-        if (seconds >= 30.0)
-            _store.Qualify(AchievementIds.AirBud);
+        int mask = ReadHomeCategoriesMask();
+        if ((mask & RequiredHomeCategoriesMask) == RequiredHomeCategoriesMask)
+            _store.Qualify(AchievementIds.HomeSweetHome);
     }
 
-    public void RecordFullyDressed(bool headwear, bool top, bool shoes, bool glasses)
+    private int ReadHomeCategoriesMask()
     {
-        if (headwear && top && shoes && glasses)
-            _store.Qualify(AchievementIds.FullyDressed);
-    }
-
-    public void RecordCustomization(Guid? activeCharacterId, CustomizationArea area)
-    {
-        if (area == CustomizationArea.None)
-            return;
-
-        string character = CharacterKey(activeCharacterId);
-        string key = CustomizationPrefix + character;
-        int prior = 0;
-        _ = int.TryParse(_store.Value(key), NumberStyles.Integer, CultureInfo.InvariantCulture, out prior);
-        int updated = prior | (int)area;
-        _store.SetValue(key, updated.ToString(CultureInfo.InvariantCulture));
-        if ((updated & (int)CustomizationArea.All) == (int)CustomizationArea.All)
-            _store.Qualify(AchievementIds.MakeItYours);
-    }
-
-    /// <summary>
-    /// Records an actually present decoration category. The rule engine owns the complete category
-    /// set, so callers cannot accidentally qualify Home Sweet Home with an incomplete checklist.
-    /// </summary>
-    public void RecordEnvironmentCategory(DecorationCategory category)
-    {
-        int prior = 0;
+        int parsed = 0;
         _ = int.TryParse(
             _store.Value(HomeCategoriesMaskKey),
             NumberStyles.Integer,
             CultureInfo.InvariantCulture,
-            out prior);
-
-        int updated = prior | CategoryBit(category);
-        _store.SetValue(HomeCategoriesMaskKey, updated.ToString(CultureInfo.InvariantCulture));
-        if ((updated & RequiredHomeCategoriesMask) == RequiredHomeCategoriesMask)
-            _store.Qualify(AchievementIds.HomeSweetHome);
+            out parsed);
+        return parsed;
     }
 
     private void ObserveCharacterArc(Guid? activeCharacterId, float mood)
@@ -241,7 +288,13 @@ public sealed class AchievementCoordinator
     {
         int index = (int)category;
         if (index < 0 || index >= 31)
-            throw new ArgumentOutOfRangeException(nameof(category), category, "Decoration category cannot be represented in the persisted bit mask.");
+        {
+            throw new ArgumentOutOfRangeException(
+                nameof(category),
+                category,
+                "Decoration category cannot be represented in the persisted bit mask.");
+        }
+
         return 1 << index;
     }
 
