@@ -28,6 +28,27 @@
     debug maps and symbols, and keep WebCIL packaging. This cannot make client-delivered WASM
     secret, but it removes the easy managed-code/debugging path without changing native builds.
   -->
+  <!--
+    The reduced itch.io distribution. itch is web-only — CI rewrites this project to net10.0 for
+    that export and it is the only Web preset — so the web target is what selects the reduced
+    scope, and DESKTOP_BUDDY_PUBLIC_WEB is its compile constant (owner confirmation 2026-09-07).
+
+    Set this property directly to compile the same reduced surface on the normal desktop target:
+
+        dotnet build DesktopBuddy.sln -p:DesktopBuddyItchScope=true
+
+    That is the only way to prove the #if-guarded code still compiles without the excluded
+    subsystems, short of the pinned Web fork the real export needs.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyItchScope Condition=" '$(DesktopBuddyItchScope)' == '' AND '$(TargetFramework)' == 'net10.0' ">true</DesktopBuddyItchScope>
+    <DesktopBuddyItchScope Condition=" '$(DesktopBuddyItchScope)' == '' ">false</DesktopBuddyItchScope>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_PUBLIC_WEB</DefineConstants>
+  </PropertyGroup>
+
   <PropertyGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>full</TrimMode>
@@ -45,12 +66,39 @@
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_PUBLIC_WEB</DefineConstants>
   </PropertyGroup>
 
-  <!-- Developer-only scenarios must not be compiled into the public browser assembly. -->
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
+  <!--
+    Source the reduced distribution does not ship. Held back at compile time, not by a runtime
+    boolean: feature tags live in the exported project settings inside an unencrypted .pck, so a
+    gate that only switches a shipped feature off is a data edit away from being switched back on
+    (see docs/ITCH_HARDENING_PLAN_2026-09-07.md).
+
+    Buddy Studio's folder is deliberately split rather than globbed. The workspace UI goes; the
+    cosmetic data types beside it stay, because the buddy still wears and saves cosmetics on itch —
+    BuddyGeneratedCosmeticRegistry and the two GeneratedBuddyCosmetic*Resource types are used by the
+    renderer, the editor session and character persistence. New Studio UI files belong on this list.
+  -->
+  <ItemGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">
+    <!-- Developer-only scenarios must not be compiled into the public browser assembly. -->
     <Compile Remove="src/Testing/**/*.cs" />
+
+    <!-- Buddy Studio: workspace UI only. -->
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.CaptureStorePolish.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.Generated.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.PreviewNavigation.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioBootstrap.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioStartupProbe.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioThumbnailCache.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStyleTastes.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/CharacterEditorHost.BuddyStudio.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Studio.cs" />
+  </ItemGroup>
+
+  <!-- The "no Buddy Studio" half of that seam is the one build that must not see both. -->
+  <ItemGroup Condition=" '$(DesktopBuddyItchScope)' != 'true' ">
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.StudioAbsent.cs" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -5,7 +5,6 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.CharacterEditor;
-using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
@@ -196,11 +195,9 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private WorkCompanionCoordinator? _work;
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
-    private BuddyStudioWorkspace? _studio;
 
     private bool _editorSignalsBound;
     private bool _brushSignalBound;
-    private bool _studioSignalsBound;
     private bool _backgroundSignalsBound;
     private bool _wasGrabbing;
     private bool _wasEditorOpen;
@@ -489,7 +486,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
         _backgroundEditor ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) as EnvironmentBackgroundEditor;
         _backgroundPresenter ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundPresenter), true, false) as EnvironmentBackgroundPresenter;
-        _studio ??= GetTree().Root.FindChild(nameof(BuddyStudioWorkspace), true, false) as BuddyStudioWorkspace;
+        DiscoverStudio();
     }
 
     private void BindActionSignals()
@@ -522,11 +519,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             _brushSignalBound = true;
         }
 
-        if (!_studioSignalsBound && GodotObject.IsInstanceValid(_studio) && _studio!.IsInsideTree())
-        {
-            _studio.SaveAction.Pressed += OnStudioSavePressed;
-            _studioSignalsBound = true;
-        }
+        BindStudioSignals();
 
         if (!_backgroundSignalsBound && GodotObject.IsInstanceValid(_backgroundEditor) &&
             _backgroundEditor!.FindChild("PaintSaveButton", true, false) is Button save)
@@ -549,8 +542,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             _editor!.SaveButton.Pressed -= OnPaintSavePressed;
             _editor.UseButton.Pressed -= OnPaintUsePressed;
         }
-        if (_studioSignalsBound && GodotObject.IsInstanceValid(_studio))
-            _studio!.SaveAction.Pressed -= OnStudioSavePressed;
+        UnbindStudioSignals();
         if (_backgroundSignalsBound && GodotObject.IsInstanceValid(_backgroundEditor) &&
             _backgroundEditor!.FindChild("PaintSaveButton", true, false) is Button save)
             save.Pressed -= OnBackgroundSavePressed;
@@ -698,8 +690,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.SelectNoseCategory when IsStudioOpen() &&
-                                                           _studio!.SelectedSlot == CharacterFeatureSlot.Nose:
+            case TutorialStepIds.SelectNoseCategory when IsStudioSlotSelected(CharacterFeatureSlot.Nose):
                 CompleteCurrent(step);
                 break;
 
@@ -772,9 +763,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private bool IsPaintBuddyOpen() =>
         GodotObject.IsInstanceValid(_editor) && _editor!.IsEditorOpen && _editor.IsPaintMode && !IsStudioOpen();
-
-    private bool IsStudioOpen() =>
-        GodotObject.IsInstanceValid(_studio) && _studio!.IsVisibleInTree();
 
     private bool IsWorkActive() =>
         GodotObject.IsInstanceValid(_work) && _work!.IsActive;
@@ -885,9 +873,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// still settling after the equip.
     /// </summary>
     private bool StudioHasNothingToSave() =>
-        GodotObject.IsInstanceValid(_studio) &&
-        GodotObject.IsInstanceValid(_studio!.SaveAction) &&
-        _studio.SaveAction.Disabled &&
+        IsStudioSaveDisabled() &&
         GodotObject.IsInstanceValid(_editor) &&
         !_editor!.Session.IsDirty;
 
@@ -904,8 +890,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         FindInEditor("Win98NewCharacterButton") is Button create && !create.Disabled;
 
     private bool IsStudioPreviewing(string contentId) =>
-        IsStudioOpen() && GodotObject.IsInstanceValid(_studio!.CatalogGrid) &&
-        string.Equals(_studio.CatalogGrid.SelectedId, contentId, StringComparison.Ordinal);
+        IsStudioOpen() && IsStudioCatalogSelection(contentId);
 
     private bool IsStudioEquipped(string contentId) =>
         IsStudioOpen() && GodotObject.IsInstanceValid(_editor) &&
@@ -1796,7 +1781,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private Control? ResolveStepAlternate(string stepId) => stepId switch
     {
-        TutorialStepIds.BuyStudioItem when IsStudioOpen() => _studio!.CatalogGrid,
+        TutorialStepIds.BuyStudioItem when IsStudioOpen() => StudioCatalogGrid,
         // The step's own target is the canvas; the lock would otherwise swallow the Save click
         // that ends the step.
         TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() => _editor!.SaveButton,
@@ -1830,13 +1815,13 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             case TutorialStepIds.UsePaintedBuddy when IsPaintBuddyOpen():
                 return _editor!.UseButton;
             case TutorialStepIds.SaveBuddyStudio when IsStudioOpen():
-                return _studio!.SaveAction;
+                return StudioSaveAction;
 
             // Point at the one category button and the one tile, not the whole strip or grid.
             case TutorialStepIds.SelectNoseCategory when IsStudioOpen():
-                return _studio!.CategoryStrip.ButtonFor(StudioNoseCategoryId);
+                return StudioCategoryButton(StudioNoseCategoryId);
             case TutorialStepIds.SelectNoseButtonStyle when IsStudioOpen():
-                return _studio!.CatalogGrid.TileFor(CharacterFeatureIds.NoseButton);
+                return StudioCatalogTile(CharacterFeatureIds.NoseButton);
             case TutorialStepIds.Farewell:
                 return GodotObject.IsInstanceValid(_help) ? _help : null;
         }
@@ -1848,7 +1833,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             SpotlightScope.PaintBuddy => _editor,
             SpotlightScope.Background => _backgroundEditor,
-            SpotlightScope.Studio => _studio,
+            SpotlightScope.Studio => StudioScope,
             _ => GetTree().Root,
         };
         if (!GodotObject.IsInstanceValid(scope))
