@@ -5,19 +5,15 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.CharacterEditor;
-using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Economy;
-using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Tools;
-using DesktopBuddy.Environment;
 using DesktopBuddy.Shop;
 using DesktopBuddy.UI.Win98;
-using DesktopBuddy.Work;
 using Godot;
 
 namespace DesktopBuddy.Onboarding;
@@ -193,15 +189,9 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private CharacterEditorHost? _editor;
     private ShopPanel? _shop;
     private Button? _baseballBatAction;
-    private WorkCompanionCoordinator? _work;
-    private EnvironmentBackgroundEditor? _backgroundEditor;
-    private EnvironmentBackgroundPresenter? _backgroundPresenter;
-    private BuddyStudioWorkspace? _studio;
 
     private bool _editorSignalsBound;
     private bool _brushSignalBound;
-    private bool _studioSignalsBound;
-    private bool _backgroundSignalsBound;
     private bool _wasGrabbing;
     private bool _wasEditorOpen;
     private bool _wasStudioOpen;
@@ -234,13 +224,10 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _studioNothingToSave;
     private PaintColor? _paintColorOrigin;
     private bool _brushButtonPressed;
-    private EnvironmentColor? _backgroundColorOrigin;
     private Rect2I _workDragOrigin;
     private Rect2I _workResizeOrigin;
-    private WorkCompanionView? _workView;
     private Control? _resizeGrips;
     private Win98BuddyShellController? _shell;
-    private bool? _workCounterOrigin;
 
     private string? _displayedStepId;
 
@@ -290,7 +277,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         EnsureWorkHelpSurface();
         AdvanceCurrentStep();
 
-        string? next = _tutorial.NextIncompleteStepId;
+        string? next = CurrentStepId;
         if (!string.Equals(next, _displayedStepId, StringComparison.Ordinal))
         {
             RefreshHint();
@@ -450,7 +437,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _chargedBatSwingObserved = false;
         _paintRevisionOrigin = null;
         _hasSeenWorkActive = false;
-        _workCounterOrigin = null;
+        ResetWorkCounterBaseline();
         RequestImmediateFlush();
         RefreshHint();
     }
@@ -467,29 +454,12 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private void DiscoverRuntimeNodes()
     {
         _editor ??= GetTree().Root.FindChild(nameof(CharacterEditorHost), true, false) as CharacterEditorHost;
-        // Not ??=: the Work companion is destroyed on exit and rebuilt on the next entry, and a
-        // freed Godot object is invalid but not null. The stale reference then failed every
-        // IsInstanceValid check, so the counter step could never complete and the walkthrough
-        // stopped dead on the second visit to Work Mode (owner report 2026-08-20).
-        if (!GodotObject.IsInstanceValid(_workView))
-        {
-            var rediscovered = GetTree().Root.FindChild(nameof(WorkCompanionView), true, false) as WorkCompanionView;
-            if (!ReferenceEquals(rediscovered, _workView))
-            {
-                _workView = rediscovered;
-                // A fresh companion starts the counter lesson over: the baseline belonged to the
-                // instance that just went away.
-                _workCounterOrigin = null;
-                _workHelpLayer = null;
-            }
-        }
+        DiscoverWork();
         _shell ??= GetTree().Root.FindChild(nameof(Win98BuddyShellController), true, false)
             as Win98BuddyShellController;
         _shop ??= GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel;
-        _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
-        _backgroundEditor ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) as EnvironmentBackgroundEditor;
-        _backgroundPresenter ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundPresenter), true, false) as EnvironmentBackgroundPresenter;
-        _studio ??= GetTree().Root.FindChild(nameof(BuddyStudioWorkspace), true, false) as BuddyStudioWorkspace;
+        DiscoverBackground();
+        DiscoverStudio();
     }
 
     private void BindActionSignals()
@@ -522,18 +492,9 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             _brushSignalBound = true;
         }
 
-        if (!_studioSignalsBound && GodotObject.IsInstanceValid(_studio) && _studio!.IsInsideTree())
-        {
-            _studio.SaveAction.Pressed += OnStudioSavePressed;
-            _studioSignalsBound = true;
-        }
+        BindStudioSignals();
 
-        if (!_backgroundSignalsBound && GodotObject.IsInstanceValid(_backgroundEditor) &&
-            _backgroundEditor!.FindChild("PaintSaveButton", true, false) is Button save)
-        {
-            save.Pressed += OnBackgroundSavePressed;
-            _backgroundSignalsBound = true;
-        }
+        BindBackgroundSignals();
     }
 
     private void UnbindActionSignals()
@@ -549,11 +510,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             _editor!.SaveButton.Pressed -= OnPaintSavePressed;
             _editor.UseButton.Pressed -= OnPaintUsePressed;
         }
-        if (_studioSignalsBound && GodotObject.IsInstanceValid(_studio))
-            _studio!.SaveAction.Pressed -= OnStudioSavePressed;
-        if (_backgroundSignalsBound && GodotObject.IsInstanceValid(_backgroundEditor) &&
-            _backgroundEditor!.FindChild("PaintSaveButton", true, false) is Button save)
-            save.Pressed -= OnBackgroundSavePressed;
+        UnbindStudioSignals();
+        UnbindBackgroundSignals();
     }
 
     /// <summary>
@@ -665,7 +623,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 break;
 
             case TutorialStepIds.SelectBackgroundSpray when IsBackgroundOpen() &&
-                                                              _backgroundPresenter!.Canvas.Tool == EnvironmentPaintTool.Spray:
+                                                              IsBackgroundSpraySelected():
                 CompleteCurrent(step);
                 break;
 
@@ -674,7 +632,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 break;
 
             case TutorialStepIds.PaintBackground when IsBackgroundOpen() &&
-                                                        _backgroundPresenter!.Canvas.IsDirty && !IsPrimaryMouseHeld():
+                                                        IsBackgroundCanvasDirty() && !IsPrimaryMouseHeld():
                 CompleteCurrent(step);
                 break;
 
@@ -683,8 +641,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 break;
 
             case TutorialStepIds.SaveAndExitPaintBackground when _backgroundSaveRequested &&
-                                                                   GodotObject.IsInstanceValid(_backgroundEditor) && !_backgroundEditor!.IsOpen &&
-                                                                   GodotObject.IsInstanceValid(_backgroundPresenter) && !_backgroundPresenter!.Canvas.IsDirty:
+                                                                   IsBackgroundEditorClosed() &&
+                                                                   IsBackgroundCanvasClean():
                 _backgroundSaveRequested = false;
                 CompleteCurrent(step);
                 break;
@@ -698,8 +656,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
-            case TutorialStepIds.SelectNoseCategory when IsStudioOpen() &&
-                                                           _studio!.SelectedSlot == CharacterFeatureSlot.Nose:
+            case TutorialStepIds.SelectNoseCategory when IsStudioSlotSelected(CharacterFeatureSlot.Nose):
                 CompleteCurrent(step);
                 break;
 
@@ -740,7 +697,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             case TutorialStepIds.EnterWorkMode when IsWorkActive():
                 _hasSeenWorkActive = true;
                 _workDragOrigin = _sandbox.Window.WorkCompanionRect;
-                _workCounterOrigin = null;
+                ResetWorkCounterBaseline();
                 CompleteCurrent(step);
                 break;
 
@@ -750,7 +707,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             // report 2026-09-07). Waiting for the release lets them actually place it.
             case TutorialStepIds.DragWorkCompanion when IsWorkActive() &&
                                                          _sandbox.Window.WorkCompanionRect.Position != _workDragOrigin.Position &&
-                                                         !(GodotObject.IsInstanceValid(_workView) && _workView!.IsDragging):
+                                                         !IsWorkCompanionDragging():
                 _workResizeOrigin = _sandbox.Window.WorkCompanionRect;
                 CompleteCurrent(step);
                 break;
@@ -773,16 +730,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool IsPaintBuddyOpen() =>
         GodotObject.IsInstanceValid(_editor) && _editor!.IsEditorOpen && _editor.IsPaintMode && !IsStudioOpen();
 
-    private bool IsStudioOpen() =>
-        GodotObject.IsInstanceValid(_studio) && _studio!.IsVisibleInTree();
-
-    private bool IsWorkActive() =>
-        GodotObject.IsInstanceValid(_work) && _work!.IsActive;
-
-    private bool IsBackgroundOpen() =>
-        GodotObject.IsInstanceValid(_backgroundEditor) && _backgroundEditor!.IsOpen &&
-        GodotObject.IsInstanceValid(_backgroundPresenter);
-
     private bool IsBackgroundPanelFloating() =>
         GetTree().Root.FindChild("PaintBackgroundPinController", true, false) is Win98PinnablePanel pin &&
         pin.IsFloating;
@@ -801,34 +748,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         return colour != origin;
     }
 
-    /// <summary>Any colour will do here — the lesson is the palette, not a particular hue.</summary>
-    private bool HasChosenBackgroundColor()
-    {
-        if (!IsBackgroundOpen())
-            return false;
-        EnvironmentColor colour = _backgroundPresenter!.Canvas.Color;
-        if (_backgroundColorOrigin is not EnvironmentColor origin)
-        {
-            _backgroundColorOrigin = colour;
-            return false;
-        }
-        return colour != origin;
-    }
-
-    /// <summary>
-    /// The torso surface bumps its revision on any accepted stroke, so the tutorial can require
-    /// paint <em>on the torso</em> without cloning a megabyte of pixels every frame.
-    /// </summary>
-    /// <summary>
-    /// True once the player has painted anything since this step opened. Deliberately every
-    /// surface, not the torso alone: the prompt says "Paint away!" and spotlights the whole
-    /// canvas, so a player who paints the head, a hand or a foot has done what was asked and
-    /// must not be stranded on the step forever (owner report 2026-09-07).
-    ///
-    /// <para>Switching characters mid-step swaps in fresh surfaces whose revisions restart, so a
-    /// total below the recorded baseline means "different buddy", not "un-painted". Rebaselining
-    /// on that drop keeps the step completable instead of permanently unsatisfiable.</para>
-    /// </summary>
     private bool HasPaintedAnySurface()
     {
         if (!IsPaintBuddyOpen())
@@ -885,9 +804,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// still settling after the equip.
     /// </summary>
     private bool StudioHasNothingToSave() =>
-        GodotObject.IsInstanceValid(_studio) &&
-        GodotObject.IsInstanceValid(_studio!.SaveAction) &&
-        _studio.SaveAction.Disabled &&
+        IsStudioSaveDisabled() &&
         GodotObject.IsInstanceValid(_editor) &&
         !_editor!.Session.IsDirty;
 
@@ -904,8 +821,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         FindInEditor("Win98NewCharacterButton") is Button create && !create.Disabled;
 
     private bool IsStudioPreviewing(string contentId) =>
-        IsStudioOpen() && GodotObject.IsInstanceValid(_studio!.CatalogGrid) &&
-        string.Equals(_studio.CatalogGrid.SelectedId, contentId, StringComparison.Ordinal);
+        IsStudioOpen() && IsStudioCatalogSelection(contentId);
 
     private bool IsStudioEquipped(string contentId) =>
         IsStudioOpen() && GodotObject.IsInstanceValid(_editor) &&
@@ -914,24 +830,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             CharacterDocumentEditor.ReadFeatureId(document, CharacterFeatureSlot.Nose),
             contentId,
             StringComparison.Ordinal);
-
-    /// <summary>
-    /// True once the player has flipped the Work CRT between session and lifetime totals. The
-    /// baseline is captured on the first frame the counter is observable rather than at Work
-    /// entry, because the view is built asynchronously with the companion window.
-    /// </summary>
-    private bool HasSwitchedWorkCounter()
-    {
-        if (!IsWorkActive() || !GodotObject.IsInstanceValid(_workView))
-            return false;
-        bool showLifetime = _workView!.ShowLifetime;
-        if (_workCounterOrigin is not bool origin)
-        {
-            _workCounterOrigin = showLifetime;
-            return false;
-        }
-        return showLifetime != origin;
-    }
 
     private void OnSwingReleased(float releasedCharge, int swingEpoch)
     {
@@ -963,7 +861,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private void OnPaintSavePressed() => _paintSaveRequested = IsPaintBuddyOpen();
     private void OnPaintUsePressed() => _paintUseRequested = IsPaintBuddyOpen();
     private void OnBackgroundSavePressed() =>
-        _backgroundSaveRequested = GodotObject.IsInstanceValid(_backgroundEditor) && _backgroundEditor!.IsOpen;
+        _backgroundSaveRequested = IsBackgroundEditorOpen();
     private void OnStudioSavePressed() => _studioSaveRequested = IsStudioOpen();
 
     private void CompleteCurrent(string stepId)
@@ -1238,9 +1136,30 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             CompleteCurrent(_displayedStepId!);
     }
 
+    /// <summary>
+    /// Whether the itch.io welcome dialog is still up. It is modal and lands on the same first
+    /// frame as Grab Buddy, so the two used to talk over each other (owner report 2026-09-07).
+    /// </summary>
+    private bool IsWelcomeDialogOpen() =>
+        GetTree().Root.FindChild("ItchWishlistWelcomeBlocker", true, false) is Control { Visible: true };
+
+    /// <summary>
+    /// The step the walkthrough should be showing right now, or null while it must stand down.
+    ///
+    /// <para>One thing to read at a time: the itch welcome dialog is modal and lands on the same
+    /// frame as Grab Buddy, so the walkthrough waits behind it and opens when it is dismissed
+    /// (owner report 2026-09-07). Reported as "no step" rather than as a hidden panel, so the
+    /// input gate and the spotlight stand down too and Continue stays clickable.</para>
+    ///
+    /// <para>Both the per-frame change check and the render read this, never the raw progress.
+    /// The dialog appears a frame or two after the first prompt, and a check that only the render
+    /// consulted would already have been latched by then and never re-run.</para>
+    /// </summary>
+    private string? CurrentStepId => IsWelcomeDialogOpen() ? null : _tutorial.NextIncompleteStepId;
+
     private void RefreshHint()
     {
-        string? stepId = _tutorial.NextIncompleteStepId;
+        string? stepId = CurrentStepId;
         // A click belongs to the step that was on screen when it happened; the next colour step
         // must not inherit it and complete itself the instant it opens.
         if (!string.Equals(stepId, _displayedStepId, StringComparison.Ordinal))
@@ -1423,9 +1342,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// </summary>
     private void EnsureWorkHelpSurface()
     {
-        if (_workHelpLayer is not null || !GodotObject.IsInstanceValid(_workView))
+        if (_workHelpLayer is not null || WorkCompanionWindow() is not Window window)
             return;
-        Window window = _workView!.GetWindow();
         // Before Work Mode is entered the companion view still hangs off the main window, so
         // GetWindow() returns the shell. Building here would drop a second `?` on the shell's
         // own title bar, on top of the close box. Wait for the real companion window.
@@ -1703,11 +1621,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// </summary>
     private void RefreshFloatingPanelGate()
     {
-        if (!IsBackgroundOpen() ||
-            _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is not Control panel)
-        {
+        if (!IsBackgroundOpen() || BackgroundPanel() is not Control panel)
             return;
-        }
 
         bool gated = string.Equals(
             _displayedStepId, TutorialStepIds.FloatPaintBackgroundPanel, StringComparison.Ordinal);
@@ -1721,11 +1636,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// <summary>Teardown safety net for the gate above; the per-frame pass owns the normal case.</summary>
     private void RestoreFloatingPanelButtons()
     {
-        if (!GodotObject.IsInstanceValid(_backgroundEditor) ||
-            _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is not Control panel)
-        {
+        if (BackgroundPanel() is not Control panel)
             return;
-        }
 
         foreach (string name in TitleBarButtonNames)
         {
@@ -1775,7 +1687,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     private Control? ResolveStepAlternate(string stepId) => stepId switch
     {
-        TutorialStepIds.BuyStudioItem when IsStudioOpen() => _studio!.CatalogGrid,
+        TutorialStepIds.BuyStudioItem when IsStudioOpen() => StudioCatalogGrid,
         // The step's own target is the canvas; the lock would otherwise swallow the Save click
         // that ends the step.
         TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() => _editor!.SaveButton,
@@ -1801,21 +1713,20 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             // Only the blue bar: that is the part the player has to drag, and ringing the whole
             // panel said nothing about where to grab it.
             case TutorialStepIds.FloatPaintBackgroundPanel when IsBackgroundOpen():
-                return GodotObject.IsInstanceValid(_backgroundEditor) &&
-                       _backgroundEditor!.FindChild("PaintBackgroundPanel", true, false) is Control panel
+                return BackgroundPanel() is Control panel
                     ? panel.FindChild("TitleBar", true, false) as Control
                     : null;
 
             case TutorialStepIds.UsePaintedBuddy when IsPaintBuddyOpen():
                 return _editor!.UseButton;
             case TutorialStepIds.SaveBuddyStudio when IsStudioOpen():
-                return _studio!.SaveAction;
+                return StudioSaveAction;
 
             // Point at the one category button and the one tile, not the whole strip or grid.
             case TutorialStepIds.SelectNoseCategory when IsStudioOpen():
-                return _studio!.CategoryStrip.ButtonFor(StudioNoseCategoryId);
+                return StudioCategoryButton(StudioNoseCategoryId);
             case TutorialStepIds.SelectNoseButtonStyle when IsStudioOpen():
-                return _studio!.CatalogGrid.TileFor(CharacterFeatureIds.NoseButton);
+                return StudioCatalogTile(CharacterFeatureIds.NoseButton);
             case TutorialStepIds.Farewell:
                 return GodotObject.IsInstanceValid(_help) ? _help : null;
         }
@@ -1826,8 +1737,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         Node? scope = spotlight.Scope switch
         {
             SpotlightScope.PaintBuddy => _editor,
-            SpotlightScope.Background => _backgroundEditor,
-            SpotlightScope.Studio => _studio,
+            SpotlightScope.Background => BackgroundScope,
+            SpotlightScope.Studio => StudioScope,
             _ => GetTree().Root,
         };
         if (!GodotObject.IsInstanceValid(scope))
@@ -1849,7 +1760,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     {
         // Work Mode hides the shell, so Help runs against the companion's own window instead.
         bool work = UseWorkHelpSurface();
-        Viewport viewport = work ? _workView!.GetWindow() : GetViewport();
+        Viewport viewport = work ? WorkCompanionWindow() ?? GetViewport() : GetViewport();
         HelpSpotlightOverlay spotlight = work ? _workHelpSpotlight! : _helpSpotlight;
         PanelContainer popup = work ? _workHelpPopup! : _helpPopup;
         Label? title = work ? _workHelpTitle : _helpTitle;

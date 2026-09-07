@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Obfuscar configuration for the shipping Desktop Buddy assemblies.
+
+  Renames types, methods and fields so a decompiled build reads as gibberish rather than as source.
+  It does NOT hide the assembly: the code is still there and still runs, which is the ceiling on
+  anything client-side (docs/ITCH_HARDENING_PLAN_2026-09-07.md §5). What it removes is the
+  one-click ILSpy read of the Windows builds, which today ship plain IL.
+
+  Everything below that is NOT renaming is an exclusion, and every exclusion is here because Godot
+  or .NET resolves that name as a string at runtime. Renaming those breaks the game silently, at
+  runtime, on one screen — which is why this config is deliberately conservative.
+-->
+<Obfuscator>
+  <Var name="InPath" value="." />
+  <Var name="OutPath" value="./obfuscated" />
+
+  <!-- Keep namespaces readable in stack traces; the payload is type and member names. -->
+  <Var name="KeepPublicApi" value="false" />
+  <Var name="HidePrivateApi" value="true" />
+
+  <!-- Renaming the assembly itself would break Godot's project/assembly_name lookup. -->
+  <Var name="RenameProperties" value="false" />
+  <Var name="RenameEvents" value="false" />
+  <Var name="RenameFields" value="true" />
+
+  <!-- Obfuscar cannot rewrite the string literals Godot's source generators emit. -->
+  <Var name="AnalyzeXaml" value="false" />
+
+  <Module file="$(InPath)/DesktopBuddy.dll">
+
+    <!-- Godot's own generated bridge. Renaming anything here breaks every script binding. -->
+    <SkipNamespace name="GodotPlugins*" />
+
+    <!--
+      The source generators emit InvokeGodotClassMethod / SetGodotClassPropertyValue /
+      GetGodotClassPropertyValue and the *Name string tables beside them. The engine calls these
+      by name across the native boundary.
+    -->
+    <SkipMethod type="*" name="*Godot*" />
+    <SkipType name="*.MethodName" />
+    <SkipType name="*.PropertyName" />
+    <SkipType name="*.SignalName" />
+
+    <!--
+      Godot resolves a scene's script by the [ScriptPath] the generator attaches, then instantiates
+      the type. Node subclasses stay named so that path -> type -> node mapping is untouched, and so
+      the 286 FindChild(name) lookups against nameof()-derived node names keep matching.
+    -->
+    <SkipType name="*" attrib="public" inherits="Godot.Node" skipMethods="false" skipFields="false" />
+
+    <!-- Resources are loaded from .tres by script_class name. -->
+    <SkipType name="*" inherits="Godot.Resource" skipMethods="false" skipFields="false" />
+
+    <!-- Anything the engine may construct or serialise by name. -->
+    <SkipType name="*" attrib="public" inherits="Godot.RefCounted" skipMethods="false" skipFields="false" />
+
+    <!-- JSON round-trips are name-based: saves, settings and character documents. -->
+    <SkipType name="*Save*" skipFields="true" skipProperties="true" />
+    <SkipType name="*Settings*" skipFields="true" skipProperties="true" />
+    <SkipType name="*Document*" skipFields="true" skipProperties="true" />
+    <SkipType name="*Snapshot*" skipFields="true" skipProperties="true" />
+    <SkipType name="*State*" skipFields="true" skipProperties="true" />
+
+    <!-- Enum names are matched against strings in several places (cue tags, feature ids). -->
+    <SkipType name="*" attrib="public" inherits="System.Enum" skipMethods="true" skipFields="true" />
+  </Module>
+</Obfuscator>

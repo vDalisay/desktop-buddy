@@ -518,11 +518,14 @@ public partial class SandboxRoot : Node2D
             return;
         }
 
+#if !DESKTOP_BUDDY_PUBLIC_WEB
+        // Reset Progress wipes the painted room too. The reduced distribution cannot paint one.
         if (GetTree().Root.FindChild(nameof(DesktopBuddy.Environment.EnvironmentCustomizationBootstrap), true, false)
             is DesktopBuddy.Environment.EnvironmentCustomizationBootstrap environment)
         {
             environment.ClearPaintedBackground();
         }
+#endif
         // The characters are gone, so the rig must stop wearing one.
         if (GetTree().Root.FindChild(nameof(CharacterSelectionRuntime), true, false)
             is CharacterSelectionRuntime runtime && runtime.Coordinator is not null)
