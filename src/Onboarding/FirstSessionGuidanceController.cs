@@ -141,7 +141,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     /// <summary>What the prompt is currently showing, so a step whose text depends on live
     /// state can be re-rendered without churning the whole panel every frame.</summary>
-    private string? _lastRenderedText;
 
     private Control _root = null!;
     private PanelContainer _panel = null!;
@@ -215,7 +214,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private bool _chargedBatSwingObserved;
     private bool _swingReleaseSignalBound;
     private bool _hasGrabbedBuddy;
-    private long? _torsoRevisionOrigin;
+    private long? _paintRevisionOrigin;
 
     /// <summary>Set when a colour step's palette is clicked; cleared as each step opens.</summary>
     private bool _paletteClicked;
@@ -239,6 +238,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     private Rect2I _workDragOrigin;
     private Rect2I _workResizeOrigin;
     private WorkCompanionView? _workView;
+    private Control? _resizeGrips;
+    private Win98BuddyShellController? _shell;
     private bool? _workCounterOrigin;
 
     private string? _displayedStepId;
@@ -294,15 +295,12 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         {
             RefreshHint();
         }
-        else if (next is not null && !string.Equals(TextFor(next), _lastRenderedText, StringComparison.Ordinal))
-        {
-            // Two prompts read live state — whether a character slot is free, and whether the
-            // Studio save step found anything to save — and the slot bootstrap settles a frame
-            // or two after the editor opens. Rendering once when the step opened therefore
-            // showed the wrong half: a player with every slot full was still told to press
-            // "+ New Character", which was greyed out (owner report 2026-08-20).
-            RefreshHint();
-        }
+
+        // Live-state prompts — whether a character slot is free, and whether the Studio save step
+        // found anything to save — settle a frame or two after the editor opens, so rendering once
+        // when the step opened showed the wrong half (owner report 2026-08-20). That re-render is
+        // driven by semantic step+variant identity in PrepareSemanticTutorialRefresh, which runs
+        // ahead of this method; it no longer rebuilds and compares the whole prompt every frame.
 
         if (_helpActive)
             RefreshContextHelp();
@@ -329,6 +327,13 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         }
 
         if (input is not InputEventMouseButton mouse)
+            return;
+
+        // Resizing the window is never part of a lesson and never something a lesson should take
+        // away: the player is stuck with whatever size they had when the prompt appeared
+        // otherwise (owner report 2026-09-07). This sits above Help mode as well, because Help is
+        // just as capable of trapping the window at an awkward size.
+        if (IsWindowResizeInput(mouse.Position))
             return;
 
         // Help mode is observational: hovering is allowed, clicking underlying gameplay/UI is not.
@@ -393,6 +398,32 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         GetViewport().SetInputAsHandled();
     }
 
+    /// <summary>
+    /// True while the pointer is over one of the shell's corner resize grips, or while a resize
+    /// that started on one is still running. The grips answer through GuiInput, which runs after
+    /// this node's _Input, so swallowing the event here is what blocked them.
+    /// </summary>
+    private bool IsWindowResizeInput(Vector2 position)
+    {
+        if (GodotObject.IsInstanceValid(_shell) && _shell!.IsResizingWindow)
+            return true;
+
+        if (!GodotObject.IsInstanceValid(_resizeGrips))
+            _resizeGrips = GetTree().Root.FindChild("ResizeGrips", true, false) as Control;
+        if (!GodotObject.IsInstanceValid(_resizeGrips) || !_resizeGrips!.IsVisibleInTree())
+            return false;
+
+        foreach (Node child in _resizeGrips.GetChildren())
+        {
+            if (child is Control grip && grip.IsVisibleInTree() &&
+                grip.GetGlobalRect().HasPoint(position))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public override void _ExitTree()
     {
         // The gate outlives this node, so a teardown that forgot this would leave the palette
@@ -417,7 +448,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         _wasGrabbing = false;
         _baseballBatActionObserved = false;
         _chargedBatSwingObserved = false;
-        _torsoRevisionOrigin = null;
+        _paintRevisionOrigin = null;
         _hasSeenWorkActive = false;
         _workCounterOrigin = null;
         RequestImmediateFlush();
@@ -452,6 +483,8 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 _workHelpLayer = null;
             }
         }
+        _shell ??= GetTree().Root.FindChild(nameof(Win98BuddyShellController), true, false)
+            as Win98BuddyShellController;
         _shop ??= GetTree().Root.FindChild("ShopPanel", true, false) as ShopPanel;
         _work ??= GetTree().Root.FindChild(nameof(WorkCompanionCoordinator), true, false) as WorkCompanionCoordinator;
         _backgroundEditor ??= GetTree().Root.FindChild(nameof(EnvironmentBackgroundEditor), true, false) as EnvironmentBackgroundEditor;
@@ -584,7 +617,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 _paintUseRequested = false;
                 _hasCreateOrigin = false;
                 _characterListClicked = false;
-                _torsoRevisionOrigin = null;
+                _paintRevisionOrigin = null;
                 _paintColorOrigin = null;
                 _brushButtonPressed = false;
                 CompleteCurrent(step);
@@ -614,7 +647,7 @@ public partial class FirstSessionGuidanceController : CanvasLayer
             // was still dragging the brush. Wait for the button.
             // Paint and save are one step. The let-go rule the paint half used to need is gone
             // with it: the save click is the gate now, so there is no way to advance mid-stroke.
-            case TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() && HasPaintedTorso() &&
+            case TutorialStepIds.PaintBuddy when IsPaintBuddyOpen() && HasPaintedAnySurface() &&
                                                    _paintSaveRequested && !_editor!.Session.IsDirty:
                 _paintSaveRequested = false;
                 CompleteCurrent(step);
@@ -711,8 +744,13 @@ public partial class FirstSessionGuidanceController : CanvasLayer
                 CompleteCurrent(step);
                 break;
 
+            // The same let-go rule the grab and paint steps follow. Completing on the first moved
+            // pixel spotlighted the next lesson while the player was still holding the companion,
+            // so the instruction "drag it wherever you want" was over before they had (owner
+            // report 2026-09-07). Waiting for the release lets them actually place it.
             case TutorialStepIds.DragWorkCompanion when IsWorkActive() &&
-                                                         _sandbox.Window.WorkCompanionRect.Position != _workDragOrigin.Position:
+                                                         _sandbox.Window.WorkCompanionRect.Position != _workDragOrigin.Position &&
+                                                         !(GodotObject.IsInstanceValid(_workView) && _workView!.IsDragging):
                 _workResizeOrigin = _sandbox.Window.WorkCompanionRect;
                 CompleteCurrent(step);
                 break;
@@ -781,19 +819,31 @@ public partial class FirstSessionGuidanceController : CanvasLayer
     /// The torso surface bumps its revision on any accepted stroke, so the tutorial can require
     /// paint <em>on the torso</em> without cloning a megabyte of pixels every frame.
     /// </summary>
-    private bool HasPaintedTorso()
+    /// <summary>
+    /// True once the player has painted anything since this step opened. Deliberately every
+    /// surface, not the torso alone: the prompt says "Paint away!" and spotlights the whole
+    /// canvas, so a player who paints the head, a hand or a foot has done what was asked and
+    /// must not be stranded on the step forever (owner report 2026-09-07).
+    ///
+    /// <para>Switching characters mid-step swaps in fresh surfaces whose revisions restart, so a
+    /// total below the recorded baseline means "different buddy", not "un-painted". Rebaselining
+    /// on that drop keeps the step completable instead of permanently unsatisfiable.</para>
+    /// </summary>
+    private bool HasPaintedAnySurface()
     {
-        if (!IsPaintBuddyOpen() ||
-            !_editor!.PaintWorkspace.Surfaces.TryGetValue(PaintPart.Torso, out PaintSurface? torso))
+        if (!IsPaintBuddyOpen())
+            return false;
+
+        long total = 0;
+        foreach (PaintSurface surface in _editor!.PaintWorkspace.Surfaces.Values)
+            total += surface.Revision;
+
+        if (_paintRevisionOrigin is not long origin || total < origin)
         {
+            _paintRevisionOrigin = total;
             return false;
         }
-        if (_torsoRevisionOrigin is not long origin)
-        {
-            _torsoRevisionOrigin = torso.Revision;
-            return false;
-        }
-        return torso.Revision > origin;
+        return total > origin;
     }
 
     /// <summary>
@@ -1205,7 +1255,6 @@ public partial class FirstSessionGuidanceController : CanvasLayer
         }
 
         string text = TextFor(stepId);
-        _lastRenderedText = text;
         bool farewell = string.Equals(stepId, TutorialStepIds.Farewell, StringComparison.Ordinal);
         _dismiss.Visible = IsAcknowledgeStep(stepId);
         _dismiss.Text = farewell ? "Goodbye" : "Continue";
@@ -1244,102 +1293,32 @@ public partial class FirstSessionGuidanceController : CanvasLayer
 
     /// <summary>
     /// Instance, not static: two prompts read live state — whether a character slot is still
-    /// free, and whether the Studio save step found anything to save.
+    /// free, and whether the Studio save step found anything to save. Every other line is
+    /// authored once in <see cref="TutorialExpressiveCopy"/> and projected here with its
+    /// semantic tags stripped, so the plain and emphasized copy cannot drift apart.
     /// </summary>
-    private string TextFor(string stepId) => stepId switch
+    private string TextFor(string stepId)
     {
-        TutorialStepIds.GrabBuddy =>
-            "Hi! Let me introduce you to your buddy. Click and hold your left mouse button on " +
-            "your Buddy to grab him.",
-        TutorialStepIds.OpenInventory =>
-            "Now open the Inventory in the top-left corner. This is where you can buy and equip " +
-            "all sorts of different tools so you and your Buddy can play together.",
-        TutorialStepIds.PurchaseBaseballBat =>
-            "You can use your Credits in the top-right to buy all kinds of things. You earn more " +
-            "by playing with your Buddy. For now, let's buy and equip the Baseball Bat.",
-        TutorialStepIds.ChargedBatHit =>
-            "Nice stuff! You can hold the right mouse button to charge your bat up for a big " +
-            "swing. Some other tools have some extra interaction by clicking or holding the " +
-            "right mouse button. Try them out yourself later, but for now try hitting the buddy " +
-            "with a charged swing.",
-        TutorialStepIds.UnequipTool =>
-            "To unequip a tool you can switch in the Inventory or press the 'D' button to drop " +
-            "it. You can re-equip dropped tools by double-clicking it. Try to drop it now.",
-        TutorialStepIds.OpenPaintBuddy =>
-            "Your Buddy could use a little colour. Open Paint ▸ Buddy in the menu above to give " +
-            "it a new look.",
-        TutorialStepIds.CreateBuddy => CanCreateCharacter()
-            ? "Does this look familiar? First, let's create a new Buddy for you. Click on " +
-              "'+ New Character', give it a name, and you are ready to paint."
-            : "Hmm, you've been here before so choose a Buddy from the Characters list instead.",
-        TutorialStepIds.SelectPaintBrush =>
-            "There are many tools to choose from. Let's start with my favourite which is the " +
-            "Brush tool to start painting.",
-        TutorialStepIds.SelectPaintColor =>
-            "Here you can choose any colour you like. The big button to the right opens up the " +
-            "advanced color pallette. Let's just choose one of these for now.",
-        TutorialStepIds.PaintBuddy =>
-            "Paint away! When you are happy, click on the 'Save' button below.",
-        TutorialStepIds.UsePaintedBuddy =>
-            "Click on the 'Use Character' to start playing with your new Buddy!",
-        TutorialStepIds.AdmirePaintedBuddy =>
-            "Beautiful! Buddy has never looked better.",
-        TutorialStepIds.OpenPaintBackground =>
-            "Your Buddy deserves a better room that matches its new style. Open Paint ▸ " +
-            "Background to start painting the room.",
-        TutorialStepIds.SelectBackgroundSpray =>
-            "Let's go with something new but nostalgic, the Spray tool!",
-        TutorialStepIds.SelectBackgroundColor => "Choose a nice matching colour from the Palette.",
-        TutorialStepIds.PaintBackground =>
-            "Click and drag anywhere on the room behind your Buddy to spray it.",
-        TutorialStepIds.FloatPaintBackgroundPanel =>
-            "We need to admire your drawing more. Drag any panel by its title bar and move it " +
-            "outside of the game window. You can also click the red pin button.",
-        TutorialStepIds.SaveAndExitPaintBackground =>
-            "Looks good! Click Save and Exit to keep it.",
-        TutorialStepIds.OpenBuddyStudio =>
-            "Now let's bring your buddy more up to style. Open Buddy Studio so we can customise " +
-            "your Buddy with lots of apparel.",
-        TutorialStepIds.SelectNoseCategory =>
-            "Let's see, your buddy could use a new nose. Click on the Nose category to see what " +
-            "we've got.",
-        TutorialStepIds.SelectNoseButtonStyle =>
-            "This 'Button nose' could be fun! Click on it once to preview it without buying it.",
-        TutorialStepIds.BuyStudioItem =>
-            "It looks great! Let's click on the 'Buy' button. Alternatively, you can double-click " +
-            "on an item to buy it.",
-        TutorialStepIds.EquipStudioItem =>
-            "Let's equip it for now. You can swap it later, or choose the default style to " +
-            "remove it.",
-        TutorialStepIds.SaveBuddyStudio =>
-            "Click on the 'Save' button to keep this beautiful nose.",
-        TutorialStepIds.ExitBuddyStudio => _studioNothingToSave
-            ? "Your Buddy was already wearing that nose, so there is no need to save. Let's exit " +
-              "to the play screen."
-            : "Let's exit to the play screen.",
-        TutorialStepIds.AdmireStudioBuddy =>
-            "Now that is what I call a nose. Now your buddy is looking mighty fine!",
-        TutorialStepIds.EnterWorkMode =>
-            "Last but not least: Work Mode. Enter work mode for when you need to concentrate and " +
-            "want to let your buddy sit beside you.",
-        TutorialStepIds.DragWorkCompanion =>
-            "Click and hold on the Buddy with the left mouse button to drag your companion " +
-            "wherever you want it.",
-        TutorialStepIds.ResizeWorkCompanion =>
-            "Click and hold the resize button ↘ with the left mouse button, then drag to make " +
-            "your companion bigger or smaller.",
-        TutorialStepIds.ToggleWorkCounter =>
-            "Your Buddy will earn money while you work. Click on the screen to switch between " +
-            "this session's total count and your lifetime total count.",
-        TutorialStepIds.ExitWorkMode =>
-            "Ready to head back to play mode? Double-click on your Buddy or click on the 'X' " +
-            "button to return.",
-        TutorialStepIds.Farewell =>
-            "Well that was it, I hope you'll become the best of buds! If you ever need help, " +
-            "click on the '?' in the title bar and hover over anything on screen for context, " +
-            "or restart the tutorial from the settings screen. Have fun with your Buddy!",
-        _ => string.Empty,
-    };
+        string binding = LocalSettingsInputBindings.DropTool(_sandbox.Shell.CurrentLocalSettings);
+        if (TutorialExpressiveCopy.TryFormat(stepId, binding, out _))
+            return TutorialExpressiveCopy.PlainTextFor(stepId, binding);
+
+        return stepId switch
+        {
+            TutorialStepIds.CreateBuddy => CanCreateCharacter()
+                ? "Does this look familiar? First, let's create a new Buddy for you. Click on " +
+                  "'+ New Character', give it a name, and you are ready to paint."
+                : "Hmm, you've been here before so choose a Buddy from the Characters list instead.",
+            TutorialStepIds.SelectPaintColor =>
+                "Here you can choose any colour you like. The big button to the right opens up the " +
+                "advanced color pallette. Let's just choose one of these for now.",
+            TutorialStepIds.ExitBuddyStudio => _studioNothingToSave
+                ? "Your Buddy was already wearing that nose, so there is no need to save. Let's exit " +
+                  "to the play screen."
+                : "Let's exit to the play screen.",
+            _ => string.Empty,
+        };
+    }
 
     private void BuildContextHelpUi()
     {

@@ -86,12 +86,14 @@ public sealed class RewardPopupScenario : IScenario
                 shop,
                 RewardIconProvider.For(RewardIconProvider.Milestone),
                 "10,000 keystrokes this session",
-                50 * RewardLedger.MilliCreditsPerCredit);
+                50 * RewardLedger.MilliCreditsPerCredit,
+                RewardPresentationKind.WorkSessionMilestone);
             RewardPopup.Show(
                 shop,
                 RewardIconProvider.For(RewardIconProvider.Trophy),
                 "1,000,000 actions all time",
-                1_000 * RewardLedger.MilliCreditsPerCredit);
+                1_000 * RewardLedger.MilliCreditsPerCredit,
+                RewardPresentationKind.WorkLifetimeMilestone);
 
             string[] labels = ["purchase", "milestone", "achievement"];
             string[] titles =
@@ -100,12 +102,23 @@ public sealed class RewardPopupScenario : IScenario
                 "10,000 keystrokes this session",
                 "1,000,000 actions all time",
             ];
+            RewardPresentationKind[] kinds =
+            [
+                RewardPresentationKind.ToolPurchase,
+                RewardPresentationKind.WorkSessionMilestone,
+                RewardPresentationKind.WorkLifetimeMilestone,
+            ];
             var captured = new List<string>();
             var titlesSeen = new List<string>();
+            var kindsSeen = new List<RewardPresentationKind>();
 
             bool queuedOneAtATime = popup.IsShowing && popup.ShownCount == 1;
             checks.Add(new StartupCheck("reward_popup_queues_rather_than_stacking", queuedOneAtATime,
                 $"showing={popup.IsShowing} shown={popup.ShownCount}"));
+            checks.Add(new StartupCheck(
+                "reward_popup_purchase_uses_semantic_wordart",
+                popup.CurrentPresentationKind == RewardPresentationKind.ToolPurchase && popup.CurrentUsesWordArt,
+                $"kind={popup.CurrentPresentationKind} wordart={popup.CurrentUsesWordArt}"));
 
             // Headless has no rendered frame to save; the semantic checks are the authority and
             // the frames are owner evidence from a windowed run.
@@ -122,7 +135,10 @@ public sealed class RewardPopupScenario : IScenario
                     int reward = nextCapture / CaptureOffsets.Length;
                     int frame = nextCapture % CaptureOffsets.Length;
                     if (frame == 0)
+                    {
                         titlesSeen.Add(popup.CurrentTitle);
+                        kindsSeen.Add(popup.CurrentPresentationKind);
+                    }
                     string path = Path.Combine(directory, $"reward_{reward + 1}_{labels[reward]}_{frame + 1}.png");
                     if (!headless && tree.Root.GetTexture().GetImage().SavePng(path) == Error.Ok && File.Exists(path))
                         captured.Add(path);
@@ -134,6 +150,9 @@ public sealed class RewardPopupScenario : IScenario
                 titlesSeen.SequenceEqual(titles, StringComparer.Ordinal);
             checks.Add(new StartupCheck("reward_popup_plays_every_queued_reward_in_order", playedInOrder,
                 $"seen=[{string.Join('|', titlesSeen)}] expected=[{string.Join('|', titles)}]"));
+            bool stylesInOrder = kindsSeen.Count == kinds.Length && kindsSeen.SequenceEqual(kinds);
+            checks.Add(new StartupCheck("reward_popup_preserves_semantic_style_per_queue_item", stylesInOrder,
+                $"seen=[{string.Join('|', kindsSeen)}] expected=[{string.Join('|', kinds)}]"));
             checks.Add(new StartupCheck("reward_popup_showed_all_three_sources", popup.ShownCount == 3,
                 $"shown={popup.ShownCount}"));
 

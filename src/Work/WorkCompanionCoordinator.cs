@@ -362,7 +362,14 @@ public partial class WorkCompanionCoordinator : Node
 
         (string title, string icon) = DescribeMilestone(definition);
         UiFeedbackAudioBootstrap.TryPlay(this, UiFeedbackCue.Reward);
-        RewardPopup.Show(this, RewardIconProvider.For(icon), title, earned.RewardMilliCredits);
+        RewardPopup.Show(
+            this,
+            RewardIconProvider.For(icon),
+            title,
+            earned.RewardMilliCredits,
+            kind: definition.Scope == WorkMilestoneScope.Lifetime
+                ? RewardPresentationKind.WorkLifetimeMilestone
+                : RewardPresentationKind.WorkSessionMilestone);
     }
 
     /// <summary>
