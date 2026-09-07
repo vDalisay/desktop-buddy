@@ -1,5 +1,4 @@
 using System;
-using DesktopBuddy.App;
 using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Platform.Steam;
 using Godot;
@@ -7,16 +6,21 @@ using Godot;
 namespace DesktopBuddy.Achievements;
 
 /// <summary>
-/// Thin platform publisher. Qualification is always local-first; this class merely mirrors the
-/// already-qualified set to Steam through the project-owned GodotSteam bridge. Only the shipped
-/// Steam full-release scope may publish: the Demo and editor/development runtimes remain local-only
-/// even if they happen to be configured with the base AppID.
+/// Runtime scheduling wrapper around the platform-free desired-state reconciler. Qualification is
+/// local-first; Steam is a best-effort mirror. New desired state gets an immediate attempt, while a
+/// failed upload backs off monotonically so StoreStats is never hammered by the 5-second observer
+/// tick. Successful state is a no-op until another local achievement qualifies.
 /// </summary>
 public sealed class SteamAchievementPublisher
 {
+    private const ulong InitialRetryMilliseconds = 60_000;
+    private const ulong MaximumRetryMilliseconds = 300_000;
+
     private readonly AchievementProgressStore _store;
-    private readonly SteamAppIdentity _identity;
-    private readonly Node? _bridge;
+    private readonly AchievementReconciler _reconciler;
+    private string? _lastAttemptFingerprint;
+    private ulong _nextRetryAtMilliseconds;
+    private ulong _retryDelayMilliseconds = InitialRetryMilliseconds;
 
     public SteamAchievementPublisher(
         AchievementProgressStore store,
@@ -24,55 +28,58 @@ public sealed class SteamAchievementPublisher
         Node? initializedBridge)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
-        _identity = identity;
-        _bridge = initializedBridge;
+        var remote = new GodotSteamAchievementRemote(identity, initializedBridge);
+        _reconciler = new AchievementReconciler(store, remote);
     }
 
-    public bool PublishingEnabled =>
-        OS.HasFeature("steam") &&
-        DemoScope.IsFullRelease &&
-        _identity.RuntimeAppId == SteamAppIdentityResolver.DesktopBuddyBaseAppId &&
-        GodotObject.IsInstanceValid(_bridge) &&
-        _bridge!.Call("is_available").AsBool() &&
-        _bridge.Call("has_achievement_capabilities").AsBool();
+    public bool PublishingEnabled => _reconciler.IsAvailable;
 
     /// <summary>
-    /// Idempotently mirrors every locally-qualified achievement. Re-sending SetAchievement is
-    /// intentional: if Steam was offline or StoreStats failed on an earlier run, the local save is
-    /// still authoritative and a later retry sends the small set again. Steamworks SDK 1.61 removed
-    /// RequestCurrentStats because the Steam client now synchronizes stats/achievements before game
-    /// start. GodotSteam itself stays behind the dynamic bridge so optional-addon and ClassDB
-    /// fallback behavior remains identical to the Workshop integration.
+    /// Reconciles the complete locally-qualified set. Steamworks SDK 1.61 loads current stats and
+    /// achievements before process start, so RequestCurrentStats is unnecessary. Valve documents
+    /// StoreStats as rate-limited; failed unchanged batches therefore retry at 60s, 120s, 240s and
+    /// then 300s, while a genuinely new local qualification bypasses the wait once.
     /// </summary>
     public bool TrySynchronize()
     {
         if (!PublishingEnabled)
             return false;
 
-        try
+        string fingerprint = CurrentFingerprint();
+        ulong now = Time.GetTicksMsec();
+        bool desiredStateChanged = !string.Equals(
+            fingerprint,
+            _lastAttemptFingerprint,
+            StringComparison.Ordinal);
+
+        if (!desiredStateChanged &&
+            _nextRetryAtMilliseconds != 0 &&
+            now < _nextRetryAtMilliseconds)
         {
-            bool anyQualified = false;
-            bool anySet = false;
-            foreach (AchievementDefinition definition in AchievementCatalog.Baseline)
-            {
-                if (!_store.IsQualified(definition.Id))
-                    continue;
-
-                anyQualified = true;
-                anySet |= _bridge!.Call("set_achievement", definition.SteamApiName).AsBool();
-            }
-
-            if (!anyQualified)
-                return true;
-            if (!anySet)
-                return false;
-
-            return _bridge!.Call("store_stats").AsBool();
-        }
-        catch (Exception)
-        {
-            // Steam is optional. Qualification remains durable and is retried later/next launch.
             return false;
         }
+
+        if (desiredStateChanged)
+        {
+            _nextRetryAtMilliseconds = 0;
+            _retryDelayMilliseconds = InitialRetryMilliseconds;
+        }
+
+        _lastAttemptFingerprint = fingerprint;
+        bool synchronized = _reconciler.TrySynchronize();
+        if (synchronized)
+        {
+            _nextRetryAtMilliseconds = 0;
+            _retryDelayMilliseconds = InitialRetryMilliseconds;
+            return true;
+        }
+
+        _nextRetryAtMilliseconds = now + _retryDelayMilliseconds;
+        _retryDelayMilliseconds = Math.Min(
+            MaximumRetryMilliseconds,
+            _retryDelayMilliseconds * 2);
+        return false;
     }
+
+    private string CurrentFingerprint() => string.Join('\n', _store.QualifiedIds);
 }
