@@ -84,6 +84,13 @@ public sealed class AchievementCoordinator
         EvaluatePersistentState(activeCharacterId);
     }
 
+    /// <summary>
+    /// Clears only non-durable observation windows. Use when the authoritative progress state moves
+    /// backwards because Reset Progress or a transaction rollback adopted an earlier snapshot.
+    /// Earned qualification and persisted partial counters are deliberately untouched here.
+    /// </summary>
+    public void ResetTransientObservations() => _recentDamageSources.Clear();
+
     public void RecordFireDrill() => _store.Qualify(AchievementIds.FireDrill);
     public void RecordBankShot() => _store.Qualify(AchievementIds.BankShot);
 
