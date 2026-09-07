@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Content;
@@ -99,7 +100,7 @@ public sealed class AchievementBaselineTests
 
         progress.ApplyCareMood(-200.0f);
         achievements.EvaluatePersistentState(character);
-        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 1.0, character);
+        achievements.RecordDamage(ContentIds.ToolBoxingGlove, 1.0f, 1, 1.0);
         progress.ApplyCareMood(200.0f);
         achievements.EvaluatePersistentState(character);
 
@@ -160,5 +161,75 @@ public sealed class AchievementBaselineTests
 
         achievements.RecordEnvironmentCategory(categories[^1]);
         Assert.True(achievements.Store.IsQualified(AchievementIds.HomeSweetHome));
+    }
+
+    [Fact]
+    public void Reconciler_IsNoOpAfterSuccessfulDesiredStateUntilQualificationChanges()
+    {
+        var store = new AchievementProgressStore(new BuddyProgressState(CashPerPain));
+        var remote = new FakeAchievementRemote();
+        var reconciler = new AchievementReconciler(store, remote);
+
+        store.Qualify(AchievementIds.FirstImpression);
+        Assert.True(reconciler.TrySynchronize());
+        Assert.Equal(1, remote.SetCalls);
+        Assert.Equal(1, remote.FlushCalls);
+
+        Assert.True(reconciler.TrySynchronize());
+        Assert.Equal(1, remote.SetCalls);
+        Assert.Equal(1, remote.FlushCalls);
+
+        store.Qualify(AchievementIds.LightsOut);
+        Assert.True(reconciler.TrySynchronize());
+        Assert.Equal(3, remote.SetCalls); // complete desired set is replayed: two achievements
+        Assert.Equal(2, remote.FlushCalls);
+    }
+
+    [Fact]
+    public void Reconciler_RetriesWholeDesiredStateAfterFailedFlush()
+    {
+        var store = new AchievementProgressStore(new BuddyProgressState(CashPerPain));
+        var remote = new FakeAchievementRemote();
+        remote.FlushResults.Enqueue(false);
+        remote.FlushResults.Enqueue(true);
+        var reconciler = new AchievementReconciler(store, remote);
+
+        store.Qualify(AchievementIds.FirstImpression);
+        Assert.False(reconciler.TrySynchronize());
+        Assert.True(reconciler.TrySynchronize());
+        Assert.Equal(2, remote.SetCalls);
+        Assert.Equal(2, remote.FlushCalls);
+    }
+
+    [Fact]
+    public void Reconciler_DoesNotFlushAnEmptyQualificationSet()
+    {
+        var store = new AchievementProgressStore(new BuddyProgressState(CashPerPain));
+        var remote = new FakeAchievementRemote();
+        var reconciler = new AchievementReconciler(store, remote);
+
+        Assert.True(reconciler.TrySynchronize());
+        Assert.Equal(0, remote.SetCalls);
+        Assert.Equal(0, remote.FlushCalls);
+    }
+
+    private sealed class FakeAchievementRemote : IAchievementRemote
+    {
+        public bool IsAvailable { get; set; } = true;
+        public int SetCalls { get; private set; }
+        public int FlushCalls { get; private set; }
+        public Queue<bool> FlushResults { get; } = new();
+
+        public bool TrySetAchievement(string apiName)
+        {
+            SetCalls++;
+            return !string.IsNullOrWhiteSpace(apiName);
+        }
+
+        public bool TryFlush()
+        {
+            FlushCalls++;
+            return FlushResults.Count == 0 || FlushResults.Dequeue();
+        }
     }
 }
