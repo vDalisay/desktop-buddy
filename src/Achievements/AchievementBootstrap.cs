@@ -50,6 +50,8 @@ public partial class AchievementBootstrap : Node
     private double _persistentCountdown;
     private double _steamCountdown;
     private double _airborneSeconds;
+    private double _observedRunSeconds;
+    private long _observedScoredImpacts;
     private bool _burnWasActive;
     private bool _characterRefreshRunning;
     private bool _steamSyncRequested;
@@ -99,6 +101,7 @@ public partial class AchievementBootstrap : Node
             _selection.Changed += OnCharacterSelectionChanged;
 
         _observedRopeAttachCount = _sandbox.Ropes.AttachCount;
+        CaptureProgressMonotonicState();
         // Existing room art predates this runtime observation. Make It Yours records which
         // character was active when a customization actually changes; merely selecting another
         // character beside an already-painted room must not transfer that credit.
@@ -156,6 +159,7 @@ public partial class AchievementBootstrap : Node
         if (_coordinator is null || !GodotObject.IsInstanceValid(_sandbox))
             return;
 
+        ObserveProgressDiscontinuity();
         ObserveAirborne(delta);
         ObserveBaseballWallTouches();
         ObserveRopeUse();
@@ -290,6 +294,32 @@ public partial class AchievementBootstrap : Node
         {
             // SaveCoordinator retains the dirty revision and the normal autosave/quit path retries.
         }
+    }
+
+    private void ObserveProgressDiscontinuity()
+    {
+        ProgressStatistics statistics = _progress.Statistics;
+        double runSeconds = _progress.Times.RunSeconds;
+        bool rewound = statistics.ScoredImpacts < _observedScoredImpacts ||
+                       runSeconds + 0.000001 < _observedRunSeconds;
+
+        if (rewound)
+        {
+            _coordinator.ResetTransientObservations();
+            _baseballsThatTouchedWall.Clear();
+            _airborneSeconds = 0.0;
+            _burnWasActive = false;
+            _observedRopeAttachCount = _sandbox.Ropes.AttachCount;
+        }
+
+        _observedScoredImpacts = statistics.ScoredImpacts;
+        _observedRunSeconds = runSeconds;
+    }
+
+    private void CaptureProgressMonotonicState()
+    {
+        _observedScoredImpacts = _progress.Statistics.ScoredImpacts;
+        _observedRunSeconds = _progress.Times.RunSeconds;
     }
 
     private void ObserveAirborne(double delta)
