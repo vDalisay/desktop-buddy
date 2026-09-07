@@ -554,31 +554,25 @@ public partial class CharacterEditorHost : CanvasLayer
             Stretch = true,
         };
         controls.AddChild(previewContainer);
-        var viewport = new SubViewport
-        {
-            Size = new Vector2I(420, 360),
-            TransparentBg = false,
-            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-            // Without its own World3D the preview shares the main viewport's world, so the
-            // preview rig also renders into the desktop window as a second, T-posing buddy.
-            OwnWorld3D = true,
-        };
-        previewContainer.AddChild(viewport);
-        var world = new Node3D { ProcessMode = ProcessModeEnum.Always };
-        viewport.AddChild(world);
-        // The preview rig is built detached and has no parent yet, so this is its first
-        // entry into the tree — Reparent would fail and leave it orphaned and invisible.
-        world.AddChild(_preview);
+
+        // Keep the established CharacterPreview container and the existing preview rig instance:
+        // paint/editor sessions retain their references while the duplicated viewport/world/camera
+        // stack moves behind the shared physics-free surface.
+        var previewSurface = new BuddyPreviewSurface { Name = "CharacterPreviewViewport" };
+        previewSurface.Configure(
+            rigName: "CharacterPreviewRig",
+            viewportSize: new Vector2I(420, 360),
+            transparentBackground: false,
+            rigProfile: _sandbox.Buddy.Rig.Profile,
+            visualProfile: _sandbox.Buddy.VisualProfile,
+            cameraSize: 400.0f,
+            cameraPosition: new Vector3(0, 0, 600),
+            lightRotationDegrees: new Vector3(-30, -20, 0),
+            visibilityOwner: previewContainer,
+            existingRig: _preview,
+            existingSource: _previewSource);
+        previewContainer.AddChild(previewSurface);
         ApplyStaticPreviewPose();
-        var camera = new Camera3D
-        {
-            Position = new Vector3(0, 0, 600),
-            Projection = Camera3D.ProjectionType.Orthogonal,
-            Size = 400,
-            Current = true,
-        };
-        world.AddChild(camera);
-        world.AddChild(new DirectionalLight3D { RotationDegrees = new Vector3(-30, -20, 0) });
     }
 
     private void BuildUnsavedPrompt(Control root)

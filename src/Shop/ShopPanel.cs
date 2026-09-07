@@ -123,7 +123,8 @@ public partial class ShopPanel : PanelContainer
                 this,
                 RewardIconProvider.ForContent(entry.ContentId),
                 name,
-                amountMilliCredits: 0);
+                amountMilliCredits: 0,
+                kind: RewardPresentationKind.ToolPurchase);
             Purchased?.Invoke();
             // Buying is the player saying "I want this now": a second click to equip was pure
             // ceremony, and the tutorial no longer has to teach it as its own step.
