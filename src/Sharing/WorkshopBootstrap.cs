@@ -35,6 +35,7 @@ public partial class WorkshopBootstrap : Node
     private AchievementBootstrap? _achievements;
     private IDisposable? _commandRegistration;
     private ISteamWorkshopTransport? _transport;
+    private Node? _steamBridge;
     private bool _servicesComposed;
 
     internal WorkshopSharingCoordinator? Sharing => _sharing;
@@ -74,6 +75,7 @@ public partial class WorkshopBootstrap : Node
         if (GodotObject.IsInstanceValid(_panel)) _panel!.QueueFree();
         _panel = null;
         _achievements = null;
+        _steamBridge = null;
         base._ExitTree();
     }
 
@@ -86,7 +88,7 @@ public partial class WorkshopBootstrap : Node
         }
 
         _achievements = new AchievementBootstrap { Name = nameof(AchievementBootstrap) };
-        _achievements.Configure(_sandbox, _selection, _characters);
+        _achievements.Configure(_sandbox, _selection, _characters, _steamBridge);
         AddChild(_achievements);
     }
 
@@ -197,6 +199,10 @@ public partial class WorkshopBootstrap : Node
                 return new NullSteamWorkshopTransport(reason);
             }
 
+            // One initialized Steam bridge is owned by this composition root and injected into
+            // all optional Steam adapters. Nothing else searches the scene tree or initializes
+            // Steam a second time.
+            _steamBridge = bridge;
             ConnectOverlayPause(bridge);
 
             ISteamWorkshopTransport composed = transport;
@@ -254,6 +260,7 @@ public partial class WorkshopBootstrap : Node
         }
         if (GodotObject.IsInstanceValid(bridge))
         {
+            if (ReferenceEquals(_steamBridge, bridge)) _steamBridge = null;
             if (ReferenceEquals(bridge!.GetParent(), this)) RemoveChild(bridge);
             bridge.QueueFree();
         }
