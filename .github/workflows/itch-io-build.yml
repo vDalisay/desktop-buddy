@@ -259,6 +259,12 @@ jobs:
           domain.write_text(text, encoding="utf-8")
           PY
 
+          # Subsystems the itch scope compiles out still have autoloads in project.godot, which is
+          # data a #if cannot reach — and an autoload pointing at a script that is no longer in the
+          # assembly is a hard startup failure. This reads the exclusion list straight out of the
+          # csproj so the two can never drift apart.
+          python3 "$GITHUB_WORKSPACE/devtools/verification/apply_itch_scope.py" "$WEB_WORK"
+
           cat > "$WEB_WORK/nuget.config" <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <configuration>
