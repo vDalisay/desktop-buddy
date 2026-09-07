@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Presentation;
@@ -10,14 +9,14 @@ using Godot;
 namespace DesktopBuddy.UI;
 
 /// <summary>
-/// Reusable dialogue surface for short authored game text. It lets Godot shape and wrap the full
-/// line once, then reveals complete text elements through RichTextLabel.visible_characters.
-/// Semantic authoring tags are parsed before rendering and mapped to a deliberately small set of
-/// built-in BBCode treatments.
+/// Reusable dialogue surface for short authored game text. Godot shapes and wraps the full line
+/// once, then <see cref="VisibleRatio"/> reveals its post-shaped glyph clusters. Semantic authoring
+/// tags are parsed before rendering and mapped to a deliberately small set of built-in BBCode
+/// treatments.
 /// </summary>
 public partial class ExpressiveTextPresenter : RichTextLabel
 {
-    private readonly List<RevealUnit> _units = [];
+    private readonly List<string> _cadenceUnits = [];
     private ExpressiveRevealTiming _timing = ExpressiveRevealTiming.Default;
     private string _identity = string.Empty;
     private string _source = string.Empty;
@@ -27,8 +26,6 @@ public partial class ExpressiveTextPresenter : RichTextLabel
     private double _speakingHold;
     private bool _revealing;
     private bool _speaking;
-
-    private readonly record struct RevealUnit(string TextElement, int VisibleCodepointsAfter);
 
     public event Action? RevealStarted;
     public event Action<bool>? SpeakingChanged;
@@ -47,7 +44,9 @@ public partial class ExpressiveTextPresenter : RichTextLabel
         SelectionEnabled = false;
         MouseFilter = MouseFilterEnum.Ignore;
         AutowrapMode = TextServer.AutowrapMode.WordSmart;
-        VisibleCharactersBehavior = TextServer.VisibleCharactersBehavior.CharsAfterShaping;
+        // Let TextServer keep combining sequences/ligatures together. The cadence model below
+        // observes Unicode scalars only to decide timing and chirps; it does not shape glyphs.
+        VisibleCharactersBehavior = TextServer.VisibleCharactersBehavior.GlyphsAuto;
         ApplyWin98TextStyle();
         SetProcess(false);
     }
@@ -80,7 +79,7 @@ public partial class ExpressiveTextPresenter : RichTextLabel
         PlainText = document.PlainText;
         bool animate = Win98MotionPolicy.Allows(settings) && PlainText.Length > 0;
         Text = BuildBbCode(document.Runs, animate);
-        BuildRevealUnits(PlainText);
+        BuildCadenceUnits(PlainText);
         ApplyWin98TextStyle();
 
         _unitIndex = 0;
@@ -88,16 +87,16 @@ public partial class ExpressiveTextPresenter : RichTextLabel
         _untilNext = 0.0;
         _speakingHold = 0.0;
 
-        if (!animate || _units.Count == 0)
+        if (!animate || _cadenceUnits.Count == 0)
         {
             _revealing = false;
-            VisibleCharacters = -1;
+            VisibleRatio = 1.0f;
             SetProcess(false);
             return true;
         }
 
         _revealing = true;
-        VisibleCharacters = 0;
+        VisibleRatio = 0.0f;
         SetProcess(true);
         RevealStarted?.Invoke();
         return true;
@@ -113,8 +112,8 @@ public partial class ExpressiveTextPresenter : RichTextLabel
             return false;
 
         _revealing = false;
-        VisibleCharacters = -1;
-        _unitIndex = _units.Count;
+        VisibleRatio = 1.0f;
+        _unitIndex = _cadenceUnits.Count;
         StopSpeaking();
         SetProcess(false);
         RevealCompleted?.Invoke();
@@ -127,9 +126,9 @@ public partial class ExpressiveTextPresenter : RichTextLabel
         _identity = string.Empty;
         _source = string.Empty;
         PlainText = string.Empty;
-        _units.Clear();
+        _cadenceUnits.Clear();
         Text = string.Empty;
-        VisibleCharacters = -1;
+        VisibleRatio = 1.0f;
         StopSpeaking();
         SetProcess(false);
     }
@@ -151,18 +150,20 @@ public partial class ExpressiveTextPresenter : RichTextLabel
         }
 
         _untilNext -= delta;
-        while (_revealing && _untilNext <= 0.0 && _unitIndex < _units.Count)
+        while (_revealing && _untilNext <= 0.0 && _unitIndex < _cadenceUnits.Count)
         {
-            RevealUnit unit = _units[_unitIndex++];
-            VisibleCharacters = unit.VisibleCodepointsAfter;
+            string unit = _cadenceUnits[_unitIndex++];
+            // VisibleRatio remains a Godot-owned post-shaping reveal. We advance it from a pure
+            // timing cadence, but never convert source text to per-glyph nodes or codepoint spans.
+            VisibleRatio = _unitIndex / (float)_cadenceUnits.Count;
 
-            bool speakable = ExpressiveVoiceCadence.IsSpeakable(unit.TextElement);
+            bool speakable = ExpressiveVoiceCadence.IsSpeakable(unit);
             if (speakable)
             {
                 _speakableOrdinal++;
                 SetSpeaking(true);
                 _speakingHold = 0.055;
-                if (ExpressiveVoiceCadence.ShouldChirp(_speakableOrdinal, unit.TextElement))
+                if (ExpressiveVoiceCadence.ShouldChirp(_speakableOrdinal, unit))
                     UiFeedbackAudioBootstrap.TryPlayTutorialTextVoice(this);
             }
             else
@@ -170,31 +171,24 @@ public partial class ExpressiveTextPresenter : RichTextLabel
                 StopSpeaking();
             }
 
-            _untilNext += _timing.DelayAfter(unit.TextElement);
+            _untilNext += _timing.DelayAfter(unit);
         }
 
-        if (_unitIndex < _units.Count)
+        if (_unitIndex < _cadenceUnits.Count)
             return;
 
         _revealing = false;
-        VisibleCharacters = -1;
+        VisibleRatio = 1.0f;
         StopSpeaking();
         SetProcess(false);
         RevealCompleted?.Invoke();
     }
 
-    private void BuildRevealUnits(string plainText)
+    private void BuildCadenceUnits(string plainText)
     {
-        _units.Clear();
-        TextElementEnumerator elements = StringInfo.GetTextElementEnumerator(plainText);
-        int codepoints = 0;
-        while (elements.MoveNext())
-        {
-            string element = elements.GetTextElement();
-            foreach (Rune _ in element.EnumerateRunes())
-                codepoints++;
-            _units.Add(new RevealUnit(element, codepoints));
-        }
+        _cadenceUnits.Clear();
+        foreach (Rune rune in plainText.EnumerateRunes())
+            _cadenceUnits.Add(rune.ToString());
     }
 
     private static string BuildBbCode(IReadOnlyList<ExpressiveTextRun> runs, bool animate)
