@@ -46,6 +46,12 @@ public sealed class PaintUploadCoalescingScenario : IScenario
             bridge = new PaintTextureBridge(context.Preview);
 
             PaintSurface head = workspace.Surfaces[PaintPart.Head];
+            foreach ((PaintPart part, PaintSurface surface) in workspace.Surfaces)
+                bridge.Queue(part, surface);
+            bridge.FlushFrame(workspace.Surfaces);
+            checks.Add(new StartupCheck("blank_parts_do_not_allocate_or_upload_textures",
+                bridge.UploadCount == 0, $"uploads={bridge.UploadCount}"));
+            head.Stamp(new PaintPoint(.25, .25), 4, PaintTool.Brush, PaintColor.White);
             bridge.Queue(PaintPart.Head, head);
             bridge.Queue(PaintPart.Head, head);
             bridge.Queue(PaintPart.Head, head);

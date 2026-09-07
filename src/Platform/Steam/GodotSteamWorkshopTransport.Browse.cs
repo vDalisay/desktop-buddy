@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -13,6 +14,7 @@ public partial class GodotSteamWorkshopTransport : IWorkshopDiscoveryTransport
 {
     private const string DiscoveryScriptPath = "res://src/Platform/Steam/GodotSteamWorkshopDiscovery.gd";
     private const int SubscribeConfirmationFrames = 300;
+    private const double BrowseQueryTimeoutSeconds = 15.0;
 
     private Node? _discoveryBridge;
     private string? _discoveryUnavailableReason;
@@ -56,17 +58,40 @@ public partial class GodotSteamWorkshopTransport : IWorkshopDiscoveryTransport
         _pendingBrowseQuery = pending;
         try
         {
-            return await WaitAsync(pending.Completion.Task, token);
+            long started = Stopwatch.GetTimestamp();
+            while (!pending.Completion.Task.IsCompleted)
+            {
+                token.ThrowIfCancellationRequested();
+                if (Stopwatch.GetElapsedTime(started).TotalSeconds >= BrowseQueryTimeoutSeconds)
+                    return new WorkshopBrowsePage(WorkshopRemoteStatus.Failed, [], safePage, 0, "Steam did not answer the Workshop browse query in time. Please refresh to try again.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+            return await pending.Completion.Task;
         }
         catch (OperationCanceledException)
+        {
+            return new WorkshopBrowsePage(WorkshopRemoteStatus.Cancelled, [], safePage, 0, "Workshop browse cancelled.");
+        }
+        finally
         {
             if (ReferenceEquals(_pendingBrowseQuery, pending))
             {
                 _pendingBrowseQuery = null;
-                discovery.Call("release_query", handle);
+                if (GodotObject.IsInstanceValid(discovery))
+                    discovery.Call("release_query", handle);
             }
-            return new WorkshopBrowsePage(WorkshopRemoteStatus.Cancelled, [], safePage, 0, "Workshop browse cancelled.");
         }
+    }
+
+    private void ShutdownBrowseQuery()
+    {
+        PendingBrowseQuery? pending = _pendingBrowseQuery;
+        if (pending is null) return;
+        _pendingBrowseQuery = null;
+        if (GodotObject.IsInstanceValid(_discoveryBridge))
+            _discoveryBridge!.Call("release_query", pending.Handle);
+        pending.Completion.TrySetResult(new WorkshopBrowsePage(
+            WorkshopRemoteStatus.Unavailable, [], pending.Page, 0, "Steam Workshop transport shut down while browsing."));
     }
 
     public async Task<WorkshopSubscriptionChangeResult> SubscribeAsync(

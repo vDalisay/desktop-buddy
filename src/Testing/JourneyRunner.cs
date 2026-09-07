@@ -2592,13 +2592,13 @@ public partial class JourneyRunner : Node
             tree, lab, lab.Buddy.Rig.Torso.GlobalPosition, 160.0f);
         bool armed = await M4ObjectScenarioSupport.WaitFor(tree, () => gun.IsActive, 30);
         GunProfile? profile = gun.ActiveProfile;
-        state["the_shotgun_key_draws_a_loaded_five_shell_magazine"] =
+        state["the_shotgun_key_draws_its_authored_infinite_magazine"] =
             lab.Pipeline.SelectedTool == ToolId.Shotgun &&
             armed &&
             profile is not null &&
             gun.ActiveContentId == ContentIds.ToolShotgun &&
             gun.RoundsRemaining == profile.MagazineCapacity &&
-            profile.MagazineCapacity == 5;
+            profile.InfiniteMagazine;
         if (profile is null)
             return;
 
@@ -2626,7 +2626,7 @@ public partial class JourneyRunner : Node
             firedWhileHeld == 1 &&
             gun.ProjectilesLaunched - launchedBefore == profile.ProjectilesPerShot &&
             profile.ProjectilesPerShot == 6 &&
-            gun.RoundsRemaining == profile.MagazineCapacity - 1;
+            gun.RoundsRemaining == profile.MagazineCapacity;
 
         // The shared-shot identity, read through the component rather than inferred: a
         // trigger pull is one interaction however many pellets it puts in the air.
@@ -2674,49 +2674,36 @@ public partial class JourneyRunner : Node
             lab.Progress.IsContentHarmful(ContentIds.ToolShotgun) &&
             !lab.Progress.IsContentHarmful(ContentIds.ToolBaseballBat);
 
-        // The R action reloads a partial magazine through the same queued-input path.
-        int completionsBefore = gun.ReloadCompleteCount;
+        // InfiniteMagazine is the current owner-authored profile (2026-08-22), also
+        // verified by shotgun_spread. R must do nothing; pump/fire must outlast a tube.
+        int reloadsBefore = gun.ReloadStartCount;
+        int dryBefore = gun.DryFireCount;
         await M4ObjectScenarioSupport.SendKey(tree, Key.R);
-        bool reloadRunning = await M4ObjectScenarioSupport.WaitFor(
-            tree, () => gun.IsReloading, 10);
-        bool refilled = await M4ObjectScenarioSupport.WaitFor(
-            tree,
-            () => gun.ReloadCompleteCount == completionsBefore + 1 &&
-                  gun.RoundsRemaining == profile.MagazineCapacity,
-            profile.ReloadTicks + 60);
-        state["the_reload_key_refills_a_partial_magazine"] = reloadRunning && refilled;
+        await WaitPhysicsTicks(tree, profile.ReloadTicks + 2);
+        state["the_reload_key_does_not_reload_the_infinite_magazine"] =
+            !gun.IsReloading && gun.ReloadStartCount == reloadsBefore &&
+            gun.RoundsRemaining == profile.MagazineCapacity;
 
-        // Empty the magazine, then pull once more: the dry fire is what reloads.
-        for (int shell = 0; shell < profile.MagazineCapacity; shell++)
+        int sustainedShotsBefore = gun.ShotCount;
+        int sustainedPelletsBefore = gun.ProjectilesLaunched;
+        int sustainedShots = profile.MagazineCapacity + 2;
+        for (int shell = 0; shell < sustainedShots; shell++)
         {
             if (gun.NeedsPump)
             {
                 await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
                 await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
-                await WaitPhysicsTicks(tree, profile.PumpTicks);
+                await M4ObjectScenarioSupport.WaitFor(tree, () => !gun.IsPumping && !gun.NeedsPump, profile.PumpTicks + 10);
             }
             await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
             await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
             await WaitPhysicsTicks(tree, profile.ShotIntervalTicks);
         }
-
-        bool emptied = gun.RoundsRemaining == 0 && !gun.IsReloading;
-        int dryBefore = gun.DryFireCount;
-        if (gun.NeedsPump)
-        {
-            await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
-            await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
-            await WaitPhysicsTicks(tree, profile.PumpTicks);
-        }
-        await SetInputActionAsync(tree, InputActions.Primary, pressed: true);
-        await SetInputActionAsync(tree, InputActions.Primary, pressed: false);
-        state["an_empty_magazine_dry_fires_into_an_automatic_reload"] =
-            emptied && gun.DryFireCount == dryBefore + 1 && gun.IsReloading;
-
-        state["the_automatic_reload_completes"] = await M4ObjectScenarioSupport.WaitFor(
-            tree,
-            () => !gun.IsReloading && gun.RoundsRemaining == profile.MagazineCapacity,
-            profile.ReloadTicks + 60);
+        state["pump_and_fire_past_capacity_never_dry_fires_or_reloads"] =
+            gun.ShotCount - sustainedShotsBefore == sustainedShots &&
+            gun.ProjectilesLaunched - sustainedPelletsBefore == sustainedShots * profile.ProjectilesPerShot &&
+            gun.DryFireCount == dryBefore && gun.ReloadStartCount == reloadsBefore &&
+            !gun.IsReloading && gun.RoundsRemaining == profile.MagazineCapacity;
 
         await M4ObjectScenarioSupport.SendKey(tree, Key.G);
         bool holstered = await M4ObjectScenarioSupport.WaitFor(tree, () => !gun.IsActive, 30);

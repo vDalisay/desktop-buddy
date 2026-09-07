@@ -445,7 +445,7 @@ public partial class WorkshopPanel
                 return;
             }
 
-            Image decoded = new();
+            using Image decoded = new();
             Error error = decoded.LoadPngFromBuffer(bytes);
             if (error != Error.Ok) error = decoded.LoadJpgFromBuffer(bytes);
             if (error != Error.Ok) error = decoded.LoadWebpFromBuffer(bytes);

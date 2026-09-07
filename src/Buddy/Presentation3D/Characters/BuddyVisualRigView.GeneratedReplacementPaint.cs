@@ -363,7 +363,8 @@ public partial class BuddyVisualRigView
         _generatedPaintRaycastCount++;
         Vector3 worldOrigin = new(paintWorldPoint.X, -paintWorldPoint.Y, 4096f);
         Vector3 worldDirection = new(0f, 0f, -1f);
-        Transform3D inverse = surface.GlobalTransform.AffineInverse();
+        Transform3D worldTransform = surface.GlobalTransform;
+        Transform3D inverse = worldTransform.AffineInverse();
         Vector3 localOrigin = inverse * worldOrigin;
         Vector3 localDirection = (inverse.Basis * worldDirection).Normalized();
 
@@ -394,7 +395,7 @@ public partial class BuddyVisualRigView
                     if (!RayTriangle(localOrigin, localDirection, triangle.A, triangle.B, triangle.C,
                             out float localDistance, out float baryB, out float baryC)) continue;
                     Vector3 localHit = localOrigin + localDirection * localDistance;
-                    Vector3 worldHit = surface.GlobalTransform * localHit;
+                    Vector3 worldHit = worldTransform * localHit;
                     float candidate = worldOrigin.DistanceTo(worldHit);
                     if (candidate >= bestWorldDistance) continue;
                     float baryA = 1f - baryB - baryC;

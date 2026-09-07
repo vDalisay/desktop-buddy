@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using DesktopBuddy.Diagnostics;
 using Godot;
 
 namespace DesktopBuddy.CharacterEditor;
@@ -23,8 +24,9 @@ public partial class CharacterEditorHost
     private int _previousPaintTextureUploads;
     private long _paintFlushTicks;
 
-    public override void _PhysicsProcess(double delta)
+    private void ProcessPaintPerformanceDiagnostics(double delta)
     {
+        if (!BuildInfo.IsDebugBuild) return;
         if (!IsInitialized || !IsPaintMode || !GodotObject.IsInstanceValid(_preview))
         {
             _paintPerformanceAccumulator = 0.0;

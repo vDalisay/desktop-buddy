@@ -49,16 +49,14 @@ public partial class ProjectileBody
         if (_trailGlow is not null)
         {
             bool live = State == ProjectileState.Live && Visible;
-            // The bright streak is what reads as the round - it is drawn eight radii long
-            // and three wide, against a four-pixel dot - so it is the one that has to stop
-            // where the shot struck. It rides on the body, which goes on being resolved out
-            // of what it hit for the settling window the impulse needs, so it is placed at
-            // the same pinned origin the body's own drawing uses (owner report 2026-08-26).
+            // The body continues resolving its impact; both visible layers stay at the
+            // pinned contact point in their independent world-space drawing node.
             _trailGlow.SetTrail(
                 live ? WorldStreakForward() : Vector2.Zero,
                 live ? VisualOrigin : GlobalPosition,
                 Radius,
                 _trailColor,
+                _fillColor,
                 live);
         }
 
@@ -136,7 +134,12 @@ public partial class ProjectileBody
         if (GodotObject.IsInstanceValid(_trailGlow))
             return;
 
-        _trailGlow = new ProjectileTrailGlow2D { Name = "BrightTracer" };
+        _trailGlow = new ProjectileTrailGlow2D
+        {
+            Name = "BrightTracer",
+            TopLevel = true,
+            PhysicsInterpolationMode = PhysicsInterpolationModeEnum.Off,
+        };
         AddChild(_trailGlow);
     }
 
@@ -171,22 +174,23 @@ internal sealed partial class ProjectileTrailGlow2D : Node2D
     private Vector2 _worldOrigin;
     private float _radius;
     private Color _color;
+    private Color _fillColor;
     private bool _live;
 
     /// <summary>
-    /// Takes the streak in world terms - where it starts and which way it points - and does
-    /// the conversion into its own space at draw time. Handed a heading already turned into
-    /// this node's space instead, the streak would be drawn under whatever the body's
-    /// rotation happened to be at the draw, which is not the rotation it was converted for:
-    /// a body spinning out of an impact turns between the two, and the shot is drawn crooked
-    /// for exactly the frames the player is reading the hit.
+    /// Draws in world space under an identity top-level transform. Godot interpolates 2D
+    /// parent transforms on the rendering server, after _Draw: cancelling GlobalRotation
+    /// here cannot cancel that interpolated rotation. Both the dot and tracer must leave
+    /// the body's transform chain while the physical body remains free to spin.
     /// </summary>
-    public void SetTrail(Vector2 worldForward, Vector2 worldOrigin, float radius, Color color, bool live)
+    public void SetTrail(Vector2 worldForward, Vector2 worldOrigin, float radius, Color color, Color fillColor, bool live)
     {
+        if (!_live && !live) return;
         _worldForward = worldForward;
         _worldOrigin = worldOrigin;
         _radius = radius;
         _color = color;
+        _fillColor = fillColor;
         _live = live;
         Visible = live;
         QueueRedraw();
@@ -197,25 +201,11 @@ internal sealed partial class ProjectileTrailGlow2D : Node2D
         if (!_live || _worldForward == Vector2.Zero)
             return;
 
-        // Converted here, under the transform the streak is really drawn with, so no spin
-        // the body picks up between one frame's bookkeeping and its draw can reach it.
-        Vector2 origin = ToLocal(_worldOrigin);
-        Vector2 forward = _worldForward.Rotated(-GlobalRotation);
+        Vector2 origin = _worldOrigin;
+        Vector2 forward = _worldForward;
 
-        // A tripwire rather than a running commentary: the conversion above cannot put the
-        // streak at an angle other than its world heading, so this stays silent unless
-        // something reintroduces the body's spin into the drawing.
-        if (BuildInfo.IsDebugBuild)
-        {
-            float drawn = forward.Rotated(GlobalRotation).Angle();
-            float intended = _worldForward.Angle();
-            if (Mathf.Abs(Mathf.AngleDifference(drawn, intended)) > 0.01f)
-            {
-                Log.Debug("ShotTrace",
-                    $"  DRAWN CROOKED parent_rot={GlobalRotationDegrees:0.#}deg " +
-                    $"drawn={Mathf.RadToDeg(drawn):0.#}deg intended={Mathf.RadToDeg(intended):0.#}deg");
-            }
-        }
+        DrawLine(origin, origin - forward * (_radius * 6.0f), _color, _radius * 1.2f, true);
+        DrawCircle(origin, _radius, _fillColor, true, -1.0f, true);
 
         float length = _radius * 8.5f;
         Vector2 tail = origin - (forward * length);
