@@ -13,12 +13,17 @@ supersedes the older ten-achievement list in FR-018.5–FR-018.14 where the two 
 - The Steam Demo evaluates the same conditions and stores qualification in `progress.json`, but it
   must never call Steam's achievement-unlock API.
 - When the full game runs with the shared/carried save, every locally-qualified achievement is
-  reconciled to Steam as desired state. Steam being offline must never block qualification,
+  reconciled to Steam as desired state. Steam being unavailable must never block qualification,
   gameplay, or saving.
 - A newly changed desired set receives an immediate publish attempt. A failed unchanged batch backs
   off at 60s, 120s, 240s, then 300s. A successful batch becomes an in-process no-op until another
   achievement qualifies. This respects Steam's `StoreStats` rate-limit guidance while still
   publishing genuine unlocks promptly.
+- If the GodotSteam addon and binding surface are valid but `steamInitEx` cannot initialize the
+  Steam client/session at startup, the shared Steam composition keeps the same bridge and Workshop
+  transport alive and retries at 30s, 60s, 120s, 240s, then 300s. Recovery makes Workshop and
+  achievement reconciliation available in the same process without rebinding services. Permanent
+  configuration/capability failures are not retried forever.
 - `Reset Progress` keeps achievements that are already qualified, because Steam achievements cannot
   be revoked and Demo-qualified awards still need to reconcile. Partial counters/working state
   (for example 73/100 Boxing Glove hits) reset with ordinary progress.
@@ -77,10 +82,15 @@ The implementation follows a local-first **Ports & Adapters / desired-state reco
   `storeStats` through the project-owned GodotSteam bridge.
 - `src/Achievements/AchievementBootstrap.cs` observes existing gameplay/character/environment events
   and translates them into semantic achievement observations; it does not own qualification rules.
+- Paint Background attribution is explicitly event-driven: `EnvironmentBackgroundEditor` emits a
+  semantic commit only after a genuinely changed canvas is successfully saved,
+  `EnvironmentCustomizationBootstrap` exposes that through `IEnvironmentCustomizationEvents`, and
+  achievements consume that injected port. Achievement code does not poll the PNG or inspect editor UI.
 - `src/Achievements/SteamAchievementPublisher.cs` supplies monotonic retry/backoff scheduling around
   the domain reconciler. It never owns gameplay state or achievement rules.
-- `src/Sharing/WorkshopBootstrap.cs` composes achievement tracking beside the already-initialized
-  GodotSteam bridge, avoiding a second Steam initialization.
+- `src/Sharing/WorkshopBootstrap.cs` owns the single live GodotSteam bridge and composes Workshop and
+  achievements around it. Retryable Steam-client initialization is recovered in place with bounded
+  backoff; no second Steam initialization object or service-locator lookup is introduced.
 
 This separation is intentional: pure rules and reconciliation are covered by ordinary `dotnet test`;
 GodotSteam binding compatibility remains covered by the native-addon smoke scenario.
@@ -111,14 +121,18 @@ Before merge/release, verify all of the following:
   Steam achievement unlock for AppID `5228990`.
 - Launching the full game with that carried qualification unlocks the matching achievement under
   AppID `5114950` after Steam becomes available.
-- Starting the full game offline still qualifies locally; a later available full-game launch
-  reconciles it.
+- Starting the full game with a temporarily unavailable Steam client still qualifies locally; if
+  the addon/bindings are valid and the client becomes available while the process remains open,
+  shared Steam initialization recovers in-session and the qualified achievement reconciles without
+  restarting the game. A later launch remains the fallback for genuinely unavailable Steam.
 - Reset Progress keeps qualified awards but clears partial achievement counters and working values.
 - A Steam overlay pause, Work Mode, and editor time cannot advance Air Bud.
 - Bank Shot requires the same thrown baseball to touch a side wall before its accepted Buddy hit.
 - Rube Goldberg requires three distinct semantic damage source IDs inside five seconds.
 - Repeated runtime polling after a successful Steam reconciliation causes no additional
   `SetAchievement`/`StoreStats` calls until local qualification changes.
+- Paint Background credit for Make It Yours is raised only by a successful dirty editor commit;
+  opening/saving unchanged art, Reset Progress, and applying a Workshop room do not grant it.
 
 Steamworks configuration remains an external release step; the repository intentionally contains no
 Steam credentials or proprietary Steam SDK binaries.
