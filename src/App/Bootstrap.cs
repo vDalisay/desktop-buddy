@@ -16,6 +16,8 @@ using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
 #if !DESKTOP_BUDDY_PUBLIC_WEB
 using DesktopBuddy.Sharing;
+#endif
+#if !DESKTOP_BUDDY_NO_DEV_TOOLS
 using DesktopBuddy.Testing;
 #endif
 using Godot;
@@ -56,11 +58,11 @@ public partial class Bootstrap : Node
         {
             case RunnerMode.Scenario:
             case RunnerMode.Journey:
-#if DESKTOP_BUDDY_PUBLIC_WEB
-                // Public Web exports intentionally omit the entire developer scenario tree.
-                // A crafted browser argument must therefore fall back to normal gameplay rather
-                // than retaining TestRunner and hundreds of scenario symbols in the shipped WASM.
-                Log.Warn(Category, "Scenario/journey runner is unavailable in the public browser build; starting normal sandbox.");
+#if DESKTOP_BUDDY_NO_DEV_TOOLS
+                // Shipping builds omit the entire developer scenario tree — every distribution,
+                // not just the browser one. A crafted argument must fall back to normal gameplay:
+                // the runner is a live unlock otherwise, because scenarios set DemoScope overrides.
+                Log.Warn(Category, "Scenario/journey runner is unavailable in this build; starting normal sandbox.");
                 await BootSandboxAsync();
 #else
                 BootTestRunner(args);
@@ -73,7 +75,7 @@ public partial class Bootstrap : Node
         }
     }
 
-#if !DESKTOP_BUDDY_PUBLIC_WEB
+#if !DESKTOP_BUDDY_NO_DEV_TOOLS
     private void BootTestRunner(RunnerArguments args)
     {
         var packed = GD.Load<PackedScene>("res://scenes/test_runner.tscn");

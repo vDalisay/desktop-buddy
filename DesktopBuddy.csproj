@@ -45,6 +45,29 @@
     <DesktopBuddyItchScope Condition=" '$(DesktopBuddyItchScope)' == '' ">false</DesktopBuddyItchScope>
   </PropertyGroup>
 
+  <!--
+    A build that goes to players. Godot's export-release path compiles ExportRelease, so every
+    Steam Demo, Full Release and itch package is one; editor runs, `dotnet build` and the whole
+    scenario/journey suite are not, and keep the developer tree.
+
+    This exists because the developer scenario tree was shipping in the Windows builds. It is not
+    dead weight there, it is a live unlock: Bootstrap routes a scenario argument to the TestRunner,
+    and BuddyStudioUiCompositionScenario sets DemoScope.FullReleaseOverride = true. A Demo player
+    could open full-release content from the command line of the shipped exe.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyShippingBuild Condition=" '$(DesktopBuddyShippingBuild)' == '' AND '$(Configuration)' == 'ExportRelease' ">true</DesktopBuddyShippingBuild>
+    <DesktopBuddyShippingBuild Condition=" '$(DesktopBuddyShippingBuild)' == '' ">false</DesktopBuddyShippingBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_NO_DEV_TOOLS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' ">
+    <Compile Remove="src/Testing/**/*.cs" />
+  </ItemGroup>
+
   <PropertyGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">
     <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_PUBLIC_WEB</DefineConstants>
   </PropertyGroup>
@@ -80,9 +103,6 @@
     renderer, the editor session and character persistence. New Studio UI files belong on this list.
   -->
   <ItemGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">
-    <!-- Developer-only scenarios must not be compiled into the public browser assembly. -->
-    <Compile Remove="src/Testing/**/*.cs" />
-
     <!-- Buddy Studio: workspace UI only. -->
     <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.cs" />
     <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.CaptureStorePolish.cs" />
