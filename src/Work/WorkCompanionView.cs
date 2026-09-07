@@ -20,13 +20,23 @@ namespace DesktopBuddy.Work;
 /// </summary>
 public partial class WorkCompanionView : CanvasLayer
 {
+    // Large enough for the mockup proportions while still behaving like a compact desktop
+    // companion. The whole native window remains irregularly shaped by WindowsShape.cs.
     public static readonly Vector2I PreferredSize = new(720, 430);
 
     private const string ComputerTexturePath = "res://assets/work/retro_pc.png";
     private const string RetroShaderPath = "res://shaders/work_retro_filter.gdshader";
     private const double ReactionSeconds = 0.11;
     private const float DragThreshold = 5.0f;
+
+    // The buddy's own committed facing yaw (BuddyExpressionProfile.FacingYawDegrees), so the
+    // Work pose reads as the same sideways look it uses when walking toward something.
     private const float SidewaysYawRadians = Mathf.Pi / 6.0f;
+
+    // Clears the 28-unit torso radius so both hands read as reaching in front of the body:
+    // the yaw pushes the forward-reaching hands 13-20 units away from the camera, so the lane
+    // has to pay that back before it buys any clearance. Depth only — ortho camera, so screen
+    // position is unchanged.
     private const float HandDepthLane = 70.0f;
 
     private SandboxRoot _sandbox = null!;
@@ -56,8 +66,18 @@ public partial class WorkCompanionView : CanvasLayer
     private float _compositionScale = 1.0f;
 
     private static readonly Rect2 BuddyHitRect = new(228, 78, 152, 228);
+    // Remapped onto the pixel-art PC (owner instruction 2026-08-23). The sprite is the 32x32
+    // icon scaled 18x into the same 1024 canvas the retired illustration used, dropped on the
+    // same footprint, so the composition around it is unchanged: only the glass and the sprite
+    // bounds moved. CrtHitRect is exactly the icon's screen hole.
     private static readonly Rect2 CrtHitRect = new(442, 111, 145, 105);
     private static readonly Rect2 ComputerHitRect = new(393, 71, 259, 259);
+    /// <summary>
+    /// The hover controls are measured in window pixels, never composition pixels, and they
+    /// live outside the scaled composition root. Shrinking the companion must not shrink its
+    /// own controls into something unclickable (owner instruction 2026-08-20), so these are the
+    /// same size at every window size.
+    /// </summary>
     private const int ControlButtonSize = 52;
     private const int ControlButtonGap = 6;
     private const int ControlClusterInset = 6;
@@ -117,6 +137,11 @@ public partial class WorkCompanionView : CanvasLayer
         ApplyWorkPose();
     }
 
+    /// <summary>
+    /// Greys out whichever controls the current Work step is not asking for. Re-derived every
+    /// frame rather than toggled on entry and exit, so the buttons come back on their own when
+    /// the walkthrough finishes or is skipped — no unlock step to forget.
+    /// </summary>
     private void RefreshTutorialGates()
     {
         if (GodotObject.IsInstanceValid(_resizeButton))
@@ -127,6 +152,11 @@ public partial class WorkCompanionView : CanvasLayer
             _exitButton.Disabled = !TutorialInputGate.Allows(TutorialWorkControl.Exit);
     }
 
+    /// <summary>
+    /// Whether the CRT pass runs over the companion. One material is shared by the PC art and
+    /// the buddy's viewport, so both wear the same look and neither can drift from the other;
+    /// off simply clears it (owner instruction 2026-08-23).
+    /// </summary>
     public void SetRetroFilterEnabled(bool enabled)
     {
         _retroFilter = enabled;
@@ -177,6 +207,8 @@ public partial class WorkCompanionView : CanvasLayer
         if (GodotObject.IsInstanceValid(_motionToggle))
         {
             _motionToggle.ButtonPressed = enabled;
+            // A tiny hover-only control is deliberately used instead of the previous large
+            // "Motion: On" label, which visually competed with the companion art.
             _motionToggle.Text = enabled ? "II" : ">";
             _motionToggle.TooltipText = enabled
                 ? "Pause buddy motion. Counters and rewards keep running."
@@ -198,6 +230,9 @@ public partial class WorkCompanionView : CanvasLayer
             Vector2 position = ToCompositionPosition(button.Position);
             if (button.Pressed)
             {
+                // While a Work step asks for one control, the others go quiet. Leaving them live
+                // let the player exit Work Mode mid-lesson, which stranded the guidance window
+                // on screen with nothing behind it (owner report 2026-08-21).
                 if (button.DoubleClick && BuddyHitRect.HasPoint(position))
                 {
                     if (!TutorialInputGate.Allows(TutorialWorkControl.Exit))
@@ -263,6 +298,8 @@ public partial class WorkCompanionView : CanvasLayer
             Texture = computerTexture,
             ExpandMode = TextureRect.ExpandModeEnum.IgnoreSize,
             StretchMode = TextureRect.StretchModeEnum.Scale,
+            // Pixel art: the composition scales it by well under 1, and the default filter
+            // turned every hard edge to mush.
             TextureFilter = CanvasItem.TextureFilterEnum.Nearest,
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
@@ -277,6 +314,10 @@ public partial class WorkCompanionView : CanvasLayer
         };
         _root.AddChild(_counter);
 
+        // Controls live outside the scaled composition root, in plain window pixels, and only
+        // appear while the pointer is over the companion. The Win98 title strip they used to sit
+        // on is gone: it was chrome the companion did not need, and the buttons on it shrank
+        // with the window until they were too small to hit (owner instruction 2026-08-20).
         _controlLayer = new Control
         {
             Name = "WorkControlCluster",
@@ -309,8 +350,12 @@ public partial class WorkCompanionView : CanvasLayer
             "Leave Work Mode (same as double-clicking the buddy).",
             Control.CursorShape.PointingHand);
         _exitButton.Pressed += () => ExitRequested?.Invoke();
+        // The coordinator sounds the exit for both routes out of Work Mode; see HookWork.
         UiFeedbackAudioBootstrap.Tag(_exitButton, UiSfx.Silent);
 
+        // Hover tracking lives on the Window, not on _root: Godot emits mouse_exited on a
+        // parent Control as soon as the pointer enters a child that accepts mouse input, so
+        // hovering the toggle used to hide it out from under the click.
         SetHoverControlsVisible(false);
         Window window = GetWindow();
         window.MouseEntered += ShowHoverControls;
@@ -325,6 +370,7 @@ public partial class WorkCompanionView : CanvasLayer
         };
     }
 
+    /// <summary>One fixed-size control in the hover cluster, laid out left to right.</summary>
     private Button BuildControlButton(
         string name,
         int slot,
@@ -348,13 +394,24 @@ public partial class WorkCompanionView : CanvasLayer
         return button;
     }
 
+    /// <summary>
+    /// The cluster is pinned to the top-right of the drawn composition rather than the raw
+    /// window, so it tracks the art through the letterboxing that keeps the companion's aspect.
+    /// </summary>
     private void PositionControlCluster()
     {
         if (!GodotObject.IsInstanceValid(_controlLayer))
             return;
+
         _controlLayer.Position = ControlClusterOrigin();
     }
 
+    /// <summary>
+    /// Top-right of the drawn composition, so the cluster tracks the art through the
+    /// letterboxing that keeps the companion's aspect — but never left of the window itself.
+    /// The cluster does not scale, so on a companion narrower than the cluster the unclamped
+    /// origin goes negative and the buttons walk off the left edge.
+    /// </summary>
     private Vector2 ControlClusterOrigin()
     {
         Vector2 drawn = (Vector2)PreferredSize * _compositionScale;
@@ -363,6 +420,7 @@ public partial class WorkCompanionView : CanvasLayer
             Math.Max(0.0f, _compositionOffset.Y + ControlClusterInset));
     }
 
+    /// <summary>The cluster in window pixels, for the native window region.</summary>
     private Rect2I ControlClusterWindowRect()
     {
         Vector2 origin = ControlClusterOrigin();
@@ -372,6 +430,7 @@ public partial class WorkCompanionView : CanvasLayer
     }
 
     private void ShowHoverControls() => SetHoverControlsVisible(true);
+
     private void HideHoverControls() => SetHoverControlsVisible(false);
 
     private void SetHoverControlsVisible(bool visible)
@@ -407,10 +466,22 @@ public partial class WorkCompanionView : CanvasLayer
         ScheduleNativeWindowShapeRefresh();
     }
 
+    // Buddy and the computer are the whole companion now that the title strip is gone; the
+    // control buttons over them are excluded separately by IsOverControlButton.
     private static bool IsDragSurface(Vector2 compositionPosition) =>
         BuddyHitRect.HasPoint(compositionPosition) ||
         ComputerHitRect.HasPoint(compositionPosition);
 
+    /// <summary>
+    /// Whether the pointer is over one of the hover controls, and so must not start a drag or a
+    /// wheel resize.
+    ///
+    /// <para>The visibility test is load-bearing, not a shortcut. The cluster is a fixed 168 px
+    /// wide while the composition scales with the window, so on a small companion it is wider
+    /// than the art it sits on — and an unconditional hit test then vetoed every click anywhere
+    /// on the companion, killing drag and wheel resize outright. Controls nobody can see are
+    /// controls nobody can click.</para>
+    /// </summary>
     private bool IsOverControlButton(Vector2 windowPosition) =>
         GodotObject.IsInstanceValid(_controlLayer) && _controlLayer.Visible &&
         (_resizeButton.GetGlobalRect().HasPoint(windowPosition) ||
@@ -479,6 +550,10 @@ public partial class WorkCompanionView : CanvasLayer
         if (!GodotObject.IsInstanceValid(_rig))
             return;
 
+        // Same sideways silhouette the buddy uses when it walks: the shared 30 degree facing
+        // yaw, standing next to the PC with both hands reaching toward it. Every part offset
+        // stays inside the connector clamp (surface gap below ConnectorMinimumLength), so no
+        // stretched neck, arm or leg tube shows between the spheres.
         Vector2 torso = _source.ReadTransform(BuddyPartId.Torso).Position + new Vector2(49, 10);
         Vector2 head = torso + new Vector2(0, -50);
         Vector2 leftHand = torso + new Vector2(26, 22);
@@ -506,6 +581,9 @@ public partial class WorkCompanionView : CanvasLayer
             Vector3 pivot = WorldPlaneMapping.To3D(torso);
             Vector3 flat = WorldPlaneMapping.To3D(position);
             Vector3 yawed = pivot + (new Basis(Vector3.Up, SidewaysYawRadians) * (flat - pivot));
+            // Tucked hands would otherwise sink into the torso sphere: the yaw alone only
+            // carries them ~20 units forward, less than the torso radius. The lane offset is
+            // depth only, so the (2D-derived) connector geometry stays clamped and invisible.
             if (id is BuddyPartId.LeftHand or BuddyPartId.RightHand)
                 yawed.Z += HandDepthLane;
             return new BuddyVisualPartPose(
@@ -527,20 +605,25 @@ public partial class WorkCompanionView : CanvasLayer
             0.0f));
     }
 
+    /// <summary>
+    /// Lightweight seven-segment CRT renderer. It avoids rebuilding textures or relying on a
+    /// desktop font, stays legible at very large lifetime totals, and keeps the mockup's green
+    /// phosphor character instead of looking like a normal Win98 label.
+    /// </summary>
     private partial class WorkCrtDisplay : Control
     {
         private static readonly bool[,] Segments =
         {
-            { true,  true,  true,  true,  true,  true,  false },
-            { false, true,  true,  false, false, false, false },
-            { true,  true,  false, true,  true,  false, true  },
-            { true,  true,  true,  true,  false, false, true  },
-            { false, true,  true,  false, false, true,  true  },
-            { true,  false, true,  true,  false, true,  true  },
-            { true,  false, true,  true,  true,  true,  true  },
-            { true,  true,  true,  false, false, false, false },
-            { true,  true,  true,  true,  true,  true,  true  },
-            { true,  true,  true,  true,  false, true,  true  },
+            { true,  true,  true,  true,  true,  true,  false }, // 0
+            { false, true,  true,  false, false, false, false }, // 1
+            { true,  true,  false, true,  true,  false, true  }, // 2
+            { true,  true,  true,  true,  false, false, true  }, // 3
+            { false, true,  true,  false, false, true,  true  }, // 4
+            { true,  false, true,  true,  false, true,  true  }, // 5
+            { true,  false, true,  true,  true,  true,  true  }, // 6
+            { true,  true,  true,  false, false, false, false }, // 7
+            { true,  true,  true,  true,  true,  true,  true  }, // 8
+            { true,  true,  true,  true,  false, true,  true  }, // 9
         };
 
         private long _value;
