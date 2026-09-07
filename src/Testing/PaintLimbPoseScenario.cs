@@ -108,6 +108,7 @@ public sealed class PaintLimbPoseScenario : IScenario
             Vector2 torsoCenter = CanvasPoint(0, 0);
             string blankTorso = canvas.Workspace.Surfaces[PaintPart.Torso].ComputeHash();
             Click(canvas, torsoCenter);
+            int maximumDabSamples = canvas.ScreenDabSampleCount;
             int torsoGaps = 0;
             for (int y = -6; y <= 6; y++)
             {
@@ -139,6 +140,51 @@ public sealed class PaintLimbPoseScenario : IScenario
                 limbCircle,
                 $"left={limbLeft} right={limbRight} up={limbUp} down={limbDown} outside={limbOutside}"));
 
+            int poleGaps = 0;
+            bool poleUndo = true;
+            foreach ((Vector2 home, float radius, PaintPart part) in new[]
+            {
+                (rightHandHome, 15f, PaintPart.RightHand),
+                (CanvasPoint(-38, -5), 15f, PaintPart.LeftHand),
+                (CanvasPoint(-22, 55), 17f, PaintPart.LeftFoot),
+                (CanvasPoint(22, 55), 17f, PaintPart.RightFoot),
+            })
+            {
+                canvas.Workspace.EraseAll();
+                canvas.Workspace.SetBrushDiameter(64);
+                string beforePole = canvas.Workspace.Surfaces[part].ComputeHash();
+                Click(canvas, home + Vector2.Up * (radius - 6));
+                for (int y = 0; y < 40; y++)
+                for (int x = -4; x <= 4; x++)
+                {
+                    Vector2 offset = new(x * 0.5f, -radius + 0.2f + y * 0.2f);
+                    if (offset.Length() >= radius) continue;
+                    if (!Painted(canvas, home + offset)) poleGaps++;
+                }
+                poleUndo &= canvas.Workspace.Undo() &&
+                    canvas.Workspace.Surfaces[part].ComputeHash() == beforePole;
+            }
+            checks.Add(new StartupCheck("paint_pen_sphere_pole_has_no_unpainted_rows",
+                poleGaps == 0 && poleUndo, $"gaps={poleGaps} undo={poleUndo}"));
+
+            canvas.SelectPaintTool(PaintTool.Brush);
+            int brushGaps = 0;
+            int brushOverflow = 0;
+            foreach (Vector2 home in new[] { torsoCenter, rightHandHome, CanvasPoint(-38, -5) })
+            foreach (float height in new[] { -4f, 0f, 4f })
+            {
+                canvas.Workspace.EraseAll();
+                Vector2 center = home + Vector2.Down * height;
+                Click(canvas, center);
+                foreach (Vector2 offset in new[] { new Vector2(0, -5), new Vector2(0, 5),
+                    new Vector2(-10, 0), new Vector2(10, 0) })
+                    if (!Painted(canvas, center + offset)) brushGaps++;
+                foreach (Vector2 offset in new[] { new Vector2(0, -8), new Vector2(0, 8) })
+                    if (Painted(canvas, center + offset)) brushOverflow++;
+            }
+            checks.Add(new StartupCheck("paint_brush_ellipse_matches_cursor_across_part_centers",
+                brushGaps == 0 && brushOverflow == 0, $"gaps={brushGaps} overflow={brushOverflow}"));
+
             float maximumVisibleDiameter = PaintPolicy.MaxBrushDiameter * 400f /
                 (PaintPolicy.SurfaceSize * 2f);
             int penGridRadius = PaintCanvasControl.PenSampleSteps(
@@ -149,7 +195,7 @@ public sealed class PaintLimbPoseScenario : IScenario
                 maximumVisibleDiameter,
                 PaintPolicy.MaxBrushDiameter,
                 penGridRadius);
-            long penTexelVisitBound = (long)penCandidates * penSampleDiameter * penSampleDiameter;
+            long penTexelVisitBound = (long)maximumDabSamples * penSampleDiameter * penSampleDiameter;
             float brushSpacing = PaintCanvasControl.StrokeSampleSpacing(
                 PaintTool.Brush,
                 maximumVisibleDiameter);
@@ -160,6 +206,45 @@ public sealed class PaintLimbPoseScenario : IScenario
                 $"texel_bound={penTexelVisitBound} brush_spacing={brushSpacing:0.00}px"));
 
             var paletteRoot = new Control();
+            canvas.Workspace.EraseAll();
+            canvas.Workspace.SetBrushDiameter(PaintPolicy.MaxBrushDiameter);
+            canvas.View.SetZoom(4, default);
+            Click(canvas, new Vector2(200, 200));
+            bool maxEllipse = Painted(canvas, new Vector2(200, 245)) &&
+                Painted(canvas, new Vector2(200, 155)) &&
+                Painted(canvas, new Vector2(290, 200)) &&
+                !Painted(canvas, new Vector2(200, 260));
+            checks.Add(new StartupCheck("paint_max_brush_retains_ellipse_coverage",
+                maxEllipse && canvas.ScreenDabSampleCount <= 2048,
+                $"zoom=4 diameter=128 samples={canvas.ScreenDabSampleCount}"));
+            foreach (PaintTool tool in new[] { PaintTool.Brush, PaintTool.Pen })
+            {
+                canvas.SelectPaintTool(tool);
+                canvas.Workspace.EraseAll();
+                string strokeBefore = canvas.Workspace.Surfaces[PaintPart.Torso].ComputeHash();
+                var strokeTimer = System.Diagnostics.Stopwatch.StartNew();
+                canvas._GuiInput(new InputEventMouseButton { ButtonIndex = MouseButton.Left,
+                    Position = new Vector2(160, 160), Pressed = true });
+                for (int move = 0; move < 80; move++)
+                    canvas.PaintAlongTo(new Vector2(move % 2 == 0 ? 240 : 160, move % 3 == 0 ? 160 : 240));
+                canvas._GuiInput(new InputEventMouseButton { ButtonIndex = MouseButton.Left,
+                    Position = new Vector2(160, 160), Pressed = false });
+                strokeTimer.Stop();
+                checks.Add(new StartupCheck($"paint_fast_max_{tool}_stroke_preserves_undo",
+                    canvas.Workspace.Undo() && canvas.Workspace.Surfaces[PaintPart.Torso].ComputeHash() == strokeBefore,
+                    $"cpu_ms={strokeTimer.Elapsed.TotalMilliseconds:0.00}"));
+            }
+
+            Click(canvas, new Vector2(200, 200));
+            bool maxCircle = Painted(canvas, new Vector2(200, 285)) &&
+                Painted(canvas, new Vector2(200, 115)) &&
+                Painted(canvas, new Vector2(285, 200)) &&
+                !Painted(canvas, new Vector2(200, 315)) &&
+                !Painted(canvas, new Vector2(280, 280));
+            checks.Add(new StartupCheck("paint_max_pen_retains_circular_coverage",
+                maxCircle && canvas.ScreenDabSampleCount <= 2048,
+                $"zoom=4 diameter=128 samples={canvas.ScreenDabSampleCount}"));
+
             var paletteBootstrap = new Win98PaintCustomPaletteBootstrap();
             tree.Root.AddChild(paletteRoot);
             paletteBootstrap.EnsureEditDialog(paletteRoot);

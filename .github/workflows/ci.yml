@@ -92,6 +92,14 @@ jobs:
       - name: Workshop emulator roundtrip scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=workshop_emulator_roundtrip --seed=1
 
+      - name: Workshop query ownership and projectile visual regressions
+        run: |
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=workshop_query_lifecycle --seed=1
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=projectile_visual_alignment --seed=1
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=paint_upload_coalescing --seed=1
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=nerf_versus_pistol --seed=1
+          xvfb-run -a "$GODOT_BIN" --headless --path . -- --journey=m5_shotgun --seed=1
+
       - name: Workshop preview and publish-confirmation scenario
         run: xvfb-run -a "$GODOT_BIN" --path . -- --scenario=workshop_preview_capture --seed=1
 

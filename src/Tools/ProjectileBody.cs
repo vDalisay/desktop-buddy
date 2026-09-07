@@ -117,9 +117,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
 
     /// <summary>
     /// World-space direction the drawn streak points along. Exposed so a scenario can
-    /// prove the visual is really glued to the flight path: the streak is drawn in this
-    /// body's local space, so any body rotation swings the drawn shot away from the
-    /// direction it is actually travelling.
+    /// prove the visual is glued to the flight path independently of the body's spin.
     /// </summary>
     public Vector2 VisualForward => WorldStreakForward();
 
@@ -155,7 +153,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
     /// point it struck, not the body's current position: the body keeps being simulated
     /// through the settling window and the drawing no longer follows it.
     /// </summary>
-    public Vector2 VisualOrigin => ToGlobal(LocalDrawOrigin());
+    public Vector2 VisualOrigin => _contactObserved ? _impactPosition : GlobalPosition;
 
     /// <summary>
     /// The largest contact impulse the solver has actually applied to this projectile.
@@ -197,7 +195,7 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         // shared pain pipeline scores, from 1187 to 598 on the same seeded point-blank
         // head shot, quietly cutting every gun's damage in half. A projectile's spin-up is
         // part of the impulse this project measures pain from, so the alignment fix belongs
-        // in the drawing (see LocalStreakForward), never in the body.
+        // in the independent tracer visual, never in the body.
         LockRotation = false;
         ContactMonitor = true;
         MaxContactsReported = ContactBufferSize;
@@ -245,7 +243,6 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         CollisionLayer = CollisionLayers.Projectiles;
         CollisionMask = CollisionLayers.MaskProjectiles;
         Visible = true;
-        QueueRedraw();
     }
 
     /// <summary>
@@ -267,9 +264,6 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
 
         TravelledPx += GlobalPosition.DistanceTo(_lastSample);
         _lastSample = GlobalPosition;
-        // The streak is drawn along the direction of travel, and a deflected shot changes
-        // that direction, so a live projectile is redrawn every tick it flies.
-        QueueRedraw();
 
         // A projectile that connected keeps its physics for a short settling window
         // before it is taken out of the world, and that window is load-bearing: the
@@ -313,7 +307,6 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         Freeze = true;
         FreezeMode = FreezeModeEnum.Kinematic;
         Visible = false;
-        QueueRedraw();
     }
 
     /// <summary>Returns the projectile to the pool, inert and out of the way.</summary>
@@ -342,7 +335,6 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
         FreezeMode = FreezeModeEnum.Kinematic;
         Freeze = true;
         Visible = false;
-        QueueRedraw();
     }
 
     public override void _IntegrateForces(PhysicsDirectBodyState2D state)
@@ -479,35 +471,6 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
             : null;
     }
 
-    public override void _Draw()
-    {
-        if (State != ProjectileState.Live)
-            return;
-
-        // A short trail back along the flight direction: at these speeds a two-pixel dot
-        // renders as an invisible flicker, and the streak is what reads as a shot.
-        Vector2 origin = LocalDrawOrigin();
-        Vector2 forward = LocalStreakForward();
-        if (forward != Vector2.Zero)
-            DrawLine(origin, origin - (forward * (Radius * 6.0f)), _trailColor, Radius * 1.2f, true);
-
-        DrawCircle(origin, Radius, _fillColor, true, -1.0f, true);
-    }
-
-    /// <summary>
-    /// The direction, in this body's local space, that the drawn streak runs along. One
-    /// source of truth for <see cref="_Draw"/> and <see cref="VisualForward"/>.
-    ///
-    /// <para>Two things are corrected here, and both were reported as "the ammo doesn't
-    /// line up with the gun, and it rotates while flying". It follows the velocity the
-    /// body has <b>right now</b> rather than the one it was launched with, so a deflected
-    /// shot is drawn along the path it is really on; and it undoes the body's own rotation,
-    /// because a canvas item draws in local space and the body is free to spin (see
-    /// <see cref="Configure"/> for why it must stay free). Any future projectile visual —
-    /// a dart, a tracer mesh — has to be oriented from velocity the same way.</para>
-    /// </summary>
-    private Vector2 LocalStreakForward() => WorldStreakForward().Rotated(-Rotation);
-
     /// <summary>
     /// The heading the shot is drawn along, in world space. Nothing about the body's own
     /// spin enters it: the body is free to tumble (that freedom is what the pain pipeline
@@ -533,12 +496,4 @@ public partial class ProjectileBody : RigidBody2D, IImpactSource
 
         return world == Vector2.Zero ? Vector2.Zero : world.Normalized();
     }
-
-    /// <summary>
-    /// Where the shot is drawn, in this body's own space: its centre while it flies, and
-    /// the point it struck once it has landed. A canvas item draws in local space, so
-    /// pinning the drawing to a world point is a matter of undoing the body's own drift.
-    /// </summary>
-    private Vector2 LocalDrawOrigin() =>
-        _contactObserved ? ToLocal(_impactPosition) : Vector2.Zero;
 }

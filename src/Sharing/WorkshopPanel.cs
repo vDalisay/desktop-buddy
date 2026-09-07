@@ -97,6 +97,12 @@ public partial class WorkshopPanel : Window
         _activeOperation?.Cancel();
         _activeOperation?.Dispose();
         _activeOperation = null;
+        _browseCancellation?.Cancel();
+        _browseCancellation?.Dispose();
+        _browseCancellation = null;
+        _previewGeneration++;
+        foreach (Texture2D preview in _previewCache.Values) preview.Dispose();
+        _previewCache.Clear();
         base._ExitTree();
     }
 
