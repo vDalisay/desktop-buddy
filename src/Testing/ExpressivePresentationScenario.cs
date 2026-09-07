@@ -14,8 +14,8 @@ namespace DesktopBuddy.Testing;
 
 /// <summary>
 /// Regression oracle for the expressive-presentation seams that are easy to accidentally undo:
-/// live Drop Tool copy, first-click reveal completion, reduced-motion fallback, and the shared
-/// physics-free preview's visible/hidden/capture render lifecycle.
+/// live Drop Tool copy, first-click reveal completion, reduced-motion fallback, tutorial pointer
+/// tracking, and the shared physics-free preview's visible/hidden/capture render lifecycle.
 /// </summary>
 public sealed class ExpressivePresentationScenario : IScenario
 {
@@ -25,6 +25,20 @@ public sealed class ExpressivePresentationScenario : IScenario
     {
         var checks = new List<StartupCheck>();
         var messages = new List<string> { $"seed={seed}" };
+
+        Vector2 portraitCenter = new(500, 400);
+        Vector2 lookRight = LiveTutorialBuddyPresenter.ResolvePointerLook(
+            new Vector2(720, 400), portraitCenter);
+        Vector2 lookUp = LiveTutorialBuddyPresenter.ResolvePointerLook(
+            new Vector2(500, 220), portraitCenter);
+        Vector2 lookFarDiagonal = LiveTutorialBuddyPresenter.ResolvePointerLook(
+            new Vector2(5000, 5000), portraitCenter);
+        checks.Add(new StartupCheck(
+            "expressive_tutorial_pointer_look_is_directional_and_clamped",
+            lookRight.X > 0.95f && Math.Abs(lookRight.Y) < 0.001f &&
+            lookUp.Y < -0.95f && Math.Abs(lookUp.X) < 0.001f &&
+            lookFarDiagonal.Length() <= 1.001f,
+            $"right={lookRight} up={lookUp} diagonal={lookFarDiagonal}"));
 
         // Exercise the real persistence seam rather than passing a pretend chord straight to copy.
         // A rebound value must survive LocalSettingsInputBindings and the semantic/plain projection.
