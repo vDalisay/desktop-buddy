@@ -5,6 +5,8 @@ Recorded: 2026-09-07
 Planning branch: `plan/full-release-systemic-sandbox`  
 Applies to: Next Fest systemic vertical slice planning, Full Release, local content authoring, future safe Workshop content packs
 
+Review baseline: `c286b1d9d6bfd8274238bd0ac5bc30cf3a36b15f`. Section 22 records engineering review additions; these are implementation recommendations and gates, not new owner-approved product limits or authorization to expand the existing Workshop v1 whitelist.
+
 This document develops the owner-approved direction that Desktop Buddy should make safe mod/content creation unusually accessible by putting a creator workflow **inside the game itself**, styled as another Windows 98-era application.
 
 It supplements `MODDABILITY_AND_WORKSHOP_SECURITY_SOURCE_ALIGNMENT_2026-09-07.md`. All security rules in that document remain binding: Workshop content is hostile declarative data, never arbitrary C#, GDScript, DLLs, Godot Resources/scenes, shaders, native libraries or executable PCKs.
@@ -726,8 +728,7 @@ Use provider-qualified semantic identity conceptually like:
 
 ```text
 core:weapon.pistol
-local:<pack-guid>/weapon.harpoon
-workshop:<published-file-id-or-local-pack-id>/weapon.harpoon
+ugc:<pack-guid>/weapon.harpoon
 ```
 
 The exact serialized syntax can be designed during MOD-0, but requirements are:
@@ -736,6 +737,7 @@ The exact serialized syntax can be designed during MOD-0, but requirements are:
 - no global string collisions;
 - references inside a pack can use short/local aliases that compile to qualified IDs;
 - imported Workshop publisher metadata is provenance, not authority;
+- publishing, downloading, and offline use preserve the same semantic PackId; local/Workshop provider kind and PublishedFileId are separate provenance, as required by the moddability supplement;
 - local clone/duplicate receives a new local pack identity when appropriate.
 
 Blueprints/Scenes retain unresolved qualified references when a dependency is missing.
@@ -750,6 +752,7 @@ Keep dependency rules simple:
 
 - exact pack identity;
 - minimum compatible version or API range;
+- a saved dependency resolution records the exact validated content hash as well as the compatible version requirement; a version range alone must not silently change existing instances;
 - hard vs optional dependency only if optional dependencies become necessary;
 - maximum dependency depth/count;
 - no cyclic hard dependencies.
@@ -795,6 +798,8 @@ Creator Studio should show creators why something is invalid before Workshop rej
 
 Possible Status panel:
 
+The item limits below are illustrative, not approved production caps. Encoded PNG size is distinct from decoded CPU/GPU residency. Blueprint counts must come from the active build's shared budget policy, and account for the destination Scene's existing occupants.
+
 ```text
 Item budget
   Texture:       42 KB / 512 KB
@@ -835,7 +840,7 @@ Implement/design alongside MOD-0 and systemic foundations:
 - creator-local provider;
 - shared compile/validation result model;
 - capability exposure metadata;
-- behavior graph DTOs even if graph UI is later;
+- behavior graph DTOs when the MOD runtime first consumes them; do not prebuild an unused interpreter or graph framework for the optional creator slice;
 - safe painted-item visual capability seam;
 - semantic item markers (handle/muzzle/ports);
 - missing-provider placeholder semantics.
@@ -953,7 +958,7 @@ Normal Demo
     < Full Release (full Creator Studio breadth)
 ```
 
-If Creator-2 misses Next Fest, the underlying MOD/Creator seams still land with the systemic architecture so the feature can arrive later without refactoring.
+If Creator-2 misses Next Fest, retain the semantic IDs and validation seams already exercised by systemic content. Defer unused creator services and graph DTOs until their first consumer; do not promise that future authoring requires no refactoring.
 
 ---
 
@@ -1119,3 +1124,88 @@ Desktop Buddy's differentiator should be:
 > **Build it, paint it, give it safe behavior, test it, save it and share it — all inside the cursed Win98 desktop.**
 
 That is both a product feature and an architecture constraint. The systemic foundation should be built so this editor is a thin authoring client over stable semantic definitions/capabilities, not a second gameplay implementation.
+
+---
+
+# 22. Engineering review — compatibility, physics and performance
+
+These additions refine the plan at the reviewed commit. The 2026-09-07 moddability and three-build supplements describe future systemic content; existing Buddy/room packages keep their exact M6 formats and visual-only behavior. New runtime Content Packs need a separately versioned whitelist and the CREATOR-5 gate. Never widen the existing importer to accept generic `content/` or `assets/` paths.
+
+## 22.1 Keep the editor thin and reuse actual seams
+
+Use composition with explicit dependencies: an editor session owns working copy/baseline/dirty state; the domain compiler returns immutable definitions and typed diagnostics; the runtime factory composes trusted capabilities; stores own transactions; the platform adapter owns Steam calls. UI events submit typed commands. No global registry service locator, reflection-driven property editor, new ECS framework, or general plugin container is needed.
+
+At this baseline, inspect `src/App/CharacterEditorModeCoordinator.cs`, `src/App/GameplayPauseCoordinator.cs`, and `domain/DesktopBuddy.Domain/Painting/PaintSurface.cs` before extracting shared behavior. Reuse their contracts rather than deriving an item editor from a Buddy-specific controller. Existing raster code assumes 512×512 surfaces and horizontal UV wrapping: item painting needs explicit dimensions and clipped edges. Add regression cases for a stroke crossing each canvas edge and for unchanged Buddy seam behavior before generalizing the shared kernel.
+
+Capability descriptors should supply the same type, units, bounds, exposure, and build availability to UI and validation. Runtime admission remains authoritative even if a caller bypasses the UI. Resolve semantic IDs and compile graphs before simulation; the hot path uses bounded prepared data, not JSON, string lookup chains, or per-node delegates allocated each tick.
+
+## 22.2 Test mode must isolate both physics and services
+
+The phrase “temporary sandbox layer” in section 6 is insufficient: a visual layer is not an isolated physics world or progression boundary. Prototype a Creator Test viewport with a separately owned `World2D`, trusted production item composition, and test-owned registries, timers, RNG, damage targets and effect pools. Keep the ordinary sandbox paused. Do not instantiate a second live Buddy or reuse the character preview as a physics target; begin with trusted inert targets.
+
+The existing pause coordinator writes `SceneTree.Paused`. Setting a test node to process while paused does not by itself prove that its physics world advances. CREATOR-2 must first demonstrate isolated 120 Hz test simulation under the real editor pause lifecycle, using the engine-supported activation path if needed. If that cannot preserve main-world pause and recovery, resolve the test-host design before exposing Test Spawn; never unpause the whole game as a workaround.
+
+Test commands must have no access to live progress, active Scene persistence, achievements or publish services. Route rewards to the explicit test policy, including indirect projectile/explosion/contact descendants. On reset/exit, retire the test generation, release input capture, stop voices/effects, cancel timers and pending spawns, unsubscribe callbacks, and dispose owned bodies/textures. Late completions cannot recreate test objects.
+
+Reuse shell capture/restoration and pause-reason ownership. Cover Work/Play, compact/fullscreen, overlay, suspend, focus loss and monitor removal. Escape follows dirty-close handling; editor resize cannot resize the paused sandbox. Test time cannot produce gameplay catch-up on exit.
+
+Godot exposes per-viewport `world_2d`; its behavior must be verified with this application's pause setup. See [Godot 4.6 Viewport](https://docs.godotengine.org/en/4.6/classes/class_viewport.html#class-viewport-property-world-2d).
+
+## 22.3 Physics envelopes must cover combinations, not just sliders
+
+Keep the fixed 120 Hz Godot `RigidBody2D` simulation and six-circle Buddy authority. Creator item geometry is a separate capability; neither sprites nor markers may change `BuddyVisualProfile`, Buddy collision, drives or constraints.
+
+Before enabling each template, record measured bounds for dimensions/minimum thickness, mass and mass ratios, restitution/friction, linear/angular speed, impulse/torque, projectile lifetime and emission rate. Independently valid values can still produce unstable combinations: validate mass × speed impulse and mass × speed² energy envelopes, recoil cadence, overlapping spawns, thin fast bodies and constrained chains. These are tuning outputs, not new constants to guess in this review.
+
+Prefer trusted primitives for the first slice. If a generated convex hull ships, define the alpha threshold and simplification revision, vertex cap, minimum area/edge length, winding, finite coordinates and handling of empty/disconnected silhouettes. Generate only on explicit compile, not per brush dab. Revalidate the final descriptor on import; do not run unbounded contour/decomposition work on a physics tick. Convex hulls fill holes: preview that result honestly.
+
+Specify one pixel-to-local-physics transform, origin/pivot, units, forward axis, marker rotation and mirroring rule shared by preview and runtime. Visual scaling must not implicitly scale rigid-body collision. Appearance-only variants retain the original collision descriptor even if their silhouette changes. Marker placement cannot bypass muzzle clearance, self-hit rules or target validation.
+
+Apply impulses through trusted physics owners. Structural edits recreate the test instance at a safe boundary; never mutate shapes during contact callbacks or repeatedly drive dynamic transforms from UI/rendering. Keep projectile CCD policy in the trusted archetype and measure its cost. Godot documents direct-transform hazards, contact-monitor requirements and CCD tradeoffs in [RigidBody2D](https://docs.godotengine.org/en/4.6/classes/class_rigidbody2d.html).
+
+## 22.4 Apply/Test is a versioned transaction
+
+Capture an immutable source revision, validate/compile and prepare assets outside the fixed tick, then stage a replacement. Only the current editor generation may commit. A newer edit, closed session, failed texture preparation or failed spawn leaves the prior valid test definition/instance available and the working copy dirty.
+
+Start with explicit Apply/Test and recreation for all behavior/physics changes. Add in-place presentation replacement only where measured need justifies it. Commit prepared simulation commands at the owning boundary; reject stale instance handles after reset. Do not swap the provider definition first and then discover its replacement instance cannot be constructed. Budget for staging old and new assets together, or reject preparation without destroying the old version.
+
+Compilation, hashing and file/PNG work stay off the fixed tick. Worker jobs receive detached data with bounded concurrency; active scene-tree mutation, texture operations and required Steam calls stay on the main thread. “Async” alone does not move CPU work off-thread. See [Godot 4.6 thread-safe APIs](https://docs.godotengine.org/en/4.6/tutorials/performance/thread_safe_apis.html).
+
+Saving source uses temp/flush/replace and a recoverable baseline. A save advances the baseline only for the captured revision actually written; edits made while saving remain dirty. Failed/cancelled pre-commit writes preserve the old project. Unsupported future source versions open as unsupported without destructive rewrite. Publish compiles one saved/captured revision into immutable staging and retains the existing Steam callback/commit-point contract.
+
+## 22.5 Dependency identity and build compatibility
+
+Use the supplement's `ugc:<pack-guid>/<definition-id>` identity across local creation, publish, download and offline use. A duplicate gets a new PackId and remaps internal references; external references stay external. A pack cannot claim `core` identity. Conflicting content under the same PackId/version is a typed conflict, never last-loaded-wins.
+
+Separate source schema, runtime package schema, game capability API, author version and content hash. A deterministic compile uses canonical ordering/number encoding and hashes the declared runtime bytes; source layout/timestamps do not affect runtime identity. Compilation can be deterministic without promising bit-identical Godot physics across platforms.
+
+Resolve the full dependency closure under depth/count/aggregate-byte limits. Check compatibility transitively, including referenced projectiles, materials and behaviors. Record the exact selected hashes for saved Scenes/Blueprints; a newer compatible version is a candidate update, not an automatic replacement for pinned live content. Validate and explicitly switch versions transactionally. Never silently download/enable dependencies because an author-selected reference requested them.
+
+Missing references preserve bounded semantic payloads and wires as inert placeholders: no bodies, graph execution or partial capability activation. Preserve unsupported data without interpreting it, within the document byte cap. Disabling a provider must not unload assets still referenced by a live instance or delete the last-known-good copy.
+
+Derive content eligibility separately from the `steam` distribution feature. Normal Demo, Next Fest and Full Release must enforce capability availability at compile, import, resolution and spawn. Offline/no-addon operation remains local-first; itch.io must not expose Workshop actions. Windows 10/11 x86_64 with Godot 4.6.1 .NET remains the release target; Linux CI verifies portability of tools/tests, not Linux release support.
+
+## 22.6 Budget total work and residency
+
+The section 14 PNG byte meter cannot represent texture memory. One 256×256 RGBA8 layer is 256 KiB decoded; 512×512 is 1 MiB, independent of compression. Count layer pixels, discard baseline, undo data, flatten scratch, decoder buffers, upload staging, old/new reload versions, previews and GPU residency separately. Bound dimensions and aggregate decoded bytes before allocation/decode.
+
+Keep the locked Buddy painting limits of 64 MiB CPU editing and 8 MiB active GPU paint intact. Creator layers require their own measured allocation within the approved application envelope; they cannot silently spend another full Buddy budget. Record simultaneous live/test/editor residency and reference-hardware results before locking item dimensions/layer count. Unchanged revisions perform zero additional uploads; dirty rectangles may reduce CPU work without implying partial GPU upload support. Use paged libraries and bounded preview caches rather than decoding every pack at startup.
+
+Compile-time graph size is not runtime safety. Enforce a shared Scene-wide budget as well as per-instance/pack quotas for event delivery, timers, queries, spawns, awake bodies, constraints, effects and audio. Delayed cycles can still grow forever. Bound the next-tick queue and descendant lifetimes/counts; attribution survives parent destruction so spawning new parents cannot reset quotas. One expensive action must charge for its bounded fan-out/query work, not count as one cheap node.
+
+Define stable event order, positive timer quantization, contact coalescing and observable overflow behavior before CREATOR-4. Never accumulate unlimited catch-up work or drop cleanup needed to retire objects. Reject a spawn before allocation when capacity is unavailable. Blueprint placement reserves capacity for the entire graph, including its dependencies and constraints, and rolls back failed creation instead of leaving half a contraption.
+
+Record p95/p99 frame and physics cost, steady-state allocations, peak CPU/GPU bytes, contact count and maximum queue depth on reference hardware. The 8.33 ms tick interval at 120 Hz is the whole simulation interval, not a Creator allowance. Preserve existing budgets and measure worst-case legal combinations alongside the live Buddy; lowering the tick rate is not an overflow policy.
+
+## 22.7 Phase exit evidence to add
+
+| Gate | Required additional evidence |
+| --- | --- |
+| CREATOR-0 | First-party and local definitions use the same semantic validator; forbidden-type/dependency tests keep editor data out of Buddy authority; unknown capability/build rejection; deterministic compile and PackId collision tests. |
+| CREATOR-1 | Duplicate remaps internal instance IDs; dangling external wires are diagnosed; full-capacity placement is atomic; missing-provider load/save preserves bounded data; offline reload pins the same validated version. |
+| CREATOR-2 | Clipped item edges and unchanged Buddy seams; blank/degenerate shape rejection; marker/physics/visual alignment; stale Apply completion; failed save/spawn recovery; test-world pause isolation; no progression changes; repeated enter/test/reset/exit returns owned resource counts to baseline. |
+| CREATOR-3 | Sequential source migration and future-version preservation; hash conflict; cyclic/transitive dependency failure; retained assets during disable; interrupted transaction and disk-full recovery. |
+| CREATOR-4 | Delayed spawn chains, fan-out, timer storms and contact floods remain bounded across multiple packs; stable scheduling; cleanup after throttling/destruction; no steady-state hot-path allocation regression. |
+| CREATOR-5 | Separate package whitelist; hostile path/image/schema fixtures; immutable update and failed-update retention; transitive build restriction; addon-absent/offline coverage; existing two-account Steam and legal-agreement gates. |
+
+Promote real-input Creator journeys into committed automation through the configured Godot MCP workflow. Run relevant domain/headless coverage and existing painting, window restoration, physics and Workshop regressions. Put full journeys and stress/performance gates in PR/manual workflows, not `CI / quick`; keep GitHub-hosted Linux runners. Run standalone Windows DPI/monitor/recovery checks for changed UI. This document-only review does not claim those implementation gates have passed.
