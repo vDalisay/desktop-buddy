@@ -13,7 +13,12 @@ supersedes the older ten-achievement list in FR-018.5–FR-018.14 where the two 
 - The Steam Demo evaluates the same conditions and stores qualification in `progress.json`, but it
   must never call Steam's achievement-unlock API.
 - When the full game runs with the shared/carried save, every locally-qualified achievement is
-  retried against Steam. Steam being offline must never block qualification, gameplay, or saving.
+  reconciled to Steam as desired state. Steam being offline must never block qualification,
+  gameplay, or saving.
+- A newly changed desired set receives an immediate publish attempt. A failed unchanged batch backs
+  off at 60s, 120s, 240s, then 300s. A successful batch becomes an in-process no-op until another
+  achievement qualifies. This respects Steam's `StoreStats` rate-limit guidance while still
+  publishing genuine unlocks promptly.
 - `Reset Progress` keeps achievements that are already qualified, because Steam achievements cannot
   be revoked and Demo-qualified awards still need to reconcile. Partial counters/working state
   (for example 73/100 Boxing Glove hits) reset with ordinary progress.
@@ -55,17 +60,30 @@ Grenade, Shotgun, Fire Sprayer, and Sword. The code uses stable content IDs, not
 
 ## Implementation ownership
 
+The implementation follows a local-first **Ports & Adapters / desired-state reconciliation** shape:
+
 - `domain/DesktopBuddy.Domain/Achievements/AchievementCatalog.cs` owns local IDs, Steam API names,
   player-facing names/descriptions, hidden flags, and the damaging-tool set.
-- `src/Achievements/AchievementProgressStore.cs` stores qualification and bounded achievement
-  working state under the versioned `achievements.v1.*` extension namespace in `progress.json`.
-- `src/Achievements/AchievementCoordinator.cs` owns engine-independent qualification rules.
-- `src/Achievements/AchievementBootstrap.cs` observes existing gameplay/character/environment
-  events and translates them into semantic achievement observations.
-- `src/Achievements/SteamAchievementPublisher.cs` is the only Steam publishing edge. It is enabled
-  only when the running Steam AppID is the full-game AppID.
+- `domain/DesktopBuddy.Domain/Achievements/AchievementProgressStore.cs` owns typed access to
+  qualification and bounded working state under the versioned `achievements.v1.*` extension
+  namespace in `progress.json`.
+- `domain/DesktopBuddy.Domain/Achievements/AchievementCoordinator.cs` is the pure rule engine. It
+  converts semantic observations and durable progress into monotonic qualification and has no
+  Godot or Steam dependency.
+- `domain/DesktopBuddy.Domain/Achievements/AchievementReconciler.cs` owns the idempotent desired-state
+  reconciliation algorithm behind the `IAchievementRemote` platform port.
+- `src/Platform/Steam/GodotSteamAchievementRemote.cs` is the GodotSteam adapter. It enforces the
+  `steam + full_release + 5114950` publishing boundary and delegates only `setAchievement` and
+  `storeStats` through the project-owned GodotSteam bridge.
+- `src/Achievements/AchievementBootstrap.cs` observes existing gameplay/character/environment events
+  and translates them into semantic achievement observations; it does not own qualification rules.
+- `src/Achievements/SteamAchievementPublisher.cs` supplies monotonic retry/backoff scheduling around
+  the domain reconciler. It never owns gameplay state or achievement rules.
 - `src/Sharing/WorkshopBootstrap.cs` composes achievement tracking beside the already-initialized
   GodotSteam bridge, avoiding a second Steam initialization.
+
+This separation is intentional: pure rules and reconciliation are covered by ordinary `dotnet test`;
+GodotSteam binding compatibility remains covered by the native-addon smoke scenario.
 
 ## Steamworks setup
 
@@ -87,17 +105,20 @@ Before merge/release, verify all of the following:
 
 - `dotnet build DesktopBuddy.sln -c Debug` passes.
 - `dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build`
-  passes, including the 24-definition catalog, Work thresholds, cumulative/trick rules, and reset
-  semantics.
+  passes, including the 24-definition catalog, Work thresholds, cumulative/trick rules, reset
+  semantics, Character Arc identity handling, and reconciliation idempotency/failure replay.
 - In a Steam Demo build, qualifying an achievement changes `progress.json` but does not create a
   Steam achievement unlock for AppID `5228990`.
 - Launching the full game with that carried qualification unlocks the matching achievement under
-  AppID `5114950` after Steam stats become available.
-- Starting the full game offline still qualifies locally; reconnect/relaunch later reconciles it.
+  AppID `5114950` after Steam becomes available.
+- Starting the full game offline still qualifies locally; a later available full-game launch
+  reconciles it.
 - Reset Progress keeps qualified awards but clears partial achievement counters and working values.
 - A Steam overlay pause, Work Mode, and editor time cannot advance Air Bud.
 - Bank Shot requires the same thrown baseball to touch a side wall before its accepted Buddy hit.
 - Rube Goldberg requires three distinct semantic damage source IDs inside five seconds.
+- Repeated runtime polling after a successful Steam reconciliation causes no additional
+  `SetAchievement`/`StoreStats` calls until local qualification changes.
 
 Steamworks configuration remains an external release step; the repository intentionally contains no
 Steam credentials or proprietary Steam SDK binaries.
