@@ -5,19 +5,20 @@
 Read these before changing code, in this order:
 
 1. `docs/M6_WORKSHOP_SOURCE_ALIGNMENT_2026-08-25.md` — normative owner-authorized Steam Workshop supplement. For Workshop/package/platform scope it supersedes older Phase C deferral/forbidden wording in this file, `docs/DECISIONS.md`, `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md`, `docs/ROADMAP.md`, and historical milestone notes. It does not authorize real-time multiplayer or the deferred Damage Sprint leaderboard.
-2. `docs/FULL_RELEASE_MULTI_BUDDY_SCENES_SOURCE_ALIGNMENT_2026-09-07.md` — owner-authorized Full Release supplement promoting multiple simultaneous Buddies and fast-switchable Scene tabs. It supersedes older wording that defers multiple simultaneous Buddies or treats Full Release room profiles as a separate persistence system. Buddy-to-Buddy social AI/interactions remain deferred.
-3. `docs/DECISIONS.md` — owner-confirmed decisions. Historical Phase B/Phase C deferrals remain historical where superseded by newer owner-authorized supplements.
-4. `docs/M5_5_PHASE_B_PAINTING_SOURCE_ALIGNMENT.md` — normative Milestone 5.6 painting supplement, locked painting behavior, architecture, budgets, task order, and verification.
-5. `docs/M5_5_CHARACTER_EDITOR_SOURCE_ALIGNMENT.md` — normative Phase A supplement and historical A0 scope gate. Its statements that painting is deferred are superseded by item 4; its trusted visual/character architecture remains binding.
-6. `docs/PRODUCT_REQUIREMENTS.md` — baseline observable behavior and acceptance criteria, as supplemented by items 1, 2, 4, and 5.
-7. `docs/RAGDOLL_AND_GAMEPLAY_SPEC.md` — physics/gameplay contract.
-8. `docs/ARCHITECTURE.md` — baseline ownership, interfaces, data flow, and failure behavior, as supplemented by items 1, 2, 4, and 5.
-9. `docs/TEST_PLAN.md` and `docs/ROADMAP.md` — baseline verification and milestone order, as supplemented by items 1, 2, and 4.
-10. `docs/AGENT_VERIFICATION_AND_E2E.md` — baseline interactive verification workflow and end-to-end journey suite.
-11. `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md` — Phase A historical task contracts and original Workshop planning. Its Steamworks.NET/Phase C deferral wording is superseded by item 1; trusted character/package validation concepts remain historical design evidence where they do not conflict.
-12. `docs/GODOTSTEAM_WORKSHOP_AND_SOCIAL_FEATURES_IMPLEMENTATION_PLAN_2026-08-25.md` — detailed Workshop research and task contracts, as activated and corrected by item 1.
-13. `docs/REFERENCE_RESEARCH.md` — clean-room reference evidence and technical sources.
-14. `docs/OPEN_QUESTIONS.md` — decisions awaiting owner confirmation; do not implement behavior an open question affects until it is resolved by a higher-priority owner decision.
+2. `docs/NEXT_FEST_DEMO_SYSTEMIC_SANDBOX_VERTICAL_SLICE_2026-09-07.md` — owner-authorized Next Fest Steam Demo supplement. It supersedes older wording that makes every systemic-sandbox or multi-Buddy/Scene feature Full Release-only. The Steam Demo receives only the curated slice/caps/catalogues defined there; Full Release retains the broader systems.
+3. `docs/FULL_RELEASE_MULTI_BUDDY_SCENES_SOURCE_ALIGNMENT_2026-09-07.md` — owner-authorized Scene/multi-Buddy architecture supplement. It defines the account/Buddy state split, Scene documents and production multi-Buddy runtime. Where its distribution wording conflicts with item 2, item 2 controls the Next Fest Demo scope. Buddy-to-Buddy social AI/interactions remain deferred.
+4. `docs/DECISIONS.md` — owner-confirmed decisions. Historical Phase B/Phase C deferrals remain historical where superseded by newer owner-authorized supplements.
+5. `docs/M5_5_PHASE_B_PAINTING_SOURCE_ALIGNMENT.md` — normative Milestone 5.6 painting supplement, locked painting behavior, architecture, budgets, task order, and verification.
+6. `docs/M5_5_CHARACTER_EDITOR_SOURCE_ALIGNMENT.md` — normative Phase A supplement and historical A0 scope gate. Its statements that painting is deferred are superseded by item 5; its trusted visual/character architecture remains binding.
+7. `docs/PRODUCT_REQUIREMENTS.md` — baseline observable behavior and acceptance criteria, as supplemented by items 1–3, 5, and 6.
+8. `docs/RAGDOLL_AND_GAMEPLAY_SPEC.md` — physics/gameplay contract.
+9. `docs/ARCHITECTURE.md` — baseline ownership, interfaces, data flow, and failure behavior, as supplemented by items 1–3, 5, and 6.
+10. `docs/TEST_PLAN.md` and `docs/ROADMAP.md` — baseline verification and milestone order, as supplemented by items 1–3 and 5.
+11. `docs/AGENT_VERIFICATION_AND_E2E.md` — baseline interactive verification workflow and end-to-end journey suite.
+12. `docs/CHARACTER_EDITOR_WORKSHOP_PLAN.md` — Phase A historical task contracts and original Workshop planning. Its Steamworks.NET/Phase C deferral wording is superseded by item 1; trusted character/package validation concepts remain historical design evidence where they do not conflict.
+13. `docs/GODOTSTEAM_WORKSHOP_AND_SOCIAL_FEATURES_IMPLEMENTATION_PLAN_2026-08-25.md` — detailed Workshop research and task contracts, as activated and corrected by items 1 and 2.
+14. `docs/REFERENCE_RESEARCH.md` — clean-room reference evidence and technical sources.
+15. `docs/OPEN_QUESTIONS.md` — decisions awaiting owner confirmation; do not implement behavior an open question affects until it is resolved by a higher-priority owner decision.
 
 If documents conflict, apply the order above. Stop and ask the project owner only when the higher-priority documents do not resolve the conflict. If product behavior is not specified, do not invent it. Engineering coefficients explicitly assigned to a documented tuning or performance budget may be tuned through the documented acceptance process.
 
@@ -28,7 +29,8 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 - The Work/Play and compact/full-screen redesign is merged. Painting and Workshop surfaces must preserve its input ownership and window restoration behavior.
 - Milestone 5.6 Character Painting Phase B source alignment remains binding for painting behavior, visual-only guarantees, persistence boundaries, and budgets.
 - **Steam Workshop v1 is owner-authorized as of 2026-08-25.** The source-controlled path for room paintings and Buddy Studio configuration + declared buddy paint uses optional GodotSteam 4.22. Workshop is enabled in the Steam Demo and full Steam release through the `steam` build feature, and excluded from the itch.io build. Live Steamworks/two-account validation remains an external gate.
-- **Full Release multi-Buddy Scenes are owner-authorized as of 2026-09-07.** The Full Release may host several player-created Buddies in one active Scene and several named Scene documents switchable through Win98-style tabs. Only one Scene simulates at a time. Buddy-to-Buddy social AI/relationships/interactions remain outside the initial scope. The Steam Demo and itch.io remain on their existing one-live-Buddy/one-room scope.
+- **Multi-Buddy Scenes are owner-authorized as of 2026-09-07.** The production architecture may host several player-created Buddies in one active Scene and several named Scene documents switchable through Win98-style tabs. Only one Scene simulates at a time. Buddy-to-Buddy social AI/relationships/interactions remain outside the initial scope.
+- **The updated Next Fest Steam Demo is owner-authorized to ship a curated vertical slice of those Scene/multi-Buddy and systemic-sandbox systems.** The `steam_demo` build receives only the exact catalogues/caps/property/device/Workshop compatibility described in `NEXT_FEST_DEMO_SYSTEMIC_SANDBOX_VERTICAL_SLICE_2026-09-07.md`; the Full Release owns the broader content and higher caps. itch.io is unchanged.
 - The Workshop is asynchronous social functionality only. There are no lobbies, P2P sessions, replicated players, RPCs, `MultiplayerPeer`, or shared live rooms.
 - The future 30-second friends Damage Sprint leaderboard remains deferred.
 - Target exactly Godot 4.6.1 .NET/C# and Windows 10/11 x86_64 for the first Steam release.
@@ -47,26 +49,27 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 - Runtime and editor preview share `BuddyVisualRigView`; the preview must not construct a fake/live `BuddyRoot` or any physics authority.
 - Paint pixels are CPU-authoritative 512×512 RGBA8 surfaces. `BuddyVisualRigView.SetSurfaceUnderlay` is the only runtime binding seam, and face/accent decals remain above paint.
 - PNG decode/encode, JSON, file I/O, Workshop staging, and hashing never occur on the fixed physics tick. Godot texture creation/update and GodotSteam calls remain on the main thread where required.
-- Painting must remain inside the locked 64 MiB CPU editing budget and 8 MiB active GPU paint budget until a separately measured Full Release multi-Buddy budget supersedes the one-active-Buddy runtime assumption. Do not silently lower paint resolution.
-- Full Release Scene switching must never create multiple hidden live physics worlds. Only the active Scene simulates; inactive Scenes are persisted/suspended documents.
+- Painting must remain inside the locked 64 MiB CPU editing budget and 8 MiB active GPU paint budget until a separately measured multi-Buddy budget supersedes the one-active-Buddy runtime assumption. Do not silently lower paint resolution.
+- Scene switching must never create multiple hidden live physics worlds. Only the active Scene simulates; inactive Scenes are persisted/suspended documents.
 - Multi-Buddy runtime composition must preserve the single routed gameplay `_PhysicsProcess`. Several Buddy actors are ticked in deterministic stable order from the owning route rather than registering independent gameplay clocks.
 - Player/account progression (wallet, unlocks, selected tool, aggregate statistics) remains shared. Buddy-specific mood, hunger/fullness, harmful memory, traits/preferences, and fun/novelty must not be shared between distinct Buddy identities once the multi-Buddy state split lands.
-- Workshop content is hostile data. V1 accepts only the explicitly versioned JSON/PNG package formats and exact path whitelists defined by the Workshop supplement/plan. Never `GD.Load`/`ResourceLoader` Workshop content and never accept Workshop scenes, Resources, scripts, shaders, DLLs, native libraries, meshes, or generalized mods.
+- Shared Demo/Full systems use one implementation and schema. Distribution differences belong in trusted availability metadata, caps and validators rather than forked gameplay code.
+- Workshop content is hostile data. V1 and later specifically authorized package types accept only explicitly versioned declarative formats and exact path/ID/property whitelists. Never `GD.Load`/`ResourceLoader` Workshop content and never accept Workshop scenes, Resources, scripts, shaders, DLLs, native libraries, meshes, or generalized mods.
 - Imported Workshop characters always receive a fresh local GUID; remote/source identity is provenance only. Downloaded/imported content never auto-activates or silently replaces active local content.
 
 ## Implementation Discipline
 
-- Follow the numbered task/source-alignment document for the feature being changed. Multi-Buddy Scene work follows `docs/FULL_RELEASE_MULTI_BUDDY_SCENES_SOURCE_ALIGNMENT_2026-09-07.md`; painting work follows `docs/M5_5_PHASE_B_PAINTING_SOURCE_ALIGNMENT.md`; Workshop work follows `docs/M6_WORKSHOP_SOURCE_ALIGNMENT_2026-08-25.md` and the GodotSteam implementation plan.
-- Multi-Buddy Scene work is Full Release-only. Do not widen the Steam Demo or itch.io scope while implementing it.
+- Follow the numbered task/source-alignment document for the feature being changed. Next Fest systemic/Scene work follows `docs/NEXT_FEST_DEMO_SYSTEMIC_SANDBOX_VERTICAL_SLICE_2026-09-07.md` plus the multi-Buddy architecture supplement; painting work follows `docs/M5_5_PHASE_B_PAINTING_SOURCE_ALIGNMENT.md`; existing Workshop v1 work follows `docs/M6_WORKSHOP_SOURCE_ALIGNMENT_2026-08-25.md` and the GodotSteam implementation plan.
+- The Next Fest Demo widening is **limited to the exact slice** in its source-alignment document. Do not treat `steam_demo` as permission for every Full Release definition/property/device/Scene cap.
 - Do not infer Buddy-to-Buddy conversations, relationships, collision/avoidance, fighting, object passing, coordinated activities, or multiplayer merely because several Buddies can coexist in one Scene.
-- Do not extend the authorized Workshop scope into real-time multiplayer, generalized mods, arbitrary package types, Full Scene sharing, contraption sharing, or the deferred leaderboard without the applicable later owner/source-alignment gate.
+- Contraption Workshop sharing is authorized only after the local Blueprint schema/validator is stable and only as the declarative Demo-compatible/Full-required package model in the Next Fest supplement. Do not widen this into generalized mods or arbitrary package payloads.
 - Add tests with each behavior and run the relevant unit, headless, journey, native-addon, and standalone checks before handoff.
 - Verify changed player-visible behavior interactively in the running game through the configured Godot MCP server when the task requires it, then promote that interaction into committed automation. Interactive verification never substitutes for automated coverage.
 - Never silently change confirmed resolution, controls, budgets, path whitelist, AppID ownership, package schema, or scope. Record owner-approved changes before implementation.
 - Keep debug visualizers and tuning panels behind development-build guards.
 - Treat warnings, invalid UVs, seam jumps, non-finite coordinates, unexpected paint/package paths, dimension/byte-cap violations, hash mismatches, save migration failures, failed image writes, main-thread violations, Steam callback mismatches, lost Scene switching/editor recovery, and lost window recovery as actionable failures.
 - Preserve user changes and keep generated `.godot/`, build output, Steam SDK/GodotSteam runtime binaries, development `steam_appid.txt`, character-library test fixtures, generated PNG test output, and artifacts out of source control unless an approved plan explicitly requires a committed fixture.
-- Reset Progress behavior for Full Release Scene/Buddy identity data must be explicitly implemented by the Scene source-alignment tasks; do not assume the old single `ActiveCharacterId` reset rule is sufficient. Local character documents and imported Workshop library content remain separate from gameplay reset unless an explicit requirement says otherwise.
+- Reset Progress behavior for Scene/Buddy identity data must be explicitly implemented by the Scene source-alignment tasks; do not assume the old single `ActiveCharacterId` reset rule is sufficient. Local character documents and imported Workshop library content remain separate from gameplay reset unless an explicit requirement says otherwise.
 
 ## Clean-Room Rules
 
@@ -74,7 +77,7 @@ If documents conflict, apply the order above. Stop and ask the project owner onl
 - References may be used only to understand broad mechanics and interaction principles. All player-facing painting and Workshop UI, brush rendering, icons, copy, layout, and presentation must be original.
 - Do not trace screenshots or reproduce distinctive control arrangements. The required mouse-wheel plus visible-button sizing deliberately uses an independently specified, more discoverable control model.
 - Store comparison notes and public URLs only in development documentation.
-- Workshop package import/export is authorized only for the data-only v1 scope in the M6 Workshop supplement until a later source-alignment document explicitly adds another declarative package type. It must not become a route for arbitrary Resources, scripts, executable content, or generalized mods.
+- Workshop package import/export is authorized only for the specifically approved declarative content types. It must not become a route for arbitrary Resources, scripts, executable content, or generalized mods.
 
 ## Continuous Integration
 
@@ -113,6 +116,8 @@ A task is done only when:
 
 **Authorized Steam Workshop v1 scope:** optional GodotSteam 4.22 integration; base-game Workshop owner AppID `5114950`; room-painting publish/download/import; Buddy Studio configuration + declared buddy-paint publish/download/import; explicit apply/select only; local offline copies; strict hostile-data validation; directory-backed emulator; Steam overlay browsing; public tags `Room Painting` and `Buddy`; and null/offline fallback.
 
-**Authorized Full Release multi-Buddy Scene direction:** several player-created Buddy identities may coexist in one active Scene; several named Scene documents may hold different environment/background state and Buddy rosters; Win98-style Scene tabs may switch between them without restarting; only one Scene simulates at a time; account economy/tool ownership stays shared while Buddy-specific emotional/personality state becomes per identity. Initial engineering target is four active Buddies, subject to profiling rather than a permanent promised cap.
+**Authorized multi-Buddy Scene direction:** several player-created Buddy identities may coexist in one active Scene; several named Scene documents may hold different environment/background state and Buddy rosters; Win98-style Scene tabs may switch between them without restarting; only one Scene simulates at a time; account economy/tool ownership stays shared while Buddy-specific emotional/personality state becomes per identity. The Next Fest Steam Demo is capped to two active Buddies and two Scenes; Full Release starts from the higher profiling target in the Scene source alignment.
+
+**Authorized Next Fest systemic-sandbox slice:** the Steam Demo may ship the curated construction, Rope/Weld/Hinge constraints, bounded Properties, Button/Timer/Piston/Weapon Trigger automation, Wood/Metal damage slice, Buddy structural integrity/repair, gravity control, local Blueprints, limited Room Decorator catalogue, curated gameplay-tool roster and—after local validation is stable—Demo-compatible contraption Workshop sharing defined in `NEXT_FEST_DEMO_SYSTEMIC_SANDBOX_VERTICAL_SLICE_2026-09-07.md`. Full Release-only definitions, properties, devices, higher caps and deeper systems remain unavailable to the Demo.
 
 **Still deferred/forbidden without a new owner decision:** arbitrary custom Workshop Resources/scenes/scripts/DLLs/meshes/native code; generalized mod APIs; Buddy-to-Buddy social AI/relationships/coordination/collision design; multiple independent player economy save slots; unapproved cosmetic progression/economy changes; unapproved painting tools such as material sliders/patterns/gradients/smudge/stamps/layers/blend modes/brush files/tablet pressure/3D orbit/back-side painting; Steam lobbies; matchmaking; P2P/network sockets/SDR; RPCs; `MultiplayerPeer`; shared live rooms; the 30-second friends Damage Sprint leaderboard; Linux release support; and macOS release support.
