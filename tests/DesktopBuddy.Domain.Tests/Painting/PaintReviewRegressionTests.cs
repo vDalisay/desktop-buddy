@@ -10,6 +10,22 @@ public sealed class PaintReviewRegressionTests
     private static readonly EnvironmentColor RoomInk = new(12, 34, 56);
 
     [Fact]
+    public void PackedRgbaLargeBrushMatchesPreOptimizationPixelsAndSkipsEqualStamps()
+    {
+        var surface = new PaintSurface();
+        for (int i = 0; i < 2000; i++)
+            surface.Stamp(new PaintPoint((i % 100) / 100.0, .5), 128,
+                PaintTool.Brush, new PaintColor((byte)i, 34, 56), .5);
+
+        // Captured from the original four-byte writer, including wrapped seam strokes.
+        Assert.Equal("B8CD92A76A3D66CEAF8F0509CB38206C330D01A16CF5381399053418135D2BF6", surface.ComputeHash());
+        long revision = surface.Revision;
+        Assert.True(surface.Stamp(new PaintPoint(.99, .5), 128,
+            PaintTool.Brush, new PaintColor(unchecked((byte)1999), 34, 56), .5).IsEmpty);
+        Assert.Equal(revision, surface.Revision);
+    }
+
+    [Fact]
     public void EnvironmentPickColorIsReadOnlyAndDoesNotCreateUndoHistory()
     {
         var canvas = new EnvironmentCanvas { Tool = EnvironmentPaintTool.Fill, Color = RoomInk };

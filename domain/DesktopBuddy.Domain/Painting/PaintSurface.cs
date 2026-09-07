@@ -143,6 +143,7 @@ public sealed class PaintSurface
         byte g = square ? (byte)0 : color.G;
         byte b = square ? (byte)0 : color.B;
         byte a = square ? (byte)0 : byte.MaxValue;
+        uint rgba = (uint)(r | (g << 8) | (b << 16) | (a << 24));
         for (int y = minY; y <= maxY; y++)
         {
             double dy = ((y + 0.5) - centerY) * inverseRadiusY;
@@ -158,7 +159,10 @@ public sealed class PaintSurface
                 // hit's atlas lane.
                 int wrappedX = x >= regionStart && x <= regionEnd ? x : region.WrapPixelX(x);
                 int index = ((y * PaintPolicy.SurfaceSize) + wrappedX) * PaintPolicy.BytesPerPixel;
-                changed |= Write(index, r, g, b, a);
+                Span<byte> pixel = _pixels.AsSpan(index, PaintPolicy.BytesPerPixel);
+                if (BinaryPrimitives.ReadUInt32LittleEndian(pixel) == rgba) continue;
+                BinaryPrimitives.WriteUInt32LittleEndian(pixel, rgba);
+                changed = true;
             }
         }
 

@@ -29,6 +29,7 @@ public partial class PaintCanvasControl : Control
     private bool _sampling;
     private PaintColor _sampledColor;
     private double _sprayPulseAccumulator;
+    private readonly List<PaintHit> _screenHits = new();
     private PaintStrokeAudio _strokeAudio = null!;
 
     private BuddyPaintCurvePhase _curvePhase;
@@ -366,7 +367,7 @@ public partial class PaintCanvasControl : Control
             steps = Math.Min(steps, MaxGeneratedReplacementPenSampleSteps);
         int sampleDiameter = PenSampleDiameter(VisibleBrushDiameter(), Workspace.BrushDiameter, steps);
         float spacing = steps <= 0 ? 0f : sampleRadius / steps;
-        var hits = new List<PaintHit>((steps * 2 + 1) * (steps * 2 + 1));
+        _screenHits.Clear();
         for (int y = -steps; y <= steps; y++)
         {
             for (int x = -steps; x <= steps; x++)
@@ -379,11 +380,11 @@ public partial class PaintCanvasControl : Control
                     continue;
                 }
                 if (Map(center + offset) is PaintHit hit)
-                    hits.Add(hit);
+                    _screenHits.Add(hit);
             }
         }
         Workspace.StampScreenDab(
-            hits,
+            _screenHits,
             sampleDiameter,
             square ? PaintTool.Eraser : PaintTool.Pen);
     }
@@ -404,16 +405,16 @@ public partial class PaintCanvasControl : Control
             count = Math.Min(count, MaxGeneratedReplacementSprayDots);
 
         PaintPoint[] offsets = SprayPattern.SampleUnitDisk(Workspace.NextSprayPulseSeed(), count);
-        var hits = new List<PaintHit>(offsets.Length);
+        _screenHits.Clear();
         foreach (PaintPoint offset in offsets)
         {
             var point = new Vector2(
                 center.X + ((float)offset.X * radius),
                 center.Y + ((float)offset.Y * radius));
             if (Map(point) is PaintHit hit)
-                hits.Add(hit);
+                _screenHits.Add(hit);
         }
-        Workspace.StampScreenDots(hits);
+        Workspace.StampScreenDots(_screenHits);
     }
 
     private bool TryBucketFillConnector(PaintHit? hit)

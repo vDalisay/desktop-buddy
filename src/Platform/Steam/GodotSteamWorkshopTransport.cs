@@ -306,6 +306,7 @@ public partial class GodotSteamWorkshopTransport : Node, ISteamWorkshopTransport
     {
         _publishCallbacks.Shutdown();
         ShutdownSubscriptionQuery();
+        ShutdownBrowseQuery();
 
         PendingDownload[] downloads;
         lock (_callbackGate)
