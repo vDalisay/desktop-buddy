@@ -17,11 +17,9 @@ public partial class EnvironmentDecorator : CanvasLayer
     /// <summary>Synthetic catalogue tile: not a purchasable decoration, it just clears the wallpaper.</summary>
     private const string NoWallpaperId = "wallpaper.none";
 
-    private BuddyProgressState _progress = null!;
     private EconomyService _economy = null!;
     private LabPointerGrabComponent _pointer = null!;
-    private EnvironmentProgressState _state = null!;
-    private SaveCoordinator _saves = null!;
+    private IEnvironmentProgressPersistence _persistence = null!;
     private EnvironmentDecorationLayer _visuals = null!;
     private EnvironmentEditSession? _session;
     private EnvironmentPlacementController _placement = null!;
@@ -70,13 +68,14 @@ public partial class EnvironmentDecorator : CanvasLayer
     private DecorationCategory _selectedCategory;
 
     public bool IsOpen => GodotObject.IsInstanceValid(_blocker) && _blocker.Visible;
-    internal EnvironmentLayout VisibleWorkingLayout => _session?.WorkingLayout ?? _state.Layout;
+    internal EnvironmentLayout VisibleWorkingLayout => _session?.WorkingLayout ?? _persistence.Snapshot().Layout;
     internal long VisibleProjectedBalance
     {
         get
         {
-            if (_session is not null && _session.TryProjectBalance(_progress.BalanceMilliCredits, out long projected)) return projected;
-            return _progress.BalanceMilliCredits;
+            long current = _persistence.BalanceMilliCredits;
+            if (_session is not null && _session.TryProjectBalance(current, out long projected)) return projected;
+            return current;
         }
     }
     internal bool PlacementMode => _placementMode;
@@ -86,22 +85,18 @@ public partial class EnvironmentDecorator : CanvasLayer
     internal int VisibleOwnedCount(DecorationDefinitionId id) => Owned(id);
 
     public void Configure(
-        BuddyProgressState progress,
         EconomyService economy,
         LabPointerGrabComponent pointer,
         CanvasItem buddy2D,
         Node3D buddy3D,
-        EnvironmentProgressState state,
-        SaveCoordinator saves,
+        IEnvironmentProgressPersistence persistence,
         EnvironmentDecorationLayer visuals)
     {
-        _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
         _pointer = pointer ?? throw new ArgumentNullException(nameof(pointer));
         _ = buddy2D ?? throw new ArgumentNullException(nameof(buddy2D));
         _ = buddy3D ?? throw new ArgumentNullException(nameof(buddy3D));
-        _state = state ?? throw new ArgumentNullException(nameof(state));
-        _saves = saves ?? throw new ArgumentNullException(nameof(saves));
+        _persistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
         _visuals = visuals ?? throw new ArgumentNullException(nameof(visuals));
     }
 
@@ -150,8 +145,9 @@ public partial class EnvironmentDecorator : CanvasLayer
     public void Open()
     {
         if (IsOpen || _saving) return;
-        _session = new EnvironmentEditSession(_state.Layout, _progress.BalanceMilliCredits,
-            EnvironmentDecorationRegistry.Domain, null, _state.OwnedUnplaced);
+        EnvironmentProgressSnapshot snapshot = _persistence.Snapshot();
+        _session = new EnvironmentEditSession(snapshot.Layout, _persistence.BalanceMilliCredits,
+            EnvironmentDecorationRegistry.Domain, null, snapshot.OwnedUnplaced);
         _placement.Configure(_session, _blocker, ToBounds(RoomRect()));
         _placement.SetProcessUnhandledInput(false);
         _pointerInputBefore = _pointer.IsProcessingInput();
@@ -229,7 +225,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         body.AddChild(scroll);
         var content = new VBoxContainer
         {
-            Name = "RoomDecoratorContent",
+            Name = "EnvironmentDecoratorContent",
             CustomMinimumSize = new Vector2(620, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
@@ -403,7 +399,7 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         if (_selectedDefinition is null || _session is null) return;
         DecorationDefinition definition = _selectedDefinition.ToDefinition();
-        EnvironmentEditResult result = _session.Buy(definition.Id, _progress.BalanceMilliCredits);
+        EnvironmentEditResult result = _session.Buy(definition.Id, _persistence.BalanceMilliCredits);
         _status.Text = result.Succeeded
             ? "Bought one copy. It is in storage and ready to Place."
             : result.Status == EnvironmentEditStatus.InsufficientFunds
@@ -455,7 +451,7 @@ public partial class EnvironmentDecorator : CanvasLayer
             _session.CancelReservation();
         if (!_session.HasReservation)
         {
-            EnvironmentEditResult reserved = _session.Reserve(definition.Id, _progress.BalanceMilliCredits);
+            EnvironmentEditResult reserved = _session.Reserve(definition.Id, _persistence.BalanceMilliCredits);
             if (!reserved.Succeeded)
             {
                 _status.Text = reserved.Status == EnvironmentEditStatus.InsufficientFunds
@@ -812,7 +808,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         _saving = true;
         try
         {
-            await _saves.CommitEnvironmentAsync(_session);
+            await _persistence.CommitAsync(_session);
             _economy.NotifyBalanceChanged();
             Close();
         }
@@ -861,7 +857,15 @@ public partial class EnvironmentDecorator : CanvasLayer
         if (_placementMode) EndPlacementMode();
         if (_moveMode) CancelMoveMode();
         if (_deleteMode) CancelDeleteMode();
-        _visuals.Preview(_state.Layout);
+        try
+        {
+            _visuals.Preview(_persistence.Snapshot().Layout);
+        }
+        catch (InvalidOperationException)
+        {
+            // A Scene switch invalidates this editor instance by design. The Scene composition
+            // owner will refresh the presentation for the newly active Scene.
+        }
         _blocker.Visible = false;
         _confirm.Visible = false;
         _pointer.SetProcessInput(_pointerInputBefore);
@@ -876,7 +880,7 @@ public partial class EnvironmentDecorator : CanvasLayer
         bool ownedCopyReady = _selectedDefinition is not null &&
             _session?.OwnedUnplacedCount(_selectedDefinition.ToDefinition().Id) > 0;
         long cost = _selectedDefinition?.ToDefinition().PriceMilliCredits ?? 0;
-        long current = _progress.BalanceMilliCredits;
+        long current = _persistence.BalanceMilliCredits;
         long available = current;
         if (_session is not null) _session.TryProjectBalance(current, out available);
         long additionalCost = _selectedDefinition is null ? 0 : cost;
