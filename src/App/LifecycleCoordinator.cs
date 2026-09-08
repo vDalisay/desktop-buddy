@@ -14,9 +14,9 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class LifecycleCoordinator : Node
 {
-    private BuddyProgressState _progress = null!;
+    private BuddyRuntimeProgressBinding _progress = null!;
     private EconomyService _economy = null!;
-    private SaveCoordinator _saves = null!;
+    private IRunProgressPersistence _saves = null!;
     private MoodEconomyProfile _profile = null!;
     private PassiveIncome _income = null!;
     private GameClock _clock = null!;
@@ -40,21 +40,13 @@ public partial class LifecycleCoordinator : Node
     public bool IsInitialized { get; private set; }
     public bool IsHiddenToTray { get; private set; }
 
-    /// <summary>Frame cap while hidden or throttled; zero uses the tuning profile's value.</summary>
     public int BackgroundMaxFps { get; set; }
-
-    /// <summary>Whether the buddy hides itself while a full-screen application is focused.</summary>
     public bool HideForFullscreenApps { get; set; }
-    /// <summary>
-    /// A locked Windows session keeps running as hidden time with no discontinuity
-    /// exclusion, and the prior presentation state is restored on unlock (FR-016.8).
-    /// </summary>
     public bool IsSessionLocked { get; private set; }
     public bool IsPresentationThrottled => _presentationThrottled;
     public bool IsEditorModeActive => _editorModeActive;
     public double AcceptedRunningSeconds { get; private set; }
     public int ExcludedSpanCount => _clock?.ExcludedSpanCount ?? 0;
-    /// <summary>True while clock spans count as hidden rather than foreground time.</summary>
     public bool AccruesAsHidden => IsHiddenToTray || IsSessionLocked;
     public GameplayPauseCoordinator PauseCoordinator { get; private set; } = null!;
 
@@ -62,6 +54,33 @@ public partial class LifecycleCoordinator : Node
         BuddyProgressState progress,
         EconomyService economy,
         SaveCoordinator saves,
+        MoodEconomyProfile profile,
+        Func<bool> activeInteraction,
+        IMonotonicTimeSource? timeSource = null,
+        Action? resumePresentation = null,
+        Action<bool>? setWindowVisibility = null,
+        Func<bool>? isWorkMode = null,
+        Func<bool>? foregroundAppIsFullscreen = null) =>
+        Configure(
+            new BuddyRuntimeProgressBinding(progress),
+            economy,
+            new LegacyRunProgressPersistence(saves),
+            profile,
+            activeInteraction,
+            timeSource,
+            resumePresentation,
+            setWindowVisibility,
+            isWorkMode,
+            foregroundAppIsFullscreen);
+
+    /// <summary>
+    /// Scene-enabled lifecycle entry point. The focused Buddy binding owns emotional/hunger/novelty
+    /// time while its player side owns cumulative account time; persistence may be either backend.
+    /// </summary>
+    public void Configure(
+        BuddyRuntimeProgressBinding progress,
+        EconomyService economy,
+        IRunProgressPersistence saves,
         MoodEconomyProfile profile,
         Func<bool> activeInteraction,
         IMonotonicTimeSource? timeSource = null,
@@ -135,11 +154,6 @@ public partial class LifecycleCoordinator : Node
         UpdateHidden();
     }
 
-    /// <summary>
-    /// The buddy steps aside while a full-screen application owns the screen. It is a second
-    /// reason to be hidden, not a second owner of visibility: a window hidden to the tray by
-    /// hand stays hidden when the game exits.
-    /// </summary>
     public void SetHiddenForFullscreenApp(bool hidden)
     {
         if (hidden == _fullscreenHidden)
@@ -194,13 +208,6 @@ public partial class LifecycleCoordinator : Node
             RestorePresentation();
     }
 
-    /// <summary>
-    /// A session lock is not a suspension: the machine keeps running, so mood drift and
-    /// passive income continue and the span is never excluded as a discontinuity
-    /// (FR-016.8). The clock is deliberately <b>not</b> reset. Gameplay keeps simulating —
-    /// only the time-accounting bucket changes — and unlocking restores nothing because
-    /// nothing was torn down.
-    /// </summary>
     public void NotifySessionLock(bool locked)
     {
         if (!IsInitialized || _shuttingDown || locked == IsSessionLocked)
@@ -209,11 +216,6 @@ public partial class LifecycleCoordinator : Node
         IsSessionLocked = locked;
     }
 
-    /// <summary>
-    /// Settles the final accepted span and stops lifecycle mutation before a clean-exit
-    /// snapshot. Suspended time was already re-anchored on resume and is never included.
-    /// Idempotent so the explicit close path and the tree-exit fallback can both call it.
-    /// </summary>
     public void BeginShutdown()
     {
         if (!IsInitialized || _shuttingDown)
@@ -238,10 +240,6 @@ public partial class LifecycleCoordinator : Node
         }
     }
 
-    /// <summary>
-    /// Polled rather than event-driven: Windows has no notification for "some window became
-    /// full-screen", and twice a second is far cheaper than any hook would be.
-    /// </summary>
     private void PollForegroundApplication(double delta)
     {
         if (!IsInitialized || _shuttingDown || _foregroundAppIsFullscreen is null)
@@ -276,27 +274,17 @@ public partial class LifecycleCoordinator : Node
         Engine.MaxFps = _foregroundMaxFps;
         RenderingServer.RenderLoopEnabled = true;
         _presentationThrottled = false;
-        // Re-anchor interpolation before the first visible frame so the restarted render
-        // loop cannot tween bodies from their pre-hide transforms (FR-015.10). The physics
-        // step accumulator itself stays bounded by the project's
-        // physics/common/max_physics_steps_per_frame setting.
         _resumePresentation?.Invoke();
     }
 
     private void ApplyAcceptedSpan(double elapsed)
     {
         _progress.DriftMood(elapsed);
-        // Novelty recovers on the same monotonic accepted span mood drifts on, so a toy the
-        // buddy tired of becomes interesting again by the passage of time rather than by
-        // anything the player does (owner instruction 2026-07-27).
         _progress.RechargeFun(elapsed);
         long milliCredits = _income.Accrue(_progress.Mood, elapsed);
         _economy.DepositPassive(milliCredits);
         bool hidden = AccruesAsHidden;
         bool active = !hidden && _activeInteraction();
-        // Appetite burns on the same accepted span, at the rate for what is actually going on
-        // (owner decision 2026-07-29): barely anything while the player works or the buddy is
-        // hidden, more while it is being played with.
         _progress.DrainHunger(elapsed, ClassifyHunger(hidden, active));
         _progress.AccrueTime(
             elapsed,

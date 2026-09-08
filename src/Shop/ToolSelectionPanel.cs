@@ -19,7 +19,7 @@ namespace DesktopBuddy.Shop;
 public partial class ToolSelectionPanel : PanelContainer
 {
     private readonly List<Row> _rows = [];
-    private BuddyProgressState _progress = null!;
+    private PlayerRuntimeProgressBinding _progress = null!;
     private InteractionDamageComponent _pipeline = null!;
     private Label _selected = null!;
 
@@ -28,6 +28,12 @@ public partial class ToolSelectionPanel : PanelContainer
 
     public void Configure(
         BuddyProgressState progress,
+        InteractionDamageComponent pipeline,
+        ToolCatalogue catalogue) =>
+        Configure(new PlayerRuntimeProgressBinding(progress), pipeline, catalogue);
+
+    public void Configure(
+        PlayerRuntimeProgressBinding progress,
         InteractionDamageComponent pipeline,
         ToolCatalogue catalogue)
     {
@@ -104,8 +110,7 @@ public partial class ToolSelectionPanel : PanelContainer
             _selection.Hover(ContentIds.ForTool(_progress.SelectedTool));
         foreach (Row row in _rows)
         {
-            bool owned = row.Entry.IsStarting ||
-                _progress.IsToolUnlocked(row.Entry.ContentId);
+            bool owned = row.Entry.IsStarting || _progress.IsUnlocked(row.Entry.ContentId);
             bool active = _progress.SelectedTool == row.Tool;
             string name = ContentDisplayName.For(row.Entry.ContentId);
             string price = ContentDisplayName.Credits(row.Entry.PriceMilliCredits);

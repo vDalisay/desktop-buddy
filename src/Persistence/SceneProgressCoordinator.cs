@@ -100,16 +100,23 @@ public sealed class SceneProgressCoordinator
             if (Player.Revision != Interlocked.Read(ref _savedPlayerRevision) ||
                 Work.Revision != Interlocked.Read(ref _savedWorkRevision) ||
                 _sceneRevision != Interlocked.Read(ref _savedSceneRevision) ||
-                _identityLibraryRevision != Interlocked.Read(ref _savedIdentityLibraryRevision) ||
-                _savedBuddyRevisions.Count != _buddies.Count)
+                _identityLibraryRevision != Interlocked.Read(ref _savedIdentityLibraryRevision))
             {
                 return true;
             }
 
-            foreach ((BuddyIdentityId id, BuddyIdentityState buddy) in _buddies)
+            // Flush continuation may update the saved-revision map on a pool thread while the Godot
+            // main thread asks IsDirty. Guard that map with the same lock that serializes flushes;
+            // _buddies itself is run-lifetime composition state and mutates only on the owning thread.
+            lock (_sync)
             {
-                if (!_savedBuddyRevisions.TryGetValue(id, out long saved) || buddy.Revision != saved)
+                if (_savedBuddyRevisions.Count != _buddies.Count)
                     return true;
+                foreach ((BuddyIdentityId id, BuddyIdentityState buddy) in _buddies)
+                {
+                    if (!_savedBuddyRevisions.TryGetValue(id, out long saved) || buddy.Revision != saved)
+                        return true;
+                }
             }
             return false;
         }
@@ -176,11 +183,6 @@ public sealed class SceneProgressCoordinator
         CanonicalRoomPosition position) =>
         TrackSceneMutation(_scenes.MoveBuddy(sceneId, placementId, position));
 
-    /// <summary>
-    /// Builds the actor-local progress graph for one Scene from persistent Buddy identities. Only
-    /// identities actually placed in the Scene are passed to the registry; unplaced identities stay
-    /// in the library without becoming hidden live actors.
-    /// </summary>
     public SceneProgressBindingRegistry CreateBindings(SceneId sceneId)
     {
         if (!_scenes.TryGet(sceneId, out SceneDocument? scene) || scene is null)

@@ -18,14 +18,25 @@ public readonly record struct WorkFirstEntryRewardResult(
 /// </summary>
 public sealed class WorkFirstEntryRewardService
 {
-    private readonly BuddyProgressState _progress;
+    private readonly PlayerRuntimeProgressBinding _progress;
     private readonly WorkProgressState _work;
-    private readonly SaveCoordinator _saves;
+    private readonly IRunProgressPersistence _saves;
 
     public WorkFirstEntryRewardService(
         BuddyProgressState progress,
         WorkProgressState work,
         SaveCoordinator saves)
+        : this(
+            new PlayerRuntimeProgressBinding(progress),
+            work,
+            new LegacyRunProgressPersistence(saves))
+    {
+    }
+
+    public WorkFirstEntryRewardService(
+        PlayerRuntimeProgressBinding progress,
+        WorkProgressState work,
+        IRunProgressPersistence saves)
     {
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _work = work ?? throw new ArgumentNullException(nameof(work));
@@ -39,7 +50,7 @@ public sealed class WorkFirstEntryRewardService
 
         bool ownershipGranted = _progress.Unlock(ContentIds.CosmeticWorkGlasses);
         _work.MarkFirstEntryGlassesGranted();
-        await _saves.FlushProgressAsync(force: true, token).ConfigureAwait(false);
+        await _saves.FlushAsync(force: true, token).ConfigureAwait(false);
 
         return new WorkFirstEntryRewardResult(true, ownershipGranted);
     }

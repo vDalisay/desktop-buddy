@@ -22,10 +22,15 @@ public sealed class CharacterSlotEntitlementState
     private const long PaidSlotStepMilliCredits = 500_000;
     private const string OwnershipPrefix = "cosmetic.character_slot_entitlement.";
 
-    private readonly BuddyProgressState _progress;
+    private readonly PlayerRuntimeProgressBinding _progress;
     private readonly EconomyService _economy;
 
     public CharacterSlotEntitlementState(BuddyProgressState progress, EconomyService economy)
+        : this(new PlayerRuntimeProgressBinding(progress), economy)
+    {
+    }
+
+    public CharacterSlotEntitlementState(PlayerRuntimeProgressBinding progress, EconomyService economy)
     {
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
         _economy = economy ?? throw new ArgumentNullException(nameof(economy));
@@ -45,11 +50,6 @@ public sealed class CharacterSlotEntitlementState
 
     public int Capacity => checked(FreeSlots + PurchasedSlotCount);
 
-    /// <summary>
-    /// Price for the next expansion. The exact numbers are intentionally isolated here because
-    /// final slot pacing is an owner gate; the rule itself is deterministic and survives UI
-    /// refactors. First paid slot is 500 credits, then +500 credits per additional expansion.
-    /// </summary>
     public long NextPriceMilliCredits => PriceForPurchasedIndex(PurchasedSlotCount + 1);
 
     public int Remaining(int occupiedSlots) => Math.Max(0, Capacity - Math.Max(0, occupiedSlots));

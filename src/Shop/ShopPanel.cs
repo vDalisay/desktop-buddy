@@ -21,7 +21,7 @@ namespace DesktopBuddy.Shop;
 public partial class ShopPanel : PanelContainer
 {
     private readonly List<Row> _rows = [];
-    private BuddyProgressState _progress = null!;
+    private PlayerRuntimeProgressBinding _progress = null!;
     private EconomyService _economy = null!;
     private ToolCatalogue _catalogue = null!;
     private InteractionDamageComponent? _pipeline;
@@ -38,6 +38,13 @@ public partial class ShopPanel : PanelContainer
 
     public void Configure(
         BuddyProgressState progress,
+        EconomyService economy,
+        ToolCatalogue catalogue,
+        InteractionDamageComponent pipeline) =>
+        Configure(new PlayerRuntimeProgressBinding(progress), economy, catalogue, pipeline);
+
+    public void Configure(
+        PlayerRuntimeProgressBinding progress,
         EconomyService economy,
         ToolCatalogue catalogue,
         InteractionDamageComponent pipeline)
@@ -58,9 +65,6 @@ public partial class ShopPanel : PanelContainer
                 _rows.Add(BuildRow(parts.List, entry, tool));
         }
 
-        // The balance moves while this panel is open — every hit pays out — and the panel used
-        // to show whatever it happened to say when it was last acted on (owner report
-        // 2026-08-21). Same event the corner readout listens to, so the two never disagree.
         _economy.BalanceChanged += OnBalanceChanged;
         IsInitialized = true;
         Refresh();
@@ -68,16 +72,12 @@ public partial class ShopPanel : PanelContainer
 
     public override void _ExitTree()
     {
-        // The economy service outlives every node, so the unsubscribe is unconditional.
         if (_economy is not null)
             _economy.BalanceChanged -= OnBalanceChanged;
     }
 
     private void OnBalanceChanged(long _)
     {
-        // Both the native shop window and the integrated command-bar flyout call Refresh when
-        // opened. Rebuilding every row, tooltip and affordability string for each gameplay hit
-        // while the shop is parked/hidden only creates garbage the player can never see.
         if (IsVisibleInTree())
             Refresh();
     }
@@ -88,8 +88,6 @@ public partial class ShopPanel : PanelContainer
         var price = new Label();
         action.Pressed += () => Activate(entry, tool);
         HBoxContainer line = PanelChrome.Row(list, ContentDisplayName.For(entry.ContentId), price, action);
-        // Both the row and its button: a Stop-filtered button takes the pick from its own parent,
-        // so hooking only the row would blank the description the moment the cursor reached Buy.
         _selection.Add(entry.ContentId, line);
         action.MouseEntered += () => _selection.Hover(entry.ContentId);
         return new Row(entry, tool, action, price);
@@ -97,14 +95,13 @@ public partial class ShopPanel : PanelContainer
 
     private void Activate(CatalogueEntry entry, ToolId tool)
     {
-        bool owned = entry.IsStarting || _progress.IsToolUnlocked(entry.ContentId);
+        bool owned = entry.IsStarting || _progress.IsUnlocked(entry.ContentId);
         if (!owned)
         {
             Purchase(entry, tool);
             return;
         }
 
-        // The settled row is already disabled; re-firing it must not re-count an equip.
         if (_progress.SelectedTool == tool)
             return;
 
@@ -126,8 +123,6 @@ public partial class ShopPanel : PanelContainer
                 amountMilliCredits: 0,
                 kind: RewardPresentationKind.ToolPurchase);
             Purchased?.Invoke();
-            // Buying is the player saying "I want this now": a second click to equip was pure
-            // ceremony, and the tutorial no longer has to teach it as its own step.
             Equip(entry.ContentId, tool);
             return;
         }
@@ -150,14 +145,9 @@ public partial class ShopPanel : PanelContainer
         Refresh();
     }
 
-    /// <summary>The catalogue content ids, in authored selectable order.</summary>
     public IReadOnlyList<string> OfferedContentIds =>
         _rows.ConvertAll(static row => row.Entry.ContentId);
 
-    /// <summary>
-    /// Compatibility/test lookup for the row action. It is named BuyButtonFor for existing
-    /// callers, but the same control changes from Buy to Equip/Equipped as ownership changes.
-    /// </summary>
     public Button? BuyButtonFor(string contentId)
     {
         foreach (Row row in _rows)
@@ -169,7 +159,6 @@ public partial class ShopPanel : PanelContainer
         return null;
     }
 
-    /// <summary>Re-reads balance, ownership and active-tool state; safe whenever shown.</summary>
     public void Refresh()
     {
         if (!IsInitialized)
@@ -180,7 +169,7 @@ public partial class ShopPanel : PanelContainer
             _selection.Hover(ContentIds.ForTool(_progress.SelectedTool));
         foreach (Row row in _rows)
         {
-            bool owned = row.Entry.IsStarting || _progress.IsToolUnlocked(row.Entry.ContentId);
+            bool owned = row.Entry.IsStarting || _progress.IsUnlocked(row.Entry.ContentId);
             bool active = _progress.SelectedTool == row.Tool;
             bool affordable = _progress.BalanceMilliCredits >= row.Entry.PriceMilliCredits;
             string name = ContentDisplayName.For(row.Entry.ContentId);
@@ -196,8 +185,6 @@ public partial class ShopPanel : PanelContainer
                     : affordable
                         ? $"Buy {name} permanently for {price}."
                         : $"{name} costs {price}; you have {ContentDisplayName.Credits(_progress.BalanceMilliCredits)}. Earn more credits to buy it.";
-            // No layer tag: Purchase and Equip sound themselves, so a press that fails — too
-            // expensive, pipeline gone — stays honestly silent.
             UiFeedbackAudioBootstrap.Tag(row.Action, layer: UiSfx.NoLayer);
         }
     }
