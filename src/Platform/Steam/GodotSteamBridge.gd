@@ -127,6 +127,22 @@ func is_available() -> bool:
 func is_godotsteam_present() -> bool:
     return _find_steam() != null
 
+## Optional full-game achievement surface. These methods deliberately are not part of
+## _required_methods: Workshop remains usable when stats support is missing, while the C# adapter
+## fails closed and keeps locally-qualified achievements pending for a later valid Full launch.
+func has_achievement_capabilities() -> bool:
+    return is_available() \
+        and _steam.has_method("setAchievement") \
+        and _steam.has_method("storeStats")
+
+func set_achievement(api_name: String) -> bool:
+    if api_name.is_empty():
+        return false
+    return _call_bool("setAchievement", [api_name])
+
+func store_stats() -> bool:
+    return _call_bool("storeStats", [])
+
 func unavailable_reason() -> String:
     return _reason
 
