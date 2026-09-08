@@ -2,15 +2,19 @@ using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Platform;
 using Godot;
 
 namespace DesktopBuddy.App;
 
 /// <summary>
-/// What a given build ships. The public Demo is the default scope, the full release opts
-/// in through the export preset's <c>full_release</c> custom feature, and the itch.io build
-/// opts into a smaller <c>itch_io</c> surface. A build that forgets its feature tag therefore
-/// ships too little rather than shipping something unfinished.
+/// What a given build ships. The Initial Steam Demo content surface is the fail-closed normal
+/// desktop fallback, the Next Fest Demo opts in through <c>steam_demo,next_fest_demo</c>, the full
+/// release opts in through <c>full_release</c>, and the itch.io build opts into a smaller
+/// <c>itch_io</c> surface. A build that forgets its feature tag therefore ships too little rather
+/// than shipping something unfinished.
+///
+/// <para><c>steam</c> is platform capability only. It must never widen content entitlement.</para>
 ///
 /// <para>Deliberately not authored data. Hiding these entries in the <c>.tres</c> files would
 /// hide them from the full release too, and the point is one codebase that produces every
@@ -47,15 +51,31 @@ public static class DemoScope
         Array.IndexOf(OS.GetCmdlineUserArgs(), "--itch") >= 0;
 
     /// <summary>
-    /// The itch build is intentionally the strictest public scope. If an export is accidentally
-    /// tagged with both <c>itch_io</c> and <c>full_release</c>, itch wins so held-back features
-    /// cannot leak into that distribution.
+    /// One release-scope decision for the process. The pure policy owns precedence and malformed
+    /// tag handling; this adapter only supplies Godot feature-tag facts plus existing scenario
+    /// overrides.
     /// </summary>
-    public static bool IsItchIo =>
-        ItchIoOverride ?? (ItchIoRequestedLocally || OS.HasFeature("itch_io"));
+    private static BuildScopePolicy BuildScope => BuildScopePolicy.Resolve(
+        itchIo: ItchIoOverride ??
+            (ItchIoRequestedLocally || OS.HasFeature(BuildFeatureTags.ItchIo)),
+        steamDemo: OS.HasFeature(BuildFeatureTags.SteamDemo),
+        nextFestDemo: OS.HasFeature(BuildFeatureTags.NextFestDemo),
+        fullRelease: FullReleaseOverride ?? OS.HasFeature(BuildFeatureTags.FullRelease));
 
-    public static bool IsFullRelease =>
-        !IsItchIo && (FullReleaseOverride ?? OS.HasFeature("full_release"));
+    /// <summary>
+    /// The itch build is intentionally the strictest public scope. If an export is accidentally
+    /// tagged with wider release features too, the pure policy keeps itch authoritative so held-back
+    /// features cannot leak into that distribution.
+    /// </summary>
+    public static bool IsItchIo => BuildScope.IsItchIo;
+
+    /// <summary>True for both the Initial Steam Demo and the Next Fest Demo build.</summary>
+    public static bool IsSteamDemo => BuildScope.IsSteamDemo;
+
+    /// <summary>True only for the event build carrying both steam_demo and next_fest_demo.</summary>
+    public static bool IsNextFestDemo => BuildScope.IsNextFestDemo;
+
+    public static bool IsFullRelease => BuildScope.IsFullRelease;
 
     /// <summary>
     /// Workshop ships only in Steam exports; editor runs keep it for development and verification.
@@ -67,7 +87,7 @@ public static class DemoScope
     /// second layer that keeps the code out of the public browser assembly entirely.</para>
     /// </summary>
     public static bool IncludesWorkshop =>
-        !IsItchIo && (OS.HasFeature("editor") || OS.HasFeature("steam"));
+        !IsItchIo && (OS.HasFeature("editor") || OS.HasFeature(BuildFeatureTags.Steam));
 
     /// <summary>False for catalogue entries this build holds back.</summary>
     public static bool Includes(string? contentId) =>
@@ -102,7 +122,12 @@ public static class DemoScope
     public static IReadOnlyList<string> TutorialSteps =>
         IsItchIo ? TutorialStepIds.ItchIo : TutorialStepIds.Ordered;
 
-    /// <summary>Whether the Room Decorator command is offered at all.</summary>
+    /// <summary>
+    /// Whether the Room Decorator command is offered at all. The master release plan moves it to
+    /// Next Fest, but Phase 1 explicitly requires Environment/Room Decorator state to become
+    /// Scene-owned before exposure. Keep the existing full-release-only gate until that migration
+    /// lands rather than exposing the current global-room implementation prematurely.
+    /// </summary>
     public static bool IncludesRoomDecorator => IsFullRelease && !IsItchIo;
 
     /// <summary>

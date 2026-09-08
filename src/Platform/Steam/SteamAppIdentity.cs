@@ -1,3 +1,4 @@
+using DesktopBuddy.Domain.Platform;
 using Godot;
 
 namespace DesktopBuddy.Platform.Steam;
@@ -31,7 +32,9 @@ public static class SteamAppIdentityResolver
     /// the <c>steam_demo</c> feature and are pinned to the real Demo AppID so a stale project value,
     /// local environment variable, or incorrectly configured build variable can never make the Demo
     /// initialize Steam as the full game and accidentally browse/publish against the wrong Workshop.
-    /// The base game's Workshop owner is public product configuration and defaults to 5114950.
+    /// The Next Fest build deliberately carries the same feature because it replaces the public build
+    /// under the same Demo AppID. The base game's Workshop owner is public product configuration and
+    /// defaults to 5114950.
     /// </summary>
     public static SteamAppIdentity Resolve()
     {
@@ -41,7 +44,7 @@ public static class SteamAppIdentityResolver
         if (runtime == 0)
             runtime = ReadProject(RuntimeProjectSetting);
 
-        if (OS.HasFeature("steam_demo"))
+        if (OS.HasFeature(BuildFeatureTags.SteamDemo))
             runtime = DesktopBuddyDemoAppId;
 
         uint workshopOwner = ReadEnvironment(WorkshopOwnerEnvironmentVariable);
