@@ -39,33 +39,12 @@ public sealed class PlayerProgressState
 
     public PlayerProgressState(double cashPerPain, in PlayerProgressSnapshot snapshot)
     {
-        if (snapshot.Revision < 0)
-            throw new ArgumentOutOfRangeException(nameof(snapshot), "Player revision cannot be negative.");
-        if (string.IsNullOrWhiteSpace(snapshot.SelectedToolId))
-            throw new ArgumentException("Selected tool ID is required.", nameof(snapshot));
-        ArgumentNullException.ThrowIfNull(snapshot.UnlockedContentIds);
-
+        if (!double.IsFinite(cashPerPain) || cashPerPain < 0.0)
+            throw new ArgumentOutOfRangeException(nameof(cashPerPain));
         _cashPerPain = cashPerPain;
-        _ledger = new RewardLedger(cashPerPain, snapshot.BalanceMilliCredits);
+        _ledger = new RewardLedger(cashPerPain, 0);
         _tools = new ToolSelection();
-        Revision = snapshot.Revision;
-        Times = snapshot.Times;
-        Extensions = CopyExtensions(snapshot.Extensions);
-
-        foreach (string id in snapshot.UnlockedContentIds)
-        {
-            if (!string.IsNullOrWhiteSpace(id))
-                _unlockedContent.Add(id);
-        }
-        _unlockedContent.Add(ContentIds.ToolGrab);
-
-        if (ContentIds.TryParseTool(snapshot.SelectedToolId, out ToolId selected) &&
-            _unlockedContent.Contains(ContentIds.ForTool(selected)))
-        {
-            _tools.Select(selected);
-        }
-
-        RestoreStatistics(snapshot.Statistics);
+        Adopt(snapshot);
     }
 
     public long Revision { get; private set; }
@@ -107,6 +86,39 @@ public sealed class PlayerProgressState
             Statistics,
             Times,
             CopyExtensions(Extensions));
+    }
+
+    /// <summary>
+    /// Replaces the exact account snapshot without inventing a new semantic revision. This is a
+    /// persistence transaction seam, not gameplay mutation: Scene-owned atomic edits use it to
+    /// restore the pre-edit account state if the generation fails before its manifest commit.
+    /// Existing bindings keep the same <see cref="PlayerProgressState"/> object identity.
+    /// </summary>
+    public void Adopt(in PlayerProgressSnapshot snapshot)
+    {
+        ValidateSnapshot(snapshot);
+
+        _ledger = new RewardLedger(_cashPerPain, snapshot.BalanceMilliCredits);
+        _tools = new ToolSelection();
+        Revision = snapshot.Revision;
+        Times = snapshot.Times;
+        Extensions = CopyExtensions(snapshot.Extensions);
+
+        _unlockedContent.Clear();
+        foreach (string id in snapshot.UnlockedContentIds)
+        {
+            if (!string.IsNullOrWhiteSpace(id))
+                _unlockedContent.Add(id);
+        }
+        _unlockedContent.Add(ContentIds.ToolGrab);
+
+        if (ContentIds.TryParseTool(snapshot.SelectedToolId, out ToolId selected) &&
+            _unlockedContent.Contains(ContentIds.ForTool(selected)))
+        {
+            _tools.Select(selected);
+        }
+
+        RestoreStatistics(snapshot.Statistics);
     }
 
     public bool SelectTool(ToolId tool)
@@ -274,6 +286,17 @@ public sealed class PlayerProgressState
     }
 
     public RewardFeedback? PollRewardFeedback(double now) => _ledger.PollFeedback(now);
+
+    private static void ValidateSnapshot(in PlayerProgressSnapshot snapshot)
+    {
+        if (snapshot.Revision < 0)
+            throw new ArgumentOutOfRangeException(nameof(snapshot), "Player revision cannot be negative.");
+        if (snapshot.BalanceMilliCredits < 0)
+            throw new ArgumentOutOfRangeException(nameof(snapshot), "Player balance cannot be negative.");
+        if (string.IsNullOrWhiteSpace(snapshot.SelectedToolId))
+            throw new ArgumentException("Selected tool ID is required.", nameof(snapshot));
+        ArgumentNullException.ThrowIfNull(snapshot.UnlockedContentIds);
+    }
 
     private void RestoreStatistics(in ProgressStatistics statistics)
     {
