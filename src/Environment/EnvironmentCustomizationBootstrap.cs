@@ -2,6 +2,7 @@ using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.UI.Win98;
@@ -25,7 +26,9 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private EnvironmentPaintToolIconBootstrap? _paintIconBootstrap;
     private EnvironmentDecorationLayer? _decorationLayer;
     private EnvironmentDecorator? _decorator;
+    private EnvironmentProgressState? _environmentState;
     private IEnvironmentProgressPersistence? _environmentPersistence;
+    private SceneId _composedSceneId;
     private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
     private bool _workCompanionSubscribed;
     internal EnvironmentPaintStore? PaintStore => _paintStore;
@@ -82,7 +85,10 @@ public partial class EnvironmentCustomizationBootstrap : Node
         if (_registration is not null)
         {
             SubscribeWorkCompanionState();
-            SetProcess(false);
+            if (_sandbox?.SceneProgress is { } sceneProgress)
+                RefreshSceneEnvironment(sceneProgress);
+            else
+                SetProcess(false);
             return;
         }
 
@@ -98,9 +104,10 @@ public partial class EnvironmentCustomizationBootstrap : Node
         {
             EnvironmentProgressSnapshot snapshot = sceneProgress.ActiveEnvironmentProgress;
             state = new EnvironmentProgressState(snapshot.Layout, snapshot.Revision, snapshot.OwnedUnplaced);
+            _composedSceneId = sceneProgress.ActiveSceneId;
             persistence = new SceneEnvironmentProgressPersistence(
                 sceneProgress,
-                sceneProgress.ActiveSceneId,
+                _composedSceneId,
                 state);
         }
         else
@@ -108,6 +115,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
             EnvironmentProgressState? legacyState = _sandbox.Saves.EnvironmentProgress;
             if (legacyState is null) return;
             state = legacyState;
+            _composedSceneId = default;
             persistence = new LegacyEnvironmentProgressPersistence(_sandbox.Progress, legacyState, _sandbox.Saves);
         }
 
@@ -121,6 +129,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
     {
         if (!GodotObject.IsInstanceValid(_sandbox))
             throw new InvalidOperationException("Startup-test environment composition requires a configured sandbox.");
+        _composedSceneId = default;
         Compose(
             state,
             new LegacyEnvironmentProgressPersistence(_sandbox!.Progress, state, saves),
@@ -133,6 +142,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
         Win98CommandBarBootstrap commandBar)
     {
         if (_registration is not null) return;
+        _environmentState = state ?? throw new ArgumentNullException(nameof(state));
         _environmentPersistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
         _backgroundPresenter = new EnvironmentBackgroundPresenter { Name = nameof(EnvironmentBackgroundPresenter) };
         if (!GodotObject.IsInstanceValid(_sandbox))
@@ -179,8 +189,45 @@ public partial class EnvironmentCustomizationBootstrap : Node
                 "Paint the room background.",
                 CustomizeCommandIds.PaintBackgroundOrder),
             _backgroundEditor.Open);
-        SetProcess(false);
+        SetProcess(_sandbox?.SceneProgress is not null);
         Log.Info(LogCategory, "Paint Background registered in the Paint menu.");
+    }
+
+    /// <summary>
+    /// Keeps the existing presentation nodes but swaps their data/store bindings when the Scene
+    /// runtime changes active Scene. Rebinding is deliberately deferred while either editor is open;
+    /// those workspaces remain pinned to the Scene they opened against and the Room Decorator's
+    /// persistence adapter rejects a stale commit.
+    /// </summary>
+    private void RefreshSceneEnvironment(SceneProgressCoordinator scenes)
+    {
+        if (_composedSceneId == scenes.ActiveSceneId)
+            return;
+        if (_environmentState is null || _environmentPersistence is null ||
+            !GodotObject.IsInstanceValid(_decorator) || !GodotObject.IsInstanceValid(_backgroundEditor))
+            return;
+        if (_decorator!.IsOpen || _backgroundEditor!.IsOpen)
+            return;
+
+        EnvironmentProgressSnapshot snapshot = scenes.ActiveEnvironmentProgress;
+        var nextPersistence = new SceneEnvironmentProgressPersistence(
+            scenes,
+            scenes.ActiveSceneId,
+            _environmentState);
+        var nextPaintStore = EnvironmentPaintStore.ForScene(
+            new CharacterFileSystem(),
+            ProjectSettings.GlobalizePath("user://"),
+            scenes.ActiveSceneId);
+
+        if (!_decorator.TryRebindPersistence(nextPersistence) ||
+            !_backgroundEditor.TryRebindStore(nextPaintStore))
+            return;
+
+        _environmentPersistence = nextPersistence;
+        _paintStore = nextPaintStore;
+        _composedSceneId = scenes.ActiveSceneId;
+        _environmentState.Adopt(snapshot);
+        Log.Info(LogCategory, $"Environment presentation rebound to Scene {_composedSceneId}.");
     }
 
     private void SubscribeWorkCompanionState()
@@ -252,7 +299,9 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _paintStore = null;
         _decorationLayer = null;
         _decorator = null;
+        _environmentState = null;
         _environmentPersistence = null;
+        _composedSceneId = default;
     }
 
     internal void ApplyWorkCompanionVisibilityForTest(bool active) =>
