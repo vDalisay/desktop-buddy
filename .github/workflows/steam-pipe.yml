@@ -4,12 +4,13 @@ on:
   workflow_dispatch:
     inputs:
       target:
-        description: Steam product to build
+        description: Steam product/build surface to build
         required: true
         type: choice
         options:
           - full
           - demo
+          - nextfest
         default: full
       upload:
         description: Upload the exported build to SteamPipe
@@ -52,6 +53,9 @@ jobs:
       preset: ${{ steps.target.outputs.preset }}
       artifact_name: ${{ steps.target.outputs.artifact_name }}
       build_description: ${{ steps.target.outputs.build_description }}
+      steam_demo_scope: ${{ steps.target.outputs.steam_demo_scope }}
+      next_fest_demo_scope: ${{ steps.target.outputs.next_fest_demo_scope }}
+      achievement_expect: ${{ steps.target.outputs.achievement_expect }}
     steps:
       - uses: actions/checkout@v4
 
@@ -73,22 +77,48 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$TARGET" = "full" ]; then
-            app_id="${FULL_APP_ID:-$DESKTOP_BUDDY_BASE_APP_ID}"
-            depot_id="$FULL_DEPOT_ID"
-            preset="Windows Full Release"
-            artifact_name="DesktopBuddy-Steam-Full-Windows"
-          else
-            if [ -z "$DEMO_APP_ID" ]; then
-              echo "STEAM_DEMO_APP_ID is not configured." >&2
-              echo "Create the associated Steam demo App ID first, then add it as a GitHub Actions repository variable." >&2
+          case "$TARGET" in
+            full)
+              app_id="${FULL_APP_ID:-$DESKTOP_BUDDY_BASE_APP_ID}"
+              depot_id="$FULL_DEPOT_ID"
+              preset="Windows Full Release"
+              artifact_name="DesktopBuddy-Steam-Full-Windows"
+              steam_demo_scope="false"
+              next_fest_demo_scope="false"
+              achievement_expect="included"
+              ;;
+            demo)
+              if [ -z "$DEMO_APP_ID" ]; then
+                echo "STEAM_DEMO_APP_ID is not configured." >&2
+                echo "Create the associated Steam demo App ID first, then add it as a GitHub Actions repository variable." >&2
+                exit 1
+              fi
+              app_id="$DEMO_APP_ID"
+              depot_id="$DEMO_DEPOT_ID"
+              preset="Windows Steam Demo"
+              artifact_name="DesktopBuddy-Steam-Demo-Windows"
+              steam_demo_scope="true"
+              next_fest_demo_scope="false"
+              achievement_expect="excluded"
+              ;;
+            nextfest)
+              if [ -z "$DEMO_APP_ID" ]; then
+                echo "STEAM_DEMO_APP_ID is not configured." >&2
+                exit 1
+              fi
+              app_id="$DEMO_APP_ID"
+              depot_id="$DEMO_DEPOT_ID"
+              preset="Windows Steam Next Fest Demo"
+              artifact_name="DesktopBuddy-Steam-NextFest-Windows"
+              steam_demo_scope="true"
+              next_fest_demo_scope="true"
+              achievement_expect="included"
+              ;;
+            *)
+              echo "Unsupported Steam target: $TARGET" >&2
               exit 1
-            fi
-            app_id="$DEMO_APP_ID"
-            depot_id="$DEMO_DEPOT_ID"
-            preset="Windows Steam Demo"
-            artifact_name="DesktopBuddy-Steam-Demo-Windows"
-          fi
+              ;;
+          esac
 
           description="$REQUESTED_DESCRIPTION"
           description="${description//$'\n'/ }"
@@ -102,10 +132,14 @@ jobs:
           echo "preset=$preset" >> "$GITHUB_OUTPUT"
           echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
           echo "build_description=$description" >> "$GITHUB_OUTPUT"
+          echo "steam_demo_scope=$steam_demo_scope" >> "$GITHUB_OUTPUT"
+          echo "next_fest_demo_scope=$next_fest_demo_scope" >> "$GITHUB_OUTPUT"
+          echo "achievement_expect=$achievement_expect" >> "$GITHUB_OUTPUT"
 
           echo "Steam target: $TARGET"
           echo "Runtime App ID: $app_id"
           echo "Godot export preset: $preset"
+          echo "Compile scope: steam_demo=$steam_demo_scope next_fest_demo=$next_fest_demo_scope achievements=$achievement_expect"
           if [ -n "$depot_id" ]; then
             echo "Windows Depot ID: $depot_id"
           else
@@ -114,6 +148,25 @@ jobs:
 
       - name: Build managed solution
         run: dotnet build DesktopBuddy.sln -c Release
+
+      - name: Compile and verify selected release scope
+        shell: bash
+        env:
+          STEAM_DEMO_SCOPE: ${{ steps.target.outputs.steam_demo_scope }}
+          NEXT_FEST_DEMO_SCOPE: ${{ steps.target.outputs.next_fest_demo_scope }}
+          ACHIEVEMENT_EXPECT: ${{ steps.target.outputs.achievement_expect }}
+        run: |
+          set -euo pipefail
+          OUTPUT="$GITHUB_WORKSPACE/.artifacts/steam-scope"
+          rm -rf "$OUTPUT"
+          mkdir -p "$OUTPUT"
+          dotnet build DesktopBuddy.csproj -c Release -o "$OUTPUT" \
+            -p:DesktopBuddySteamDemoScope="$STEAM_DEMO_SCOPE" \
+            -p:DesktopBuddyNextFestDemoScope="$NEXT_FEST_DEMO_SCOPE"
+          python3 devtools/verification/verify_achievement_scope.py \
+            --expect "$ACHIEVEMENT_EXPECT" \
+            "$OUTPUT/DesktopBuddy.dll" \
+            "$OUTPUT/DesktopBuddy.Domain.dll"
 
       - name: Materialize verified GodotSteam 4.22 addon
         shell: pwsh
@@ -182,6 +235,9 @@ jobs:
 
       - name: Import project with native Steam addon
         shell: bash
+        env:
+          DesktopBuddySteamDemoScope: ${{ steps.target.outputs.steam_demo_scope }}
+          DesktopBuddyNextFestDemoScope: ${{ steps.target.outputs.next_fest_demo_scope }}
         run: |
           set -euo pipefail
           xvfb-run -a "$GODOT_BIN" --headless --verbose --path . --import
@@ -190,6 +246,8 @@ jobs:
         shell: bash
         env:
           PRESET: ${{ steps.target.outputs.preset }}
+          DesktopBuddySteamDemoScope: ${{ steps.target.outputs.steam_demo_scope }}
+          DesktopBuddyNextFestDemoScope: ${{ steps.target.outputs.next_fest_demo_scope }}
         run: |
           set -euo pipefail
           OUTPUT="$GITHUB_WORKSPACE/build/steam-content"
