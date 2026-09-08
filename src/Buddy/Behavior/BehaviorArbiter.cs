@@ -20,7 +20,7 @@ public partial class BehaviorArbiter : Node
 {
     private bool _allocationProbeEnabled;
     private BehaviorArbiterModel _model = null!;
-    private BuddyProgressState? _progress;
+    private BuddyRuntimeProgressBinding? _progress;
     private BuddyTraits _savelessTraits = BuddyTraits.Default;
     private MoodBand _savelessMoodBand = MoodBand.Neutral;
     private bool _statusHazard;
@@ -47,6 +47,12 @@ public partial class BehaviorArbiter : Node
             : SocialTuningSet.Default;
 
     public void Initialize(BuddyProgressState progress)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        Initialize(new BuddyRuntimeProgressBinding(progress));
+    }
+
+    public void Initialize(BuddyRuntimeProgressBinding progress)
     {
         ArgumentNullException.ThrowIfNull(progress);
         _progress = progress;
