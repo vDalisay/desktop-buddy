@@ -83,7 +83,7 @@ public partial class DroppedToolInteractionComponent : Node2D
         }
 
         if (profile!.WorldDrop is null || !GodotObject.IsInstanceValid(profile.WorldDrop) ||
-            !_pipeline.Progress.IsToolUnlocked(profile.ContentId) ||
+            !_pipeline.ProgressBinding.IsToolUnlocked(profile.ContentId) ||
             _pipeline.SelectedTool != profile.Tool ||
             FindDropped(profile.ContentId) is not null)
         {
@@ -215,7 +215,7 @@ public partial class DroppedToolInteractionComponent : Node2D
         if (!GodotObject.IsInstanceValid(body) || body.RuntimeId == 0 ||
             _objects.FindBody(body.RuntimeId) != body ||
             !GodotObject.IsInstanceValid(body.ToolProfile) ||
-            !_pipeline.Progress.IsToolUnlocked(body.ToolProfile.ContentId) ||
+            !_pipeline.ProgressBinding.IsToolUnlocked(body.ToolProfile.ContentId) ||
             !ContentIds.TryParseTool(body.ToolProfile.ContentId, out ToolId tool) ||
             !body.TryClaimReequip())
         {
