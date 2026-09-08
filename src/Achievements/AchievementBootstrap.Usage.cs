@@ -1,7 +1,7 @@
 using System;
 using DesktopBuddy.Domain.Content;
-using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Tools;
 using Godot;
 
 namespace DesktopBuddy.Achievements;
