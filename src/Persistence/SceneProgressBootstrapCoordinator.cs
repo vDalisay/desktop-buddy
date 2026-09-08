@@ -57,13 +57,37 @@ public sealed class SceneProgressBootstrapCoordinator
         _migration = migration ?? throw new ArgumentNullException(nameof(migration));
     }
 
-    public async Task<SceneProgressBootstrapResult> LoadOrMigrateAsync(
+    /// <summary>
+    /// Compatibility overload for tests/callers that already hold a proven legacy aggregate.
+    /// Production bootstrap should prefer the lazy-loader overload so a committed Scene manifest
+    /// is inspected before <c>progress.json</c> is ever decoded as the legacy schema.
+    /// </summary>
+    public Task<SceneProgressBootstrapResult> LoadOrMigrateAsync(
         ProgressSave legacy,
         CanonicalRoomPosition legacyBuddyPosition,
         Func<CancellationToken, Task>? commitLegacyAssetsAsync = null,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(legacy);
+        return LoadOrMigrateAsync(
+            _ => Task.FromResult(legacy),
+            legacyBuddyPosition,
+            commitLegacyAssetsAsync,
+            token);
+    }
+
+    /// <summary>
+    /// Chooses the persistence format before invoking <paramref name="loadLegacyAsync"/>. If a
+    /// Scene manifest exists, its generation is authoritative even when malformed or dependent on
+    /// staged recovery bytes: load failure is surfaced and never falls through to legacy decode.
+    /// </summary>
+    public async Task<SceneProgressBootstrapResult> LoadOrMigrateAsync(
+        Func<CancellationToken, Task<ProgressSave>> loadLegacyAsync,
+        CanonicalRoomPosition legacyBuddyPosition,
+        Func<CancellationToken, Task>? commitLegacyAssetsAsync = null,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(loadLegacyAsync);
 
         if (_transactions.HasCommittedGeneration)
         {
@@ -73,8 +97,14 @@ public sealed class SceneProgressBootstrapCoordinator
             return new SceneProgressBootstrapResult(
                 CreateCoordinator(loaded),
                 SceneProgressBootstrapSource.CommittedGeneration,
-                CanonicalPromotionComplete: true);
+                // LoadCommittedAsync may have resolved one or more documents from .next after an
+                // interrupted post-manifest promotion. Until the transaction store reports exact
+                // canonical completeness, never claim that a successful load proves promotion.
+                CanonicalPromotionComplete: false);
         }
+
+        ProgressSave legacy = await loadLegacyAsync(token).ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Legacy progress loader returned no aggregate.");
 
         // Reconstruct through the existing legacy policy before partitioning. This applies all
         // schema/default/unknown-ID normalization in one place instead of teaching migration a
