@@ -53,7 +53,7 @@ public sealed class BuddyRuntimeProgressBinding
     public CumulativeTimes Times =>
         _split?.Player.Times ?? RequireLegacy().Times;
     public ProgressExtensionData? Extensions =>
-        _split?.Player.Extensions ?? RequireLegacy().Extensions;
+        _split is not null ? _split.Player.Extensions : RequireLegacy().Extensions;
 
     public bool IsContentHarmful(string contentId) =>
         _split?.Buddy.IsContentHarmful(contentId) ?? RequireLegacy().IsContentHarmful(contentId);
