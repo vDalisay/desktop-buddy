@@ -123,6 +123,9 @@
     -->
     <Compile Remove="src/Environment/**/*.cs" />
 
+    <!-- Achievement runtime and Steam publisher are Next Fest/Full-only product code. -->
+    <Compile Remove="src/Achievements/**/*.cs" />
+
     <!--
       Steam Workshop. Remove the UI/composition, its staging/persistence implementation, and the
       Steam transport layer. Leaving Platform/Steam compiled would still ship the real Workshop
