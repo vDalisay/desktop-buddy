@@ -29,6 +29,7 @@ public sealed record EnvironmentEditCheckpoint(
 
 public sealed class EnvironmentEditSession
 {
+    private readonly long _baselineRevision;
     private readonly EnvironmentLayout _baseline;
     private readonly DecorationCatalogue _catalogue;
     private readonly Func<PlacedDecorationId> _createInstanceId;
@@ -44,15 +45,32 @@ public sealed class EnvironmentEditSession
     public EnvironmentEditSession(EnvironmentLayout baseline, long startingBalanceMilliCredits,
         DecorationCatalogue catalogue, Func<PlacedDecorationId>? createInstanceId = null,
         IEnumerable<DecorationDefinitionId>? ownedUnplaced = null)
+        : this(
+            new EnvironmentProgressSnapshot(0, baseline, ownedUnplaced?.ToArray() ?? []),
+            startingBalanceMilliCredits,
+            catalogue,
+            createInstanceId)
     {
-        ArgumentNullException.ThrowIfNull(baseline);
+    }
+
+    /// <summary>
+    /// Scene-owned constructor. Capturing revision, layout and storage in one baseline lets the
+    /// persistence coordinator reject a stale editor even when another edit happens to restore the
+    /// same visual layout before this session is saved.
+    /// </summary>
+    public EnvironmentEditSession(EnvironmentProgressSnapshot baseline, long startingBalanceMilliCredits,
+        DecorationCatalogue catalogue, Func<PlacedDecorationId>? createInstanceId = null)
+    {
+        if (baseline.Revision < 0 || baseline.Layout is null)
+            throw new ArgumentException("Environment edit baseline is invalid.", nameof(baseline));
         ArgumentNullException.ThrowIfNull(catalogue);
         if (startingBalanceMilliCredits < 0) throw new ArgumentOutOfRangeException(nameof(startingBalanceMilliCredits));
-        _baseline = baseline;
-        _working = baseline.Decorations.ToList();
+        _baselineRevision = baseline.Revision;
+        _baseline = baseline.Layout;
+        _working = baseline.Layout.Decorations.ToList();
         _catalogue = catalogue;
         _createInstanceId = createInstanceId ?? PlacedDecorationId.New;
-        _baselineOwned = Tally(ownedUnplaced);
+        _baselineOwned = Tally(baseline.OwnedUnplaced);
         _owned = new Dictionary<DecorationDefinitionId, int>(_baselineOwned);
         StartingBalanceMilliCredits = startingBalanceMilliCredits;
     }
@@ -82,6 +100,11 @@ public sealed class EnvironmentEditSession
         _owned.Any(entry => !_baselineOwned.TryGetValue(entry.Key, out int count) || count != entry.Value);
     public bool MatchesBaseline(EnvironmentLayout layout) =>
         layout.SchemaVersion == _baseline.SchemaVersion && layout.Decorations.SequenceEqual(_baseline.Decorations);
+    public bool MatchesBaseline(EnvironmentProgressSnapshot snapshot) =>
+        snapshot.Revision == _baselineRevision &&
+        snapshot.Layout is not null &&
+        MatchesBaseline(snapshot.Layout) &&
+        SameOwned(Tally(snapshot.OwnedUnplaced), _baselineOwned);
     public EnvironmentLayout WorkingLayout => new(_working);
 
     public EnvironmentEditResult Place(DecorationDefinitionId definitionId, CanonicalRoomPosition position)
@@ -176,7 +199,7 @@ public sealed class EnvironmentEditSession
         int rotation = (placed.RotationDegrees + (definition.Rotation.StepDegrees * Math.Sign(direction))) % 360;
         if (rotation < 0) rotation += 360;
         _working[index] = placed with { RotationDegrees = rotation };
-        return new(EnvironmentEditStatus.Succeeded, instanceId);
+        return new(EnvironmentEditResult(EnvironmentEditStatus.Succeeded, instanceId);
     }
 
     /// <summary>
@@ -207,10 +230,10 @@ public sealed class EnvironmentEditSession
     public EnvironmentEditResult Remove(PlacedDecorationId instanceId)
     {
         int index = Find(instanceId);
-        if (index < 0) return new(EnvironmentEditStatus.UnknownInstance);
-        if (!ReleasePlaced(_working[index])) return new(EnvironmentEditStatus.ArithmeticOverflow);
+        if (index < 0) return new(EnvironmentEditResult(EnvironmentEditStatus.UnknownInstance);
+        if (!ReleasePlaced(_working[index])) return new EnvironmentEditResult(EnvironmentEditStatus.ArithmeticOverflow);
         _working.RemoveAt(index);
-        return new(EnvironmentEditStatus.Succeeded, instanceId);
+        return new EnvironmentEditResult(EnvironmentEditStatus.Succeeded, instanceId);
     }
 
     /// <summary>Banks or refunds a decoration leaving the room. False only on arithmetic overflow.</summary>
@@ -228,9 +251,9 @@ public sealed class EnvironmentEditSession
     public EnvironmentEditResult RemoveStaged(PlacedDecorationId instanceId)
     {
         int index = Find(instanceId);
-        if (index < 0) return new(EnvironmentEditStatus.UnknownInstance);
+        if (index < 0) return new EnvironmentEditResult(EnvironmentEditStatus.UnknownInstance);
         if (_baseline.Decorations.Any(item => item.InstanceId == instanceId))
-            return new(EnvironmentEditStatus.UnknownInstance);
+            return new EnvironmentEditResult(EnvironmentEditStatus.UnknownInstance);
         return Remove(instanceId);
     }
 
@@ -270,6 +293,16 @@ public sealed class EnvironmentEditSession
         tally.OrderBy(entry => entry.Key.Value, StringComparer.Ordinal)
             .SelectMany(entry => Enumerable.Repeat(entry.Key, entry.Value))
             .ToArray();
+
+    private static bool SameOwned(
+        IReadOnlyDictionary<DecorationDefinitionId, int> left,
+        IReadOnlyDictionary<DecorationDefinitionId, int> right)
+    {
+        if (left.Count != right.Count) return false;
+        foreach ((DecorationDefinitionId id, int count) in left)
+            if (!right.TryGetValue(id, out int other) || other != count) return false;
+        return true;
+    }
 
     private void TakeFromStorage(DecorationDefinitionId id)
     {
