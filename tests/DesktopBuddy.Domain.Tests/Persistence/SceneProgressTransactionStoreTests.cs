@@ -88,6 +88,59 @@ public sealed class SceneProgressTransactionStoreTests
         Assert.True(files.Exists(WorkPath + ".next"));
     }
 
+    [Theory]
+    [InlineData("progress")]
+    [InlineData("work")]
+    public async Task Cloud_copy_of_committed_incomplete_generation_is_self_contained(string failurePoint)
+    {
+        var sourceFiles = new MemoryFiles();
+        var sourceStore = Store(sourceFiles);
+        TestGraph graph = Graph();
+        await sourceStore.CommitAsync(
+            graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+
+        graph.Player.Deposit(9_000);
+        graph.Work.Record(WorkActivityKind.KeyboardPress, 33);
+        graph.Buddy.ApplyCareMood(25.0f);
+        sourceFiles.FailReplaceDestination = failurePoint == "progress" ? ProgressPath : WorkPath;
+
+        SceneProgressCommitResult partial = await sourceStore.CommitAsync(
+            graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+        Assert.False(partial.CanonicalPromotionComplete);
+
+        // Seed files that must never cross the Auto-Cloud boundary. This makes the copy model
+        // exercise the same allowlist Steamworks is configured from instead of merely copying
+        // every in-memory file and accidentally hiding an over-broad policy.
+        sourceFiles.WriteDurable(Path.Combine(SaveRoot, SteamCloudSavePolicy.SettingsFileName), "{}");
+        sourceFiles.WriteDurable(ProgressPath + ".bak", "old-backup");
+        sourceFiles.WriteDurable(ProgressPath + ".tmp", "uncommitted-temp");
+        sourceFiles.WriteDurable(ProgressPath + ".invalid-20260908", "quarantine");
+
+        var cloudFiles = sourceFiles.CopyCloudEligible(SaveRoot, CloudDestinationRoot);
+        var cloudStore = new SceneProgressTransactionStore(CloudDestinationRoot, cloudFiles);
+        SceneProgressLoadResult loaded = await cloudStore.LoadCommittedAsync(CashPerPain);
+
+        Assert.Equal(1, loaded.Revision);
+        Assert.Equal(11_000, loaded.Player.BalanceMilliCredits);
+        Assert.Equal(133, loaded.Work.Lifetime.KeyboardPresses);
+        Assert.Equal(40.0f, loaded.BuddyIdentities[0].Mood);
+        Assert.Equal(graph.Scene.SceneId, loaded.Scenes[0].SceneId);
+
+        string cloudProgress = Path.Combine(CloudDestinationRoot, SteamCloudSavePolicy.ProgressFileName);
+        Assert.True(cloudFiles.Exists(Path.Combine(
+            CloudDestinationRoot,
+            SteamCloudSavePolicy.SceneProgressManifestFileName)));
+        Assert.True(
+            cloudFiles.Exists(cloudProgress) ||
+            cloudFiles.Exists(cloudProgress + SteamCloudSavePolicy.SceneRecoverySuffix));
+        Assert.False(cloudFiles.Exists(Path.Combine(
+            CloudDestinationRoot,
+            SteamCloudSavePolicy.SettingsFileName)));
+        Assert.False(cloudFiles.Exists(cloudProgress + ".bak"));
+        Assert.False(cloudFiles.Exists(cloudProgress + ".tmp"));
+        Assert.False(cloudFiles.Exists(cloudProgress + ".invalid-20260908"));
+    }
+
     [Fact]
     public async Task Next_commit_first_recovers_prior_incomplete_promotion_before_reusing_staging_paths()
     {
@@ -121,6 +174,7 @@ public sealed class SceneProgressTransactionStoreTests
     private const double CashPerPain = 0.01;
     private static readonly string SaveRoot =
         OperatingSystem.IsWindows() ? @"C:\scene-progress-transaction-test" : "/scene-progress-transaction-test";
+    private static readonly string CloudDestinationRoot = SaveRoot + "-cloud-copy";
     private static readonly string ProgressPath = Path.Combine(SaveRoot, SteamCloudSavePolicy.ProgressFileName);
     private static readonly string WorkPath = Resolve(SceneStoragePaths.WorkProgress);
 
@@ -192,6 +246,30 @@ public sealed class SceneProgressTransactionStoreTests
         {
             _files[destination] = _files[source];
             _files.Remove(source);
+        }
+
+        public MemoryFiles CopyCloudEligible(string sourceRoot, string destinationRoot)
+        {
+            string canonicalSourceRoot = Path.GetFullPath(sourceRoot);
+            string canonicalDestinationRoot = Path.GetFullPath(destinationRoot);
+            var copy = new MemoryFiles();
+
+            foreach ((string path, string contents) in _files)
+            {
+                string fullPath = Path.GetFullPath(path);
+                string relative = Path.GetRelativePath(canonicalSourceRoot, fullPath);
+                if (relative == ".." ||
+                    relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal) ||
+                    !SteamCloudSavePolicy.IsCloudEligibleRelativePath(relative))
+                {
+                    continue;
+                }
+
+                string destination = Path.GetFullPath(Path.Combine(canonicalDestinationRoot, relative));
+                copy.WriteDurable(destination, contents);
+            }
+
+            return copy;
         }
     }
 }
