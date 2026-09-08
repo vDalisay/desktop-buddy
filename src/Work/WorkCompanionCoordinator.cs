@@ -113,9 +113,9 @@ public partial class WorkCompanionCoordinator : Node
             _sandbox.Shell.SetProcessUnhandledInput(false);
 
             var firstEntry = new WorkFirstEntryRewardService(
-                _context.Progress,
+                _context.PlayerProgress,
                 _work,
-                _context.Saves);
+                _context.RunProgressPersistence);
             await firstEntry.EnsureAsync(token);
 
             CompiledCharacterAppearance? appearance = await ResolveAppearanceAsync(token);
@@ -160,7 +160,7 @@ public partial class WorkCompanionCoordinator : Node
             }
 
             _work.CheckpointSession(_session.Snapshot());
-            await _context.Saves.FlushProgressAsync(force: true, token);
+            await _context.RunProgressPersistence.FlushAsync(force: true, token);
 
             IsActive = true;
             ActiveChanged?.Invoke(true);
@@ -202,7 +202,7 @@ public partial class WorkCompanionCoordinator : Node
             _work.ClearActiveSession();
             try
             {
-                await _context.Saves.FlushProgressAsync(force: true, token);
+                await _context.RunProgressPersistence.FlushAsync(force: true, token);
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
@@ -251,7 +251,7 @@ public partial class WorkCompanionCoordinator : Node
             try
             {
                 PersistPreferencesAsync(forceGeometry: _geometryDirty).GetAwaiter().GetResult();
-                _context.Saves.FlushProgressAsync(force: true).GetAwaiter().GetResult();
+                _context.RunProgressPersistence.FlushAsync(force: true).GetAwaiter().GetResult();
             }
             catch (Exception exception)
             {
@@ -554,7 +554,7 @@ public partial class WorkCompanionCoordinator : Node
     {
         try
         {
-            await _context.Saves.FlushProgressAsync(force: true);
+            await _context.RunProgressPersistence.FlushAsync(force: true);
         }
         catch (Exception exception)
         {
