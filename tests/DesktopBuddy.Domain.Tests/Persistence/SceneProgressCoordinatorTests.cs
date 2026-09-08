@@ -127,6 +127,111 @@ public sealed class SceneProgressCoordinatorTests
     }
 
     [Fact]
+    public async Task Reset_to_fresh_graph_preserves_live_object_identities_and_commits_one_home_scene()
+    {
+        var files = new MemoryFiles();
+        SceneProgressCoordinator coordinator = Coordinator(files);
+        await coordinator.FlushAsync(force: true);
+        Assert.True(coordinator.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? primary));
+
+        PlayerProgressState playerReference = coordinator.Player;
+        WorkProgressState workReference = coordinator.Work;
+        BuddyIdentityState primaryReference = primary!;
+
+        coordinator.Player.Deposit(50_000);
+        coordinator.Work.Record(WorkActivityKind.KeyboardPress, 40);
+        primaryReference.SetCharacter(Guid.Parse("8ac63245-a0fd-4316-b905-a8874343765f"));
+
+        BuddyIdentitySnapshot secondSnapshot = primaryReference.Snapshot() with
+        {
+            BuddyIdentityId = BuddyIdentityId.From(Guid.Parse("ec143f42-a8f5-44c0-8997-5b4a11350450")),
+            Revision = 0,
+            CharacterId = null,
+        };
+        var second = new BuddyIdentityState(secondSnapshot);
+        Assert.True(coordinator.RegisterBuddyIdentity(second));
+        Assert.True(coordinator.AddBuddyToScene(
+            coordinator.ActiveSceneId,
+            second.BuddyIdentityId,
+            new CanonicalRoomPosition(0.75f, 0.5f)).Succeeded);
+        SceneLibraryResult lab = coordinator.CreateScene("Lab");
+        Assert.True(lab.Succeeded);
+        Assert.NotNull(lab.Scene);
+        Assert.True(coordinator.SwitchScene(lab.Scene!.SceneId).Succeeded);
+        await coordinator.FlushAsync(force: true);
+
+        LegacyNextFestMigrationProjection fresh = FreshProjection();
+        await coordinator.ResetToFreshGraphAsync(fresh);
+
+        Assert.Same(playerReference, coordinator.Player);
+        Assert.Same(workReference, coordinator.Work);
+        Assert.True(coordinator.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? resetPrimary));
+        Assert.Same(primaryReference, resetPrimary);
+        Assert.Equal(fresh.Player.BalanceMilliCredits, coordinator.Player.BalanceMilliCredits);
+        Assert.Equal(default, coordinator.Work.Lifetime);
+        Assert.False(coordinator.Work.FirstEntryGlassesGranted);
+        Assert.Null(resetPrimary!.CharacterId);
+        Assert.Equal(1, coordinator.BuddyIdentityCount);
+        Assert.Equal(1, coordinator.SceneCount);
+        Assert.Equal(SceneId.LegacyHome, coordinator.ActiveSceneId);
+        Assert.Empty(coordinator.ActiveScene.Environment.Decorations);
+        Assert.Empty(coordinator.ActiveScene.OwnedUnplaced);
+        Assert.False(coordinator.IsDirty);
+
+        SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
+        Assert.Single(loaded.BuddyIdentities);
+        Assert.Single(loaded.Scenes);
+        Assert.Equal(SceneId.LegacyHome.Value, loaded.Index.ActiveSceneId);
+        Assert.Null(loaded.BuddyIdentities[0].CharacterId);
+        Assert.Empty(loaded.Scenes[0].Environment.Decorations);
+    }
+
+    [Fact]
+    public async Task Reset_failed_manifest_write_restores_exact_pre_reset_graph()
+    {
+        var files = new MemoryFiles();
+        SceneProgressCoordinator coordinator = Coordinator(files);
+        await coordinator.FlushAsync(force: true);
+        Assert.True(coordinator.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? primary));
+
+        coordinator.Player.Deposit(17_000);
+        coordinator.Work.Record(WorkActivityKind.MouseClick, 11);
+        primary!.SetCharacter(Guid.Parse("900c99ec-e68f-4ccd-a67c-8fbad4273e59"));
+        SceneLibraryResult lab = coordinator.CreateScene("Rollback Lab");
+        Assert.True(lab.Succeeded);
+        Assert.NotNull(lab.Scene);
+        Assert.True(coordinator.SwitchScene(lab.Scene!.SceneId).Succeeded);
+        await coordinator.FlushAsync(force: true);
+
+        string playerBefore = PlayerProgressSavePolicy.Serialize(coordinator.Player);
+        string workBefore = WorkProgressSavePolicy.Serialize(coordinator.Work);
+        string buddyBefore = BuddyIdentitySavePolicy.Serialize(primary);
+        string sceneBefore = SceneSavePolicy.SerializeScene(coordinator.ActiveScene);
+        SceneId activeBefore = coordinator.ActiveSceneId;
+        int sceneCountBefore = coordinator.SceneCount;
+        long committedBefore = coordinator.LastCommittedRevision;
+
+        files.FailNextDurableWrite = true;
+        await Assert.ThrowsAsync<IOException>(() => coordinator.ResetToFreshGraphAsync(FreshProjection()));
+
+        Assert.Equal(playerBefore, PlayerProgressSavePolicy.Serialize(coordinator.Player));
+        Assert.Equal(workBefore, WorkProgressSavePolicy.Serialize(coordinator.Work));
+        Assert.True(coordinator.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? restoredPrimary));
+        Assert.Same(primary, restoredPrimary);
+        Assert.Equal(buddyBefore, BuddyIdentitySavePolicy.Serialize(restoredPrimary!));
+        Assert.Equal(activeBefore, coordinator.ActiveSceneId);
+        Assert.Equal(sceneCountBefore, coordinator.SceneCount);
+        Assert.Equal(sceneBefore, SceneSavePolicy.SerializeScene(coordinator.ActiveScene));
+        Assert.Equal(committedBefore, coordinator.LastCommittedRevision);
+        Assert.False(coordinator.IsDirty);
+
+        SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
+        Assert.Equal(activeBefore.Value, loaded.Index.ActiveSceneId);
+        Assert.Equal(sceneCountBefore, loaded.Scenes.Count);
+        Assert.Equal(playerBefore, PlayerProgressSavePolicy.Serialize(loaded.Player));
+    }
+
+    [Fact]
     public async Task Autosave_waits_for_thirty_seconds_of_valid_running_time()
     {
         var files = new MemoryFiles();
@@ -153,6 +258,16 @@ public sealed class SceneProgressCoordinatorTests
         steamDemo: true,
         nextFestDemo: true,
         fullRelease: false);
+
+    private static LegacyNextFestMigrationProjection FreshProjection()
+    {
+        var fresh = new BuddyProgressState(cashPerPain: CashPerPain);
+        return LegacyNextFestMigrationPolicy.Project(
+            fresh.Snapshot(),
+            activeCharacterId: null,
+            new EnvironmentProgressSnapshot(0, new EnvironmentLayout(), []),
+            new CanonicalRoomPosition(0.5f, 0.5f));
+    }
 
     private static SceneProgressCoordinator Coordinator(MemoryFiles files)
     {
