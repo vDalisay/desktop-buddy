@@ -44,6 +44,7 @@
     <Compile Include="..\..\src\Persistence\SaveCoordinator.cs" Link="RuntimePersistence\SaveCoordinator.cs" />
     <Compile Include="..\..\src\Persistence\SteamCloudSavePolicy.cs" Link="RuntimePersistence\SteamCloudSavePolicy.cs" />
     <Compile Include="..\..\src\Persistence\Characters\CharacterSelectionState.cs" Link="RuntimePersistence\CharacterSelectionState.cs" />
+    <Compile Include="..\..\src\Persistence\Characters\SceneCharacterSelectionBinding.cs" Link="RuntimePersistence\SceneCharacterSelectionBinding.cs" />
     <Compile Include="..\..\src\Persistence\Characters\CharacterPaths.cs" Link="RuntimePersistence\CharacterPaths.cs" />
     <Compile Include="..\..\src\Persistence\Characters\CharacterStoreResults.cs" Link="RuntimePersistence\CharacterStoreResults.cs" />
     <Compile Include="..\..\src\Persistence\Characters\CharacterStore.cs" Link="RuntimePersistence\CharacterStore.cs" />
