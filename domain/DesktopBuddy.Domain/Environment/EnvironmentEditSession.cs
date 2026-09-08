@@ -199,7 +199,7 @@ public sealed class EnvironmentEditSession
         int rotation = (placed.RotationDegrees + (definition.Rotation.StepDegrees * Math.Sign(direction))) % 360;
         if (rotation < 0) rotation += 360;
         _working[index] = placed with { RotationDegrees = rotation };
-        return new(EnvironmentEditResult(EnvironmentEditStatus.Succeeded, instanceId);
+        return new EnvironmentEditResult(EnvironmentEditStatus.Succeeded, instanceId);
     }
 
     /// <summary>
@@ -230,7 +230,7 @@ public sealed class EnvironmentEditSession
     public EnvironmentEditResult Remove(PlacedDecorationId instanceId)
     {
         int index = Find(instanceId);
-        if (index < 0) return new(EnvironmentEditResult(EnvironmentEditStatus.UnknownInstance);
+        if (index < 0) return new EnvironmentEditResult(EnvironmentEditStatus.UnknownInstance);
         if (!ReleasePlaced(_working[index])) return new EnvironmentEditResult(EnvironmentEditStatus.ArithmeticOverflow);
         _working.RemoveAt(index);
         return new EnvironmentEditResult(EnvironmentEditStatus.Succeeded, instanceId);
