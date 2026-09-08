@@ -78,6 +78,28 @@ public static class DemoScope
     public static bool IsFullRelease => BuildScope.IsFullRelease;
 
     /// <summary>
+    /// Production Scene/multi-Buddy composition begins at Next Fest. Runtime/UI callers ask this
+    /// adapter rather than reading custom feature tags directly so malformed builds retain the pure
+    /// policy's fail-closed behavior.
+    /// </summary>
+    public static bool IncludesScenes => BuildScope.IncludesScenes;
+
+    /// <summary>
+    /// Multi-Buddy and named Scenes are one architectural surface in the master release plan: the
+    /// Initial Demo stays one-Buddy/one-room, while Next Fest and Full Release use Scene ownership.
+    /// </summary>
+    public static bool IncludesMultiBuddy => BuildScope.IncludesScenes;
+
+    /// <summary>
+    /// Ten for Next Fest, unlimited by product entitlement for Full Release, and zero for surfaces
+    /// that do not ship Scenes. A null value means practical storage/UI/safety policy only.
+    /// </summary>
+    public static int? MaximumSceneCount => BuildScope.MaximumSceneCount;
+
+    public static bool CanCreateScene(int existingSceneCount) =>
+        BuildScope.CanCreateScene(existingSceneCount);
+
+    /// <summary>
     /// Workshop ships only in Steam exports; editor runs keep it for development and verification.
     ///
     /// <para>itch.io is excluded here rather than only by the <c>DESKTOP_BUDDY_PUBLIC_WEB</c>
