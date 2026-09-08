@@ -23,7 +23,16 @@ public sealed class TutorialProgressAccountBindingTests
         Assert.Equal(
             TutorialStepIds.GrabBuddy,
             player.Extensions!.Values![TutorialProgressState.ExtensionKey]);
-        Assert.Equal(buddyBefore, buddy.Snapshot());
+
+        BuddyIdentitySnapshot buddyAfter = buddy.Snapshot();
+        Assert.Equal(buddyBefore.BuddyIdentityId, buddyAfter.BuddyIdentityId);
+        Assert.Equal(buddyBefore.Revision, buddyAfter.Revision);
+        Assert.Equal(buddyBefore.CharacterId, buddyAfter.CharacterId);
+        Assert.Equal(buddyBefore.Mood, buddyAfter.Mood);
+        Assert.Equal(buddyBefore.Fullness, buddyAfter.Fullness);
+        Assert.Equal(buddyBefore.HarmfulContentIds, buddyAfter.HarmfulContentIds);
+        Assert.Equal(buddyBefore.Traits, buddyAfter.Traits);
+        Assert.Equal(buddyBefore.FunInterest, buddyAfter.FunInterest);
     }
 
     [Fact]
