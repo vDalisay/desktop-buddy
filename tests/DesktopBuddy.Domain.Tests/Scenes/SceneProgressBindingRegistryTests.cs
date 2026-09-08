@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Environment;
