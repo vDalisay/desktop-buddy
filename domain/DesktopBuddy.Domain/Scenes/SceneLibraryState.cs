@@ -50,28 +50,8 @@ public sealed class SceneLibraryState
         _newPlacementId = placementIdFactory ?? BuddyPlacementId.New;
         _scenes = scenes?.ToList() ?? [];
 
-        var ids = new HashSet<SceneId>();
-        foreach (SceneDocument scene in _scenes)
-        {
-            ArgumentNullException.ThrowIfNull(scene);
-            if (!ids.Add(scene.SceneId))
-                throw new ArgumentException("Scene library cannot contain duplicate Scene IDs.", nameof(scenes));
-        }
-
-        if (_scope.MaximumSceneCount is int limit && _scenes.Count > limit)
-            throw new ArgumentException("Scene library exceeds the active build's Scene cap.", nameof(scenes));
-
-        if (_scenes.Count == 0)
-        {
-            if (activeSceneId.IsValid)
-                throw new ArgumentException("An empty Scene library cannot name an active Scene.", nameof(activeSceneId));
-            ActiveSceneId = default;
-            return;
-        }
-
-        if (!activeSceneId.IsValid || !ids.Contains(activeSceneId))
-            throw new ArgumentException("Active Scene ID must identify a document in the library.", nameof(activeSceneId));
-        ActiveSceneId = activeSceneId;
+        ValidateGraph(_scenes, activeSceneId);
+        ActiveSceneId = _scenes.Count == 0 ? default : activeSceneId;
     }
 
     public IReadOnlyList<SceneDocument> Scenes => _scenes;
@@ -79,6 +59,21 @@ public sealed class SceneLibraryState
     public SceneDocument? ActiveScene => TryGet(ActiveSceneId, out SceneDocument? scene) ? scene : null;
     public int Count => _scenes.Count;
     public bool CanCreate => _scope.CanCreateScene(_scenes.Count);
+
+    /// <summary>
+    /// Replaces the complete ordered Scene document library while retaining this state object's
+    /// identity. Scene-progress reset/rollback uses this after validating the entire replacement
+    /// graph first, so callers never observe a partially replaced Scene list.
+    /// </summary>
+    public void Adopt(IEnumerable<SceneDocument> scenes, SceneId activeSceneId)
+    {
+        ArgumentNullException.ThrowIfNull(scenes);
+        SceneDocument[] replacement = scenes.ToArray();
+        ValidateGraph(replacement, activeSceneId);
+        _scenes.Clear();
+        _scenes.AddRange(replacement);
+        ActiveSceneId = activeSceneId;
+    }
 
     public bool TryGet(SceneId sceneId, out SceneDocument? scene)
     {
@@ -279,6 +274,30 @@ public sealed class SceneLibraryState
         SceneDocument changed = CopyScene(current, current.SceneId, current.Name, placements);
         _scenes[index] = changed;
         return new SceneLibraryResult(SceneLibraryStatus.Succeeded, changed);
+    }
+
+    private void ValidateGraph(IReadOnlyList<SceneDocument> scenes, SceneId activeSceneId)
+    {
+        var ids = new HashSet<SceneId>();
+        foreach (SceneDocument scene in scenes)
+        {
+            ArgumentNullException.ThrowIfNull(scene);
+            if (!ids.Add(scene.SceneId))
+                throw new ArgumentException("Scene library cannot contain duplicate Scene IDs.", nameof(scenes));
+        }
+
+        if (_scope.MaximumSceneCount is int limit && scenes.Count > limit)
+            throw new ArgumentException("Scene library exceeds the active build's Scene cap.", nameof(scenes));
+
+        if (scenes.Count == 0)
+        {
+            if (activeSceneId.IsValid)
+                throw new ArgumentException("An empty Scene library cannot name an active Scene.", nameof(activeSceneId));
+            return;
+        }
+
+        if (!activeSceneId.IsValid || !ids.Contains(activeSceneId))
+            throw new ArgumentException("Active Scene ID must identify a document in the library.", nameof(activeSceneId));
     }
 
     private int IndexOf(SceneId sceneId)
