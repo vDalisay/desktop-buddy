@@ -12,32 +12,18 @@ namespace DesktopBuddy.Domain.Persistence;
 /// </summary>
 public sealed class BuddyIdentityState
 {
-    private readonly MoodModel _mood;
-    private readonly HungerModel _hunger;
-    private readonly FunInterestModel _fun;
+    private MoodModel _mood;
+    private HungerModel _hunger;
+    private FunInterestModel _fun;
 
     public BuddyIdentityState(in BuddyIdentitySnapshot snapshot)
     {
-        if (!snapshot.BuddyIdentityId.IsValid)
-            throw new ArgumentException("Buddy identity requires a stable ID.", nameof(snapshot));
-        if (snapshot.CharacterId == Guid.Empty)
-            throw new ArgumentException("Character ID cannot be the empty GUID.", nameof(snapshot));
-        if (snapshot.Revision < 0)
-            throw new ArgumentOutOfRangeException(nameof(snapshot), "Buddy revision cannot be negative.");
-        ArgumentNullException.ThrowIfNull(snapshot.HarmfulContentIds);
-
+        ValidateSnapshot(snapshot);
         BuddyIdentityId = snapshot.BuddyIdentityId;
-        CharacterId = snapshot.CharacterId;
-        Revision = snapshot.Revision;
-        Traits = snapshot.Traits;
-        _mood = new MoodModel(snapshot.Mood, snapshot.HarmfulContentIds);
-        _hunger = new HungerModel(initialFullness: snapshot.Fullness);
-        _fun = new FunInterestModel(Traits.Preferences);
-        if (snapshot.FunInterest is not null)
-        {
-            foreach (FunActivityInterest entry in snapshot.FunInterest)
-                _fun.RestoreInterest(entry.Activity, entry.Interest, entry.Bored);
-        }
+        _mood = null!;
+        _hunger = null!;
+        _fun = null!;
+        AdoptCore(snapshot);
     }
 
     public BuddyIdentityId BuddyIdentityId { get; }
@@ -68,6 +54,20 @@ public sealed class BuddyIdentityState
             harmful,
             Traits,
             _fun.Snapshot());
+    }
+
+    /// <summary>
+    /// Replaces the complete persisted state of this exact Buddy identity without replacing the
+    /// object. Scene-wide reset and rollback use this seam so live actor/runtime bindings keep their
+    /// stable reference while the semantic snapshot is atomically adopted. Ordinary gameplay must
+    /// continue to use the focused mutation methods below.
+    /// </summary>
+    public void Adopt(in BuddyIdentitySnapshot snapshot)
+    {
+        ValidateSnapshot(snapshot);
+        if (snapshot.BuddyIdentityId != BuddyIdentityId)
+            throw new ArgumentException("A Buddy snapshot cannot be adopted by a different identity.", nameof(snapshot));
+        AdoptCore(snapshot);
     }
 
     public bool SetCharacter(Guid? characterId)
@@ -155,6 +155,32 @@ public sealed class BuddyIdentityState
         Traits = traits;
         _fun.SetPreferences(traits.Preferences);
         Touch();
+    }
+
+    private void AdoptCore(in BuddyIdentitySnapshot snapshot)
+    {
+        CharacterId = snapshot.CharacterId;
+        Revision = snapshot.Revision;
+        Traits = snapshot.Traits;
+        _mood = new MoodModel(snapshot.Mood, snapshot.HarmfulContentIds);
+        _hunger = new HungerModel(initialFullness: snapshot.Fullness);
+        _fun = new FunInterestModel(Traits.Preferences);
+        if (snapshot.FunInterest is not null)
+        {
+            foreach (FunActivityInterest entry in snapshot.FunInterest)
+                _fun.RestoreInterest(entry.Activity, entry.Interest, entry.Bored);
+        }
+    }
+
+    private static void ValidateSnapshot(in BuddyIdentitySnapshot snapshot)
+    {
+        if (!snapshot.BuddyIdentityId.IsValid)
+            throw new ArgumentException("Buddy identity requires a stable ID.", nameof(snapshot));
+        if (snapshot.CharacterId == Guid.Empty)
+            throw new ArgumentException("Character ID cannot be the empty GUID.", nameof(snapshot));
+        if (snapshot.Revision < 0)
+            throw new ArgumentOutOfRangeException(nameof(snapshot), "Buddy revision cannot be negative.");
+        ArgumentNullException.ThrowIfNull(snapshot.HarmfulContentIds);
     }
 
     private bool RegisterHarmAndReturnFalse(string contentId, float pain)
