@@ -34,6 +34,7 @@ public static class SteamCloudSavePolicy
     public const string ScenesDirectoryName = "scenes";
     public const string SceneIndexFileName = "index.json";
     public const string SceneDocumentFileName = "scene.json";
+    public const string SceneRecoverySuffix = ".next";
 
     public const string SharedRoomsDirectoryName = "shared_rooms";
     public const string WorkshopStagingDirectory = "sharing/workshop";
@@ -41,16 +42,25 @@ public static class SteamCloudSavePolicy
     /// <summary>
     /// The Windows Auto-Cloud rows to enter in Steamworks. Root is WinAppDataRoaming for every row;
     /// these values are intentionally data-only so the runbook and tests can stay aligned.
-    /// Exact file-name patterns deliberately exclude .next/.tmp/.bak recovery artifacts.
+    ///
+    /// Scene transaction <c>.next</c> files are intentionally included. Once the manifest commits,
+    /// those exact staged bytes may be the only copy matching its hashes if canonical promotion was
+    /// interrupted. They are therefore committed recovery data, not disposable temporaries. Generic
+    /// <c>.tmp</c>, <c>.bak</c> and quarantined files remain excluded.
     /// </summary>
     public static IReadOnlyList<SteamAutoCloudRoot> WindowsAutoCloudRoots { get; } =
     [
         new(UserDataDirectoryName, ProgressFileName, Recursive: false),
+        new(UserDataDirectoryName, ProgressFileName + SceneRecoverySuffix, Recursive: false),
         new(UserDataDirectoryName, WorkProgressFileName, Recursive: false),
+        new(UserDataDirectoryName, WorkProgressFileName + SceneRecoverySuffix, Recursive: false),
         new(UserDataDirectoryName, SceneProgressManifestFileName, Recursive: false),
         new($"{UserDataDirectoryName}/{BuddyIdentitiesDirectoryName}", "*.json", Recursive: false),
+        new($"{UserDataDirectoryName}/{BuddyIdentitiesDirectoryName}", "*.json.next", Recursive: false),
         new($"{UserDataDirectoryName}/{ScenesDirectoryName}", SceneIndexFileName, Recursive: false),
+        new($"{UserDataDirectoryName}/{ScenesDirectoryName}", SceneIndexFileName + SceneRecoverySuffix, Recursive: false),
         new($"{UserDataDirectoryName}/{ScenesDirectoryName}", SceneDocumentFileName, Recursive: true),
+        new($"{UserDataDirectoryName}/{ScenesDirectoryName}", SceneDocumentFileName + SceneRecoverySuffix, Recursive: true),
         new($"{UserDataDirectoryName}/{ScenesDirectoryName}", EnvironmentBackgroundFileName, Recursive: true),
         new($"{UserDataDirectoryName}/{CharactersDirectoryName}", CharacterDocumentFileName, Recursive: true),
         new($"{UserDataDirectoryName}/{CharactersDirectoryName}", "*.png", Recursive: true),
@@ -61,7 +71,8 @@ public static class SteamCloudSavePolicy
 
     /// <summary>
     /// Whether a path relative to user:// is player-authored state that should be synchronized.
-    /// Backups, temporary/quarantined files, settings and Workshop-derived caches are rejected.
+    /// Transaction .next files are eligible because a committed manifest may require them; generic
+    /// backups, temporaries/quarantine, settings and Workshop-derived caches are rejected.
     /// </summary>
     public static bool IsCloudEligibleRelativePath(string relativePath)
     {
@@ -69,7 +80,9 @@ public static class SteamCloudSavePolicy
             return false;
 
         if (string.Equals(normalized, ProgressFileName, StringComparison.Ordinal) ||
+            string.Equals(normalized, ProgressFileName + SceneRecoverySuffix, StringComparison.Ordinal) ||
             string.Equals(normalized, WorkProgressFileName, StringComparison.Ordinal) ||
+            string.Equals(normalized, WorkProgressFileName + SceneRecoverySuffix, StringComparison.Ordinal) ||
             string.Equals(normalized, SceneProgressManifestFileName, StringComparison.Ordinal))
         {
             return true;
@@ -114,13 +127,19 @@ public static class SteamCloudSavePolicy
     {
         string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length != 2 ||
-            !string.Equals(segments[0], BuddyIdentitiesDirectoryName, StringComparison.Ordinal) ||
-            !segments[1].EndsWith(".json", StringComparison.Ordinal))
+            !string.Equals(segments[0], BuddyIdentitiesDirectoryName, StringComparison.Ordinal))
         {
             return false;
         }
 
-        string id = segments[1][..^".json".Length];
+        string file = segments[1];
+        string suffix = file.EndsWith(".json.next", StringComparison.Ordinal)
+            ? ".json.next"
+            : file.EndsWith(".json", StringComparison.Ordinal) ? ".json" : string.Empty;
+        if (suffix.Length == 0)
+            return false;
+
+        string id = file[..^suffix.Length];
         return TryStableGuid(id);
     }
 
@@ -129,7 +148,8 @@ public static class SteamCloudSavePolicy
         string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (segments.Length == 2 &&
             string.Equals(segments[0], ScenesDirectoryName, StringComparison.Ordinal) &&
-            string.Equals(segments[1], SceneIndexFileName, StringComparison.Ordinal))
+            (string.Equals(segments[1], SceneIndexFileName, StringComparison.Ordinal) ||
+             string.Equals(segments[1], SceneIndexFileName + SceneRecoverySuffix, StringComparison.Ordinal)))
         {
             return true;
         }
@@ -141,8 +161,12 @@ public static class SteamCloudSavePolicy
             return false;
         }
 
-        if (segments.Length == 3 && string.Equals(segments[2], SceneDocumentFileName, StringComparison.Ordinal))
+        if (segments.Length == 3 &&
+            (string.Equals(segments[2], SceneDocumentFileName, StringComparison.Ordinal) ||
+             string.Equals(segments[2], SceneDocumentFileName + SceneRecoverySuffix, StringComparison.Ordinal)))
+        {
             return true;
+        }
 
         return segments.Length == 4 &&
             string.Equals(segments[2], EnvironmentDirectoryName, StringComparison.Ordinal) &&
