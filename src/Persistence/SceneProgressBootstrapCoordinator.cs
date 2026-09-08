@@ -116,7 +116,7 @@ public sealed class SceneProgressBootstrapCoordinator
         LegacyNextFestMigrationProjection projection = LegacyNextFestMigrationPolicy.Project(
             legacyProgress.Snapshot(),
             legacy.ActiveCharacterId,
-            environment.Layout,
+            environment.Snapshot(),
             legacyBuddyPosition);
 
         CommittedSceneProgress migrated = await _migration.CommitLegacyMigrationAsync(
