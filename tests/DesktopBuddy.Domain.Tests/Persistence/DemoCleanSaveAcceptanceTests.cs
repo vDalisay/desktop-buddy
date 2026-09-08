@@ -134,6 +134,63 @@ public sealed class DemoCleanSaveAcceptanceTests
     }
 
     /// <summary>
+    /// itch.io ships no Paint Room, Buddy Studio or Work Mode, so its walkthrough must not point
+    /// at them — and must still teach everything that distribution does ship.
+    /// </summary>
+    [Fact]
+    public void TutorialItchIo_TeachesOnlyTheStepsThatDistributionShips()
+    {
+        Assert.Equal(
+        [
+            TutorialStepIds.GrabBuddy,
+            TutorialStepIds.OpenInventory,
+            TutorialStepIds.PurchaseBaseballBat,
+            TutorialStepIds.ChargedBatHit,
+            TutorialStepIds.UnequipTool,
+            TutorialStepIds.OpenPaintBuddy,
+            TutorialStepIds.CreateBuddy,
+            TutorialStepIds.SelectPaintBrush,
+            TutorialStepIds.SelectPaintColor,
+            TutorialStepIds.PaintBuddy,
+            TutorialStepIds.UsePaintedBuddy,
+            TutorialStepIds.AdmirePaintedBuddy,
+            TutorialStepIds.Farewell,
+        ], TutorialStepIds.ItchIo);
+    }
+
+    /// <summary>
+    /// The itch sequence must actually drive the runtime: finish its steps and the walkthrough is
+    /// over, even though the full-release steps were never completed. Recording stays on the full
+    /// order, so the same save still resumes correctly in a distribution that teaches them.
+    /// </summary>
+    [Fact]
+    public void TutorialItchIo_CompletesWithoutTheStepsItNeverTeaches()
+    {
+        var progress = new BuddyProgressState(cashPerPain: 10.0);
+        var tutorial = new TutorialProgressState(progress);
+        try
+        {
+            TutorialStepIds.Active = TutorialStepIds.ItchIo;
+            Assert.Equal(TutorialStepIds.GrabBuddy, tutorial.NextIncompleteStepId);
+
+            foreach (string stepId in TutorialStepIds.ItchIo)
+                Assert.True(tutorial.MarkCompleted(stepId));
+
+            Assert.Null(tutorial.NextIncompleteStepId);
+            Assert.True(tutorial.IsComplete);
+
+            // Same record, full distribution: the untaught chapters are still outstanding.
+            TutorialStepIds.Active = TutorialStepIds.Ordered;
+            Assert.False(tutorial.IsComplete);
+            Assert.Equal(TutorialStepIds.OpenPaintBackground, tutorial.NextIncompleteStepId);
+        }
+        finally
+        {
+            TutorialStepIds.Active = TutorialStepIds.Ordered;
+        }
+    }
+
+    /// <summary>
     /// Buddy Studio is taught in one visit: category, style, buy, equip, save, exit. Unequipping
     /// is explained in the prompt instead of being demanded, so no step repeats a round trip.
     /// </summary>

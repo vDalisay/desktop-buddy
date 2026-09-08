@@ -406,7 +406,7 @@ public sealed class PaintWorkspace
         ArgumentNullException.ThrowIfNull(hits);
         if (!_gestureActive || hits.Count == 0)
             return;
-        if (_selectedTool is not (PaintTool.Pen or PaintTool.Eraser or PaintTool.Spray))
+        if (_selectedTool is not (PaintTool.Brush or PaintTool.Pen or PaintTool.Eraser or PaintTool.Spray))
             return;
         sampleDiameter = Math.Clamp(
             sampleDiameter,
@@ -616,8 +616,8 @@ public sealed class PaintWorkspace
     /// <summary>
     /// The footprint's height as a fraction of its width, in surface pixels, for the tools that
     /// stamp directly onto the surface. Only the brush is squashed — the owner wants the brush
-    /// to stay an ellipse (2026-08-19). The pen, the eraser and the spray build their footprint
-    /// from screen-space samples instead, so this is only their fallback when a caller drives
+    /// to stay an ellipse (2026-08-19). Canvas tools build their footprint
+    /// from screen-space samples, so this is the fallback when a caller drives
     /// the workspace directly rather than through the canvas.
     /// </summary>
     private static double FootprintAspect(PaintTool mutation) =>

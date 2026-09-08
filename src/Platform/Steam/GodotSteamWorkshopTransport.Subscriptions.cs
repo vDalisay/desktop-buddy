@@ -49,6 +49,8 @@ public partial class GodotSteamWorkshopTransport
                 Array.Empty<PublishedWorkshopItem>(),
                 "Steam Workshop subscriptions must be queried on the Godot main thread.");
         }
+        if (_pendingSubscriptionQuery is not null)
+            return new WorkshopSubscriptionQueryResult(WorkshopRemoteStatus.Failed, [], "Another Workshop details query is already pending.");
 
         try
         {
@@ -74,6 +76,8 @@ public partial class GodotSteamWorkshopTransport
             return new WorkshopSubscriptionQueryResult(WorkshopRemoteStatus.Unavailable, [], UnavailableReason ?? "Steam Workshop is unavailable.");
         if (!IsOnMainThread)
             return new WorkshopSubscriptionQueryResult(WorkshopRemoteStatus.Failed, [], "Steam Workshop items must be queried on the Godot main thread.");
+        if (_pendingSubscriptionQuery is not null)
+            return new WorkshopSubscriptionQueryResult(WorkshopRemoteStatus.Failed, [], "Another Workshop details query is already pending.");
 
         try
         {
@@ -126,9 +130,6 @@ public partial class GodotSteamWorkshopTransport
         }
         if (items.Count == 0)
             return items;
-        if (_pendingSubscriptionQuery is not null)
-            return await WaitForQueryAsync(_pendingSubscriptionQuery, token);
-
         long handle = CallInt64("query_item_details", ids);
         if (handle < 0)
         {
@@ -153,27 +154,34 @@ public partial class GodotSteamWorkshopTransport
         PendingSubscriptionQuery pending,
         CancellationToken token)
     {
-        for (int frame = 0; frame < SubscriptionQueryTimeoutFrames; frame++)
+        try
         {
-            if (pending.Completion.Task.IsCompleted)
-                return await pending.Completion.Task;
-            token.ThrowIfCancellationRequested();
-            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        }
+            for (int frame = 0; frame < SubscriptionQueryTimeoutFrames; frame++)
+            {
+                if (pending.Completion.Task.IsCompleted)
+                    return await pending.Completion.Task;
+                token.ThrowIfCancellationRequested();
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
 
-        if (ReferenceEquals(_pendingSubscriptionQuery, pending))
+            Log.Warn(
+                "Workshop",
+                $"Steam never completed the details query for {pending.Items.Count} subscribed item(s) " +
+                $"({SubscriptionQueryTimeoutFrames} frames); showing them without titles.");
+            return pending.Items;
+        }
+        finally
         {
-            _pendingSubscriptionQuery = null;
-            if (GodotObject.IsInstanceValid(_bridge))
-                _bridge!.Call("release_query", pending.Handle);
+            // The callback or shutdown may already have released this handle. Cancellation
+            // owns cleanup only while this request still owns the lane; a late callback
+            // must never complete a later query or release its handle.
+            if (ReferenceEquals(_pendingSubscriptionQuery, pending))
+            {
+                _pendingSubscriptionQuery = null;
+                if (GodotObject.IsInstanceValid(_bridge))
+                    _bridge!.Call("release_query", pending.Handle);
+            }
         }
-
-        Log.Warn(
-            "Workshop",
-            $"Steam never completed the details query for {pending.Items.Count} subscribed item(s) " +
-            $"({SubscriptionQueryTimeoutFrames} frames); showing them without titles.");
-        pending.Completion.TrySetResult(pending.Items);
-        return pending.Items;
     }
 
     private void OnQueryCompleted(long handle, long result, long resultsReturned)

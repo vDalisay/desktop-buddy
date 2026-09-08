@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Tools;
@@ -60,7 +61,8 @@ public sealed class NerfVersusPistolScenario : IScenario
         gun.MoveCursor(bench);
         await Tick(tree);
         await M4ObjectScenarioSupport.SendKey(tree, Key.N);
-        await Tick(tree);
+        await M4ObjectScenarioSupport.WaitFor(tree, () =>
+            lab.Pipeline.SelectedTool == ToolId.NerfBlaster && gun.ActiveContentId == ContentIds.ToolNerfBlaster, 30);
         bool nerfSelected =
             lab.Pipeline.SelectedTool == ToolId.NerfBlaster &&
             gun.IsActive &&
@@ -68,7 +70,8 @@ public sealed class NerfVersusPistolScenario : IScenario
         GunProfile nerf = gun.ActiveProfile!;
 
         await M4ObjectScenarioSupport.SendKey(tree, Key.J);
-        await Tick(tree);
+        await M4ObjectScenarioSupport.WaitFor(tree, () =>
+            lab.Pipeline.SelectedTool == ToolId.Pistol && gun.ActiveContentId == ContentIds.ToolPistol, 30);
         bool pistolSelected =
             lab.Pipeline.SelectedTool == ToolId.Pistol &&
             gun.IsActive &&
@@ -155,9 +158,11 @@ public sealed class NerfVersusPistolScenario : IScenario
         // much as the gun. Three gives each restored-impact projectile several independent
         // contact geometries while keeping both on the same shared solver/pain path.
         float moodBeforeDart = lab.Pipeline.Mood;
+        long dartStartTick = lab.Controls.RoutedPhysicsTicks;
         Volley dart = await FireVolley(
             tree, lab, gun, ToolId.NerfBlaster, nerf, ContentIds.ToolNerfBlaster);
         float moodAfterDart = lab.Pipeline.Mood;
+        double dartSeconds = (lab.Controls.RoutedPhysicsTicks - dartStartTick) / (double)Engine.PhysicsTicksPerSecond;
         int nerfHitsAfterDart = lab.Pipeline.NerfHitsInCurrentBarrage;
         bool nerfHarmfulAfterDart = lab.Progress.IsContentHarmful(ContentIds.ToolNerfBlaster);
         int sadReactionsBeforePistol = lab.Reactions.PistolSadReactionCount;
@@ -180,7 +185,7 @@ public sealed class NerfVersusPistolScenario : IScenario
         // The volley takes a few seconds, and mood drifts toward zero at 0.5 points/minute the
         // whole time, so the sum of the hits is always a little short by the time it is read.
         // The tolerance covers that drift; it is not slack in the per-hit gain, which is exact.
-        const float moodDriftAllowance = 0.05f;
+        double moodDriftAllowance = dartSeconds * MoodModel.DriftPointsPerMinute / 60.0 + 0.001;
         float expectedNerfMood = moodBeforeDart + (dart.Connections * 0.25f);
         checks.Add(new StartupCheck(
             "early_nerf_hits_raise_mood_without_harmful_memory",

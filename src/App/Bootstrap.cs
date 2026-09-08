@@ -16,6 +16,8 @@ using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
 #if !DESKTOP_BUDDY_PUBLIC_WEB
 using DesktopBuddy.Sharing;
+#endif
+#if !DESKTOP_BUDDY_NO_DEV_TOOLS
 using DesktopBuddy.Testing;
 #endif
 using Godot;
@@ -56,11 +58,11 @@ public partial class Bootstrap : Node
         {
             case RunnerMode.Scenario:
             case RunnerMode.Journey:
-#if DESKTOP_BUDDY_PUBLIC_WEB
-                // Public Web exports intentionally omit the entire developer scenario tree.
-                // A crafted browser argument must therefore fall back to normal gameplay rather
-                // than retaining TestRunner and hundreds of scenario symbols in the shipped WASM.
-                Log.Warn(Category, "Scenario/journey runner is unavailable in the public browser build; starting normal sandbox.");
+#if DESKTOP_BUDDY_NO_DEV_TOOLS
+                // Shipping builds omit the entire developer scenario tree — every distribution,
+                // not just the browser one. A crafted argument must fall back to normal gameplay:
+                // the runner is a live unlock otherwise, because scenarios set DemoScope overrides.
+                Log.Warn(Category, "Scenario/journey runner is unavailable in this build; starting normal sandbox.");
                 await BootSandboxAsync();
 #else
                 BootTestRunner(args);
@@ -73,7 +75,7 @@ public partial class Bootstrap : Node
         }
     }
 
-#if !DESKTOP_BUDDY_PUBLIC_WEB
+#if !DESKTOP_BUDDY_NO_DEV_TOOLS
     private void BootTestRunner(RunnerArguments args)
     {
         var packed = GD.Load<PackedScene>("res://scenes/test_runner.tscn");
@@ -267,9 +269,14 @@ public partial class Bootstrap : Node
         // Feature autoloads may exist before the sandbox enters the tree. Give them the
         // composition-root references directly so normal boot does not discover runtime services
         // by recursively walking the scene tree or bypass the injected persistence policy.
+#if !DESKTOP_BUDDY_PUBLIC_WEB
+        // The reduced distribution ships no room workspace, and its autoload is stripped from
+        // project.godot to match, so there is nothing to configure. Its only other consumer is the
+        // Workshop composition below, which that distribution also omits.
         var environmentCustomization = GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
             "/root/EnvironmentCustomizationBootstrap");
         environmentCustomization?.Configure(sandbox);
+#endif
         GetNodeOrNull<DesktopBuddy.CharacterEditor.CharacterSlotUiBootstrap>(
             "/root/CharacterSlotUiBootstrap")?.Configure(sandbox, characters);
         var commandRegistrar = GetNodeOrNull<DesktopBuddy.UI.Win98.Win98CommandBarBootstrap>(
@@ -287,11 +294,16 @@ public partial class Bootstrap : Node
         // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
-        // Keep the reusable contextual ? Help surface in every distribution, but make the authored
-        // first-session walkthrough session-complete in itch.io without writing a durable skip.
-        TutorialProgressState.RuntimeDisabled = !DemoScope.IncludesTutorial;
-        if (!DemoScope.IncludesTutorial)
-            Log.Info(Category, "First-session tutorial omitted by the active itch.io distribution scope.");
+        // Every distribution walks the player through what it actually ships: itch.io drops the
+        // Paint Room, Buddy Studio and Work Mode chapters rather than the whole walkthrough.
+        TutorialStepIds.Active = DemoScope.TutorialSteps;
+        if (TutorialStepIds.Active.Count < TutorialStepIds.Ordered.Count)
+        {
+            Log.Info(
+                Category,
+                $"First-session tutorial scoped to {TutorialStepIds.Active.Count} of " +
+                $"{TutorialStepIds.Ordered.Count} steps by the active distribution scope.");
+        }
 
 #if !DESKTOP_BUDDY_PUBLIC_WEB
         if (DemoScope.IncludesWorkshop)

@@ -21,6 +21,13 @@ public partial class Win98BuddyShellController : CanvasLayer
     private bool _wasMaximized;
 
     private bool _resizing;
+
+    /// <summary>
+    /// True between grabbing a corner grip and letting it go. The tutorial's click lock reads
+    /// this so a resize already under way keeps receiving its release, which would otherwise be
+    /// swallowed the moment the pointer left the grip's own rect.
+    /// </summary>
+    public bool IsResizingWindow => _resizing;
     private int _resizeCorner = -1;
     private Vector2I _resizeStartPointer;
     private Rect2I _resizeStartWindowRect;

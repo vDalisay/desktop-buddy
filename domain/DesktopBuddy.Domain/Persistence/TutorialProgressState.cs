@@ -97,6 +97,47 @@ public static class TutorialStepIds
     ];
 
     public static bool IsKnown(string value) => Ordered.Contains(value, StringComparer.Ordinal);
+
+    private static readonly string[] ExcludedFromItchIo =
+    [
+        OpenPaintBackground,
+        SelectBackgroundSpray,
+        SelectBackgroundColor,
+        PaintBackground,
+        FloatPaintBackgroundPanel,
+        SaveAndExitPaintBackground,
+        OpenBuddyStudio,
+        SelectNoseCategory,
+        SelectNoseButtonStyle,
+        BuyStudioItem,
+        EquipStudioItem,
+        SaveBuddyStudio,
+        ExitBuddyStudio,
+        AdmireStudioBuddy,
+        EnterWorkMode,
+        DragWorkCompanion,
+        ResizeWorkCompanion,
+        ToggleWorkCounter,
+        ExitWorkMode,
+    ];
+
+    /// <summary>
+    /// The steps the reduced itch.io build can actually teach. Paint Room, Buddy Studio and Work
+    /// Mode are absent from that distribution, so their lessons are dropped rather than the whole
+    /// walkthrough (owner request 2026-09-07); what remains — grab, shop, bat, Paint Buddy and the
+    /// sign-off — is exactly the surface itch ships. Every prompt already stands on its own, so
+    /// removing the middle three chapters needs no rewritten copy.
+    /// </summary>
+    public static readonly IReadOnlyList<string> ItchIo =
+        Ordered.Where(id => !ExcludedFromItchIo.Contains(id, StringComparer.Ordinal)).ToArray();
+
+    /// <summary>
+    /// The sequence this build actually walks through, set by the composition root. Reading
+    /// decisions (what is next, whether the walkthrough is finished) consult this; recording
+    /// decisions stay on <see cref="Ordered"/> so a save carried between distributions never
+    /// loses the steps the current build does not teach.
+    /// </summary>
+    public static IReadOnlyList<string> Active { get; set; } = Ordered;
 }
 
 public readonly record struct TutorialProgressSnapshot(
@@ -109,7 +150,7 @@ public readonly record struct TutorialProgressSnapshot(
         {
             if (Skipped)
                 return true;
-            foreach (string id in TutorialStepIds.Ordered)
+            foreach (string id in TutorialStepIds.Active)
                 if (!CompletedStepIds.Contains(id, StringComparer.Ordinal))
                     return false;
             return true;
@@ -122,20 +163,16 @@ public readonly record struct TutorialProgressSnapshot(
 /// V2 deliberately does not reinterpret the old broad v1 hints: an existing loaded player with no
 /// v2 record is still auto-skipped by the runtime controller, while fresh/reset progress starts the
 /// action-driven sequence from Grab Buddy.
+///
+/// <para>Which steps that sequence contains is a distribution question, answered by
+/// <see cref="TutorialStepIds.Active"/> rather than by a switch that turns the walkthrough off.
+/// </para>
 /// </summary>
 public sealed class TutorialProgressState
 {
     public const string ExtensionKey = "demo.onboarding.v2";
     public const string LegacyExtensionKey = "demo.onboarding.v1";
     private const string SkippedToken = "skip";
-
-    /// <summary>
-    /// Process-local distribution gate. The itch.io composition sets this before the guidance
-    /// controller enters the tree. Disabled means the walkthrough behaves as complete for this run
-    /// without writing a permanent skip token, so the same progress can still receive onboarding
-    /// in a distribution that actually ships the complete tutorial feature set.
-    /// </summary>
-    public static bool RuntimeDisabled { get; set; }
 
     private readonly BuddyProgressState _progress;
 
@@ -144,9 +181,6 @@ public sealed class TutorialProgressState
 
     public TutorialProgressSnapshot Snapshot()
     {
-        if (RuntimeDisabled)
-            return new TutorialProgressSnapshot(Array.Empty<string>(), true);
-
         string? encoded = null;
         if (_progress.Extensions?.Values is { } values)
             values.TryGetValue(ExtensionKey, out encoded);
@@ -166,7 +200,7 @@ public sealed class TutorialProgressState
     }
 
     public bool HasPersistedRecord =>
-        RuntimeDisabled || _progress.Extensions?.Values?.ContainsKey(ExtensionKey) == true;
+        _progress.Extensions?.Values?.ContainsKey(ExtensionKey) == true;
 
     public bool HasLegacyRecord =>
         _progress.Extensions?.Values?.ContainsKey(LegacyExtensionKey) == true;
@@ -189,7 +223,7 @@ public sealed class TutorialProgressState
             TutorialProgressSnapshot snapshot = Snapshot();
             if (snapshot.Skipped)
                 return null;
-            foreach (string id in TutorialStepIds.Ordered)
+            foreach (string id in TutorialStepIds.Active)
                 if (!snapshot.CompletedStepIds.Contains(id, StringComparer.Ordinal))
                     return id;
             return null;
@@ -215,15 +249,13 @@ public sealed class TutorialProgressState
         return _progress.SetExtensionValue(ExtensionKey, encoded);
     }
 
-    public bool Skip() =>
-        !RuntimeDisabled && _progress.SetExtensionValue(ExtensionKey, SkippedToken);
+    public bool Skip() => _progress.SetExtensionValue(ExtensionKey, SkippedToken);
 
     /// <summary>
     /// Replay from the first step. This writes an empty record rather than removing the key, so a
     /// replay is never mistaken for the "existing player, no v2 record" auto-skip case.
     /// </summary>
-    public bool Restart() =>
-        !RuntimeDisabled && _progress.SetExtensionValue(ExtensionKey, string.Empty);
+    public bool Restart() => _progress.SetExtensionValue(ExtensionKey, string.Empty);
 
     private static int IndexOf(string id)
     {

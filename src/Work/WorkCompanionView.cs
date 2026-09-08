@@ -94,6 +94,13 @@ public partial class WorkCompanionView : CanvasLayer
     public event Action<Vector2I>? DraggedBy;
     public event Action? DragFinished;
 
+    /// <summary>
+    /// True while the player is actually dragging the companion, between crossing the drag
+    /// threshold and letting the button go. The tutorial reads this so its drag lesson completes
+    /// on release rather than on the first moved pixel.
+    /// </summary>
+    public bool IsDragging => _dragging;
+
     public bool ShowLifetime => _showLifetime;
     public bool AnimationsEnabled => _animationsEnabled;
 
@@ -524,49 +531,25 @@ public partial class WorkCompanionView : CanvasLayer
         SubViewportContainer container = _buddyPreview;
         _root.AddChild(container);
 
-        var viewport = new SubViewport
-        {
-            Size = new Vector2I(400, 315),
-            TransparentBg = true,
-            RenderTargetUpdateMode = SubViewport.UpdateMode.Always,
-            OwnWorld3D = true,
-        };
-        container.AddChild(viewport);
-        var world = new Node3D { ProcessMode = ProcessModeEnum.Always };
-        viewport.AddChild(world);
+        var preview = new BuddyPreviewSurface { Name = "WorkBuddyPreviewViewport" };
+        preview.Configure(
+            rigName: "WorkBuddyRig",
+            viewportSize: new Vector2I(400, 315),
+            transparentBackground: true,
+            rigProfile: _sandbox.Buddy.Rig.Profile,
+            visualProfile: _sandbox.Buddy.VisualProfile,
+            cameraSize: 215.0f,
+            cameraPosition: new Vector3(0, 0, 600),
+            lightRotationDegrees: new Vector3(-30, -20, 0),
+            lightEnergy: 0.82f,
+            sourceOrigin: Vector2.Zero,
+            face: ":)",
+            visibilityOwner: container);
+        container.AddChild(preview);
 
-        _source = new StaticBuddyVisualTransformSource(_sandbox.Buddy.Rig.Profile, Vector2.Zero, ":)");
-        _rig = new BuddyVisualRigView
-        {
-            Name = "WorkBuddyRig",
-            ProcessMode = ProcessModeEnum.Always,
-        };
-        _rig.Initialize(_sandbox.Buddy.VisualProfile, _source);
-        world.AddChild(_rig);
-
-        BuddyVisualRigView live = _sandbox.VisualPresenter.RigView;
-        CompiledCharacterAppearance? appearance = _appearanceOverride ?? live.ActiveAppearance;
-        if (appearance is not null)
-            _rig.ApplyAppearance(appearance);
-        for (int index = 0; index < PuppetRigProfile.RequiredPartCount; index++)
-        {
-            BuddyPartId part = (BuddyPartId)index;
-            _rig.SetSurfaceUnderlay(part, live.SurfaceUnderlay(part));
-        }
-
-        var camera = new Camera3D
-        {
-            Position = new Vector3(0, 0, 600),
-            Projection = Camera3D.ProjectionType.Orthogonal,
-            Size = 215,
-            Current = true,
-        };
-        world.AddChild(camera);
-        world.AddChild(new DirectionalLight3D
-        {
-            RotationDegrees = new Vector3(-30, -20, 0),
-            LightEnergy = 0.82f,
-        });
+        _source = preview.Source;
+        _rig = preview.Rig;
+        preview.CopyPresentationFrom(_sandbox.VisualPresenter.RigView, _appearanceOverride);
     }
 
     private void ApplyWorkPose()

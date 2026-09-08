@@ -32,6 +32,10 @@ public sealed class PaintTextureBridge : IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(surface);
+        // A new surface is transparent at revision zero. The unbound rig already shows
+        // exactly that; do not allocate/upload a megabyte until the part is painted.
+        if (surface.Revision == 0 && !_uploadedRevisions.ContainsKey(part))
+            return;
         if (_uploadedRevisions.TryGetValue(part, out long uploaded) && uploaded == surface.Revision)
             return;
         _queued.Add(part);

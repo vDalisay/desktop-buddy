@@ -101,6 +101,24 @@ public sealed class PaintEraserFootprintTests
         Assert.True(IsPainted(pixels, (int)(0.5 * (Size - 1)), row), "the gap between the dabs was erased");
     }
 
+    [Fact]
+    public void BrushScreenDabPaintsAndUndoesSuppliedSamples()
+    {
+        var workspace = new PaintWorkspace { SelectedTool = PaintTool.Brush };
+        PaintSurface surface = workspace.Surfaces[PaintPart.Torso];
+        string before = surface.ComputeHash();
+        PaintPoint point = new(0.25, 0.5);
+        workspace.BeginGesture(null);
+        workspace.StampScreenDab(
+            new[] { new PaintHit(PaintPart.Torso, point, 0) },
+            PaintPolicy.MinBrushDiameter, PaintTool.Brush);
+        workspace.EndGesture();
+        Assert.True(surface.TrySample(point, out _));
+        Assert.False(surface.TrySample(new PaintPoint(0.75, 0.5), out _));
+        Assert.True(workspace.Undo());
+        Assert.Equal(before, surface.ComputeHash());
+    }
+
     /// <summary>Bounding box of the hole an eraser left in a fully covered surface.</summary>
     private static (int Width, int Height) ClearedExtent(PaintWorkspace workspace, PaintPart part)
     {

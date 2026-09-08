@@ -4,12 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: "Branch whose latest successful itch.io public build should be published"
+        description: "Branch whose latest hardened encrypted itch build should be published"
         required: true
         default: "main"
         type: string
       run_id:
-        description: "Optional exact itch.io public build run ID; leave blank to use the latest successful run on source_branch"
+        description: "Optional exact hardened encrypted itch build run ID; leave blank for latest on source_branch"
         required: false
         type: string
       version:
@@ -25,11 +25,23 @@ concurrency:
   group: itch-io-web-publish
   cancel-in-progress: false
 
+env:
+  BUTLER_VERSION: "15.31.0"
+  # SHA-256 of the official versioned Linux archive, reviewed 2026-09-08.
+  BUTLER_SHA256: 4f2a3f22b12f870923504d4b6935535cad377b45859f5fe9419e3adc0611a48c
+
 jobs:
   publish-web:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: itch-release
     steps:
-      - name: Resolve validated source build
+      - name: Check out trusted release tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve successful encrypted source build
         id: source
         shell: bash
         env:
@@ -41,28 +53,37 @@ jobs:
 
           RUN_ID="${REQUESTED_RUN_ID:-}"
           if [ -z "$RUN_ID" ]; then
-            RUN_ID="$(gh api --method GET \
-              "repos/$GITHUB_REPOSITORY/actions/workflows/itch-io-build.yml/runs" \
+            LATEST_JSON="$(gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/itch-io-hardened-build.yml/runs" \
               -f branch="$SOURCE_BRANCH" \
-              -f status=success \
-              -f per_page=20 \
-              --jq '.workflow_runs[0].id // empty')"
+              -f per_page=1)"
+            RUN_ID="$(jq -r '.workflow_runs[0].id // empty' <<<"$LATEST_JSON")"
+            LATEST_STATUS="$(jq -r '.workflow_runs[0].status // empty' <<<"$LATEST_JSON")"
+            LATEST_CONCLUSION="$(jq -r '.workflow_runs[0].conclusion // empty' <<<"$LATEST_JSON")"
+
+            if [ -z "$RUN_ID" ]; then
+              echo "No hardened encrypted itch build found for branch '$SOURCE_BRANCH'." >&2
+              exit 1
+            fi
+            if [ "$LATEST_STATUS" != "completed" ] || [ "$LATEST_CONCLUSION" != "success" ]; then
+              echo "Latest hardened encrypted itch build on '$SOURCE_BRANCH' is not publishable " \
+                   "(run=$RUN_ID status=$LATEST_STATUS conclusion=$LATEST_CONCLUSION)." >&2
+              echo "Provide an exact successful hardened run_id if intentionally publishing an earlier build." >&2
+              exit 1
+            fi
           fi
 
-          if [ -z "$RUN_ID" ]; then
-            echo "No successful itch.io public build found for branch '$SOURCE_BRANCH'." >&2
-            exit 1
-          fi
-
+          [[ "$RUN_ID" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid run ID." >&2; exit 1; }
           RUN_JSON="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
-          RUN_NAME="$(jq -r '.name' <<<"$RUN_JSON")"
+          WORKFLOW_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/itch-io-hardened-build.yml" --jq .id)"
+          RUN_WORKFLOW_ID="$(jq -r '.workflow_id' <<<"$RUN_JSON")"
           CONCLUSION="$(jq -r '.conclusion' <<<"$RUN_JSON")"
           HEAD_BRANCH="$(jq -r '.head_branch' <<<"$RUN_JSON")"
           HEAD_SHA="$(jq -r '.head_sha' <<<"$RUN_JSON")"
           HEAD_REPO="$(jq -r '.head_repository.full_name // empty' <<<"$RUN_JSON")"
 
-          if [ "$RUN_NAME" != "itch.io public build" ]; then
-            echo "Run $RUN_ID is '$RUN_NAME', not the itch.io public build workflow." >&2
+          if [ "$RUN_WORKFLOW_ID" != "$WORKFLOW_ID" ]; then
+            echo "Run $RUN_ID is not the hardened encrypted itch workflow." >&2
             exit 1
           fi
           if [ "$CONCLUSION" != "success" ]; then
@@ -80,30 +101,48 @@ jobs:
 
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
-          echo "Publishing validated build run $RUN_ID from $HEAD_BRANCH@$HEAD_SHA"
+          echo "Publishing validated encrypted build run $RUN_ID from $HEAD_BRANCH@$HEAD_SHA"
 
-      - name: Download hardened browser site
-        uses: actions/download-artifact@v4
+      - name: Download hardened encrypted browser site
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: DesktopBuddy-itch-web-site
+          name: DesktopBuddy-itch-web-hardened-site
           path: build/itch-web
           repository: ${{ github.repository }}
           run-id: ${{ steps.source.outputs.run_id }}
           github-token: ${{ github.token }}
 
-      - name: Validate downloaded browser artifact
+      - name: Re-audit exact bytes selected for publication
         shell: bash
         run: |
           set -euo pipefail
           test -f build/itch-web/index.html
-          test -n "$(find build/itch-web -type f -name '*.wasm' -print -quit)"
+          test -f build/itch-web/index.pck
           test -d build/itch-web/_framework
-          if find build/itch-web -type f \( -name '*.pdb' -o -name '*.map' -o -name '*.cs' \) -print -quit | grep -q .; then
-            echo "Refusing to publish: debug/source material exists in the Web artifact." >&2
-            exit 1
-          fi
 
-      - name: Install Butler
+          # A published artifact must already have been sanitized by its build. Check-only mode
+          # makes publication fail instead of silently modifying the bytes that passed CI.
+          python3 devtools/verification/sanitize_web_artifact.py \
+            --root build/itch-web --check
+          python3 devtools/verification/audit_itch_artifact.py \
+            --root build/itch-web --expect-encrypted-pck
+          python3 devtools/verification/audit_web_source_disclosure.py \
+            --root build/itch-web
+
+      - name: Verify original build provenance without rewriting it
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.head_sha }}
+          SOURCE_RUN_ID: ${{ steps.source.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          python3 devtools/release/release_manifest.py verify \
+            --root build/itch-web --manifest build/itch-web/release-manifest.json \
+            --expect-distribution itch-web --expect-git-sha "$SOURCE_SHA" \
+            --expect-build-id "$SOURCE_RUN_ID"
+          sha256sum build/itch-web/release-manifest.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install pinned Butler
         shell: bash
         run: |
           set -euo pipefail
@@ -111,12 +150,41 @@ jobs:
           mkdir -p "$BUTLER_DIR"
           curl -fL --retry 3 \
             -o "$RUNNER_TEMP/butler.zip" \
-            "https://broth.itch.zone/butler/linux-amd64/LATEST/archive/default"
+            "https://broth.itch.zone/butler/linux-amd64/$BUTLER_VERSION/archive/default"
+          echo "$BUTLER_SHA256  $RUNNER_TEMP/butler.zip" | sha256sum --check --strict
           unzip -q "$RUNNER_TEMP/butler.zip" -d "$BUTLER_DIR"
           chmod +x "$BUTLER_DIR/butler"
           echo "$BUTLER_DIR" >> "$GITHUB_PATH"
 
-      - name: Publish hardened Web build to itch.io
+          VERSION_OUTPUT="$($BUTLER_DIR/butler version)"
+          echo "$VERSION_OUTPUT"
+          if [[ "$VERSION_OUTPUT" != v$BUTLER_VERSION,* ]]; then
+            echo "Pinned Butler version mismatch: expected v$BUTLER_VERSION." >&2
+            exit 1
+          fi
+
+      - name: Preview exact Butler upload
+        shell: bash
+        env:
+          BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
+          ITCHIO_WEB_TARGET: ${{ vars.ITCHIO_WEB_TARGET }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BUTLER_API_KEY:-}" ]; then
+            echo "Missing repository secret BUTLER_API_KEY." >&2
+            exit 1
+          fi
+          if [ -z "${ITCHIO_WEB_TARGET:-}" ]; then
+            echo "Missing repository variable ITCHIO_WEB_TARGET." >&2
+            exit 1
+          fi
+          if [ "$ITCHIO_WEB_TARGET" != "vvoiddev/desktop-buddy:html5-demo" ]; then
+            echo "Refusing to publish: target '$ITCHIO_WEB_TARGET' is not vvoiddev/desktop-buddy:html5-demo." >&2
+            exit 1
+          fi
+          butler push-preview --changes-only build/itch-web "$ITCHIO_WEB_TARGET"
+
+      - name: Publish exact hardened Web directory
         shell: bash
         env:
           BUTLER_API_KEY: ${{ secrets.BUTLER_API_KEY }}
@@ -125,19 +193,11 @@ jobs:
           SOURCE_SHA: ${{ steps.source.outputs.head_sha }}
         run: |
           set -euo pipefail
-
-          if [ -z "${BUTLER_API_KEY:-}" ]; then
-            echo "Missing repository secret BUTLER_API_KEY." >&2
-            exit 1
-          fi
-          if [ -z "${ITCHIO_WEB_TARGET:-}" ]; then
-            echo "Missing repository variable ITCHIO_WEB_TARGET (expected format: username/game:html5-demo)." >&2
-            exit 1
-          fi
-
           VERSION="${REQUESTED_VERSION:-}"
           if [ -z "$VERSION" ]; then
             VERSION="${SOURCE_SHA::12}"
           fi
-
+          python3 devtools/release/release_manifest.py verify \
+            --root build/itch-web --manifest build/itch-web/release-manifest.json \
+            --expect-distribution itch-web --expect-git-sha "$SOURCE_SHA"
           butler push build/itch-web "$ITCHIO_WEB_TARGET" --userversion "$VERSION"
