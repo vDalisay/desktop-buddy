@@ -13,5 +13,11 @@ public interface IRunProgressPersistence
 {
     bool IsDirty { get; }
     Task TickAsync(double validRunningSeconds, CancellationToken token = default);
-    Task FlushAsync(bool force, CancellationToken token = default);
+
+    /// <summary>
+    /// Flushes the current semantic generation. Ordinary checkpoints use the historical non-forced
+    /// behavior; shutdown callers pass <c>force: true</c> so a mutation that lands during an active
+    /// flush receives one final pass before exit.
+    /// </summary>
+    Task FlushAsync(bool force = false, CancellationToken token = default);
 }
