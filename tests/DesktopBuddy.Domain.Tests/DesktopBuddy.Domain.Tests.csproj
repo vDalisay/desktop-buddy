@@ -11,6 +11,7 @@
     <RootNamespace>DesktopBuddy.Domain.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ACHIEVEMENTS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
