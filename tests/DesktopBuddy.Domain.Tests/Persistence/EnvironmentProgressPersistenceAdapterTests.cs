@@ -36,11 +36,10 @@ public sealed class EnvironmentProgressPersistenceAdapterTests
         var view = new EnvironmentProgressState(initial.Layout, initial.Revision, initial.OwnedUnplaced);
         var adapter = new SceneEnvironmentProgressPersistence(scenes, scenes.ActiveSceneId, view);
         var session = new EnvironmentEditSession(
-            initial.Layout,
+            initial,
             adapter.BalanceMilliCredits,
             new DecorationCatalogue([Lamp]),
-            () => new PlacedDecorationId(Guid.Parse("00000000-0000-0000-0000-000000000777")),
-            initial.OwnedUnplaced);
+            () => new PlacedDecorationId(Guid.Parse("00000000-0000-0000-0000-000000000777")));
 
         Assert.True(session.Buy(Lamp.Id, adapter.BalanceMilliCredits).Succeeded);
         await adapter.CommitAsync(session);
@@ -67,10 +66,9 @@ public sealed class EnvironmentProgressPersistenceAdapterTests
         var view = new EnvironmentProgressState(initial.Layout, initial.Revision, initial.OwnedUnplaced);
         var adapter = new SceneEnvironmentProgressPersistence(scenes, original, view);
         var session = new EnvironmentEditSession(
-            initial.Layout,
+            initial,
             adapter.BalanceMilliCredits,
-            new DecorationCatalogue([Lamp]),
-            ownedUnplaced: initial.OwnedUnplaced);
+            new DecorationCatalogue([Lamp]));
         Assert.True(session.Buy(Lamp.Id, adapter.BalanceMilliCredits).Succeeded);
 
         SceneLibraryResult created = scenes.CreateScene("Lab");
