@@ -77,22 +77,43 @@ public readonly record struct BuddyPlacement(
     CanonicalRoomPosition Position);
 
 /// <summary>
-/// Engine-free durable Scene root for the first Scene architecture slice. Environment is included
-/// now so the already-developed Room Decorator has a correct future owner; the live schema-8 room
-/// is migrated into this document only in the later atomic persistence packet. Systemic sandbox
-/// state remains separately versioned and is intentionally not smuggled into this root yet.
+/// Engine-free durable Scene root. The complete Room Decorator state is Scene-owned: both the
+/// placed layout and purchased-but-unplaced storage travel with the Scene, together with their
+/// semantic revision. The <see cref="Environment"/> property remains as a compatibility view for
+/// callers that only need the placed layout. Systemic sandbox state remains separately versioned
+/// and is intentionally not smuggled into this root yet.
 /// </summary>
 public sealed class SceneDocument
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
     public const int MaximumNameLength = 64;
 
     private readonly BuddyPlacement[] _placements;
+    private readonly DecorationDefinitionId[] _ownedUnplaced;
 
+    /// <summary>
+    /// Compatibility constructor for callers that have only a layout. New Scene persistence should
+    /// pass an <see cref="EnvironmentProgressSnapshot"/> so storage and revision cannot be dropped.
+    /// </summary>
     public SceneDocument(
         SceneId sceneId,
         string name,
         EnvironmentLayout environment,
+        IEnumerable<BuddyPlacement>? buddyPlacements = null,
+        int schemaVersion = CurrentSchemaVersion)
+        : this(
+            sceneId,
+            name,
+            new EnvironmentProgressSnapshot(0, environment, []),
+            buddyPlacements,
+            schemaVersion)
+    {
+    }
+
+    public SceneDocument(
+        SceneId sceneId,
+        string name,
+        EnvironmentProgressSnapshot environmentProgress,
         IEnumerable<BuddyPlacement>? buddyPlacements = null,
         int schemaVersion = CurrentSchemaVersion)
     {
@@ -101,7 +122,8 @@ public sealed class SceneDocument
         if (schemaVersion != CurrentSchemaVersion)
             throw new ArgumentOutOfRangeException(nameof(schemaVersion), "Unsupported Scene document schema.");
         ValidateName(name);
-        ArgumentNullException.ThrowIfNull(environment);
+        if (environmentProgress.Revision < 0 || environmentProgress.Layout is null)
+            throw new ArgumentException("Scene environment progress is invalid.", nameof(environmentProgress));
 
         _placements = buddyPlacements?.ToArray() ?? [];
         var placementIds = new HashSet<BuddyPlacementId>();
@@ -120,18 +142,31 @@ public sealed class SceneDocument
             }
         }
 
+        _ownedUnplaced = environmentProgress.OwnedUnplaced?.ToArray() ?? [];
+        foreach (DecorationDefinitionId id in _ownedUnplaced)
+        {
+            if (id == default)
+                throw new ArgumentException("Scene environment storage cannot contain an invalid decoration ID.", nameof(environmentProgress));
+        }
+
         SchemaVersion = schemaVersion;
         SceneId = sceneId;
         Name = name;
-        // EnvironmentLayout is immutable, but copy its collection into a fresh layout so this Scene
-        // never relies on a caller retaining a particular layout instance.
-        Environment = new EnvironmentLayout(environment.Decorations, environment.SchemaVersion);
+        EnvironmentProgress = new EnvironmentProgressSnapshot(
+            environmentProgress.Revision,
+            new EnvironmentLayout(
+                environmentProgress.Layout.Decorations,
+                environmentProgress.Layout.SchemaVersion),
+            _ownedUnplaced);
     }
 
     public int SchemaVersion { get; }
     public SceneId SceneId { get; }
     public string Name { get; }
-    public EnvironmentLayout Environment { get; }
+    public EnvironmentProgressSnapshot EnvironmentProgress { get; }
+    public long EnvironmentRevision => EnvironmentProgress.Revision;
+    public EnvironmentLayout Environment => EnvironmentProgress.Layout;
+    public IReadOnlyList<DecorationDefinitionId> OwnedUnplaced => _ownedUnplaced;
     public IReadOnlyList<BuddyPlacement> BuddyPlacements => _placements;
 
     public static void ValidateName(string? name)
@@ -160,11 +195,21 @@ public static class LegacySceneMigrationPolicy
     public static SceneDocument CreateDefaultScene(
         BuddyIdentityId legacyBuddyIdentityId,
         EnvironmentLayout legacyEnvironment,
+        CanonicalRoomPosition buddyPosition) =>
+        CreateDefaultScene(
+            legacyBuddyIdentityId,
+            new EnvironmentProgressSnapshot(0, legacyEnvironment, []),
+            buddyPosition);
+
+    public static SceneDocument CreateDefaultScene(
+        BuddyIdentityId legacyBuddyIdentityId,
+        EnvironmentProgressSnapshot legacyEnvironment,
         CanonicalRoomPosition buddyPosition)
     {
         if (!legacyBuddyIdentityId.IsValid)
             throw new ArgumentException("Legacy migration requires a stable Buddy identity.", nameof(legacyBuddyIdentityId));
-        ArgumentNullException.ThrowIfNull(legacyEnvironment);
+        if (legacyEnvironment.Layout is null)
+            throw new ArgumentException("Legacy migration requires valid environment progress.", nameof(legacyEnvironment));
 
         return new SceneDocument(
             SceneId.LegacyHome,
