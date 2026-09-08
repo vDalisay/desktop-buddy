@@ -4,31 +4,58 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Painting;
+using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Persistence.Characters;
 
 namespace DesktopBuddy.Persistence;
 
 /// <summary>
-/// Failure-safe local store for the painted room background: one whitelisted 512x512 RGBA8 PNG
-/// written through a staging file. Load never throws — a missing, oversized, linked or corrupt
-/// file simply leaves the room at its blank default.
+/// Failure-safe local store for a painted room background: one whitelisted 512x512 RGBA8 PNG
+/// written through a staging file. The legacy constructor retains the Initial Demo's global
+/// background path; Scene-enabled composition uses <see cref="ForScene"/> so every named Scene owns
+/// an independent painting under its stable Scene ID. Load never throws — a missing, oversized,
+/// linked or corrupt file simply leaves the room at its blank default.
 /// </summary>
 public sealed class EnvironmentPaintStore
 {
     private const string TemporarySuffix = ".tmp";
     private readonly ICharacterFileSystem _fileSystem;
+    private readonly string _relativePath;
 
     public EnvironmentPaintStore(ICharacterFileSystem fileSystem, string resolvedRoot)
+        : this(fileSystem, resolvedRoot, EnvironmentCanvasPolicy.RelativePath)
+    {
+    }
+
+    private EnvironmentPaintStore(
+        ICharacterFileSystem fileSystem,
+        string resolvedRoot,
+        string relativePath)
     {
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         if (string.IsNullOrWhiteSpace(resolvedRoot))
             throw new ArgumentException("A resolved environment root is required.", nameof(resolvedRoot));
+        if (string.IsNullOrWhiteSpace(relativePath) || Path.IsPathRooted(relativePath))
+            throw new ArgumentException("Environment paint requires a trusted relative path.", nameof(relativePath));
+
         Root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(resolvedRoot));
+        _relativePath = relativePath.Replace('/', Path.DirectorySeparatorChar);
+        string resolvedPaint = Path.GetFullPath(Path.Combine(Root, _relativePath));
+        string rootPrefix = Root + Path.DirectorySeparatorChar;
+        if (!resolvedPaint.StartsWith(rootPrefix, StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Environment paint path escaped the save root.", nameof(relativePath));
     }
+
+    /// <summary>Creates the trusted store for one Scene-owned painted background.</summary>
+    public static EnvironmentPaintStore ForScene(
+        ICharacterFileSystem fileSystem,
+        string resolvedRoot,
+        SceneId sceneId) =>
+        new(fileSystem, resolvedRoot, SceneStoragePaths.BackgroundPaint(sceneId));
 
     public string Root { get; }
 
-    public string PaintPath => Path.GetFullPath(Path.Combine(Root, EnvironmentCanvasPolicy.RelativePath));
+    public string PaintPath => Path.GetFullPath(Path.Combine(Root, _relativePath));
 
     public Task SaveAsync(ReadOnlyMemory<byte> pixels, CancellationToken token = default) =>
         PersistenceWork.Run(() => SaveCore(pixels.Span), CancellationToken.None);
