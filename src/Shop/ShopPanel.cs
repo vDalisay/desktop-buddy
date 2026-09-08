@@ -183,7 +183,7 @@ public partial class ShopPanel : PanelContainer
             bool owned = row.Entry.IsStarting || _progress.IsUnlocked(row.Entry.ContentId);
             bool active = _progress.SelectedTool == row.Tool;
             bool affordable = _progress.BalanceMilliCredits >= row.Entry.PriceMilliCredits;
-            string name = ContentDisplayName.For(entry: row.Entry.ContentId);
+            string name = ContentDisplayName.For(row.Entry.ContentId);
             string price = ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
 
             row.Price.Text = owned ? string.Empty : price;
