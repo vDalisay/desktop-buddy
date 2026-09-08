@@ -1,5 +1,7 @@
 using System;
+#if DESKTOP_BUDDY_ACHIEVEMENTS
 using DesktopBuddy.Achievements;
+#endif
 using DesktopBuddy.App;
 using DesktopBuddy.CharacterEditor;
 using DesktopBuddy.Diagnostics;
@@ -17,8 +19,8 @@ namespace DesktopBuddy.Sharing;
 /// network connection only disables remote features; it never participates in sandbox startup.
 /// UI/application dependencies are injected by the main composition root rather than discovered
 /// by polling absolute scene-tree paths. A Steam client/session initialization failure keeps the
-/// same bridge and transport alive and retries with backoff so Workshop and achievements recover
-/// together without rebinding application services.
+/// same bridge and transport alive and retries with backoff so optional Steam services recover
+/// without rebinding application services.
 /// </summary>
 public partial class WorkshopBootstrap : Node
 {
@@ -37,7 +39,9 @@ public partial class WorkshopBootstrap : Node
     private WorkshopStagingStore? _staging;
     private RoomPaintingLibraryStore? _rooms;
     private WorkshopPanel? _panel;
+#if DESKTOP_BUDDY_ACHIEVEMENTS
     private AchievementBootstrap? _achievements;
+#endif
     private IDisposable? _commandRegistration;
     private ISteamWorkshopTransport? _transport;
     private Node? _steamBridge;
@@ -50,7 +54,9 @@ public partial class WorkshopBootstrap : Node
     internal WorkshopSharingCoordinator? Sharing => _sharing;
     internal ISteamWorkshopTransport? Transport => _transport;
     internal RoomPaintingLibraryStore? RoomLibrary => _rooms;
+#if DESKTOP_BUDDY_ACHIEVEMENTS
     internal AchievementBootstrap? Achievements => _achievements;
+#endif
 
     public void Configure(
         CharacterStore characters,
@@ -71,7 +77,9 @@ public partial class WorkshopBootstrap : Node
     {
         ProcessMode = ProcessModeEnum.Always;
         ComposeServices();
+#if DESKTOP_BUDDY_ACHIEVEMENTS
         ComposeAchievements();
+#endif
         if (DisplayServer.GetName() != "headless")
             ComposeUi();
         SetProcess(_retrySteamTransport is not null);
@@ -100,11 +108,14 @@ public partial class WorkshopBootstrap : Node
         _commandRegistration = null;
         if (GodotObject.IsInstanceValid(_panel)) _panel!.QueueFree();
         _panel = null;
+#if DESKTOP_BUDDY_ACHIEVEMENTS
         _achievements = null;
+#endif
         _steamBridge = null;
         base._ExitTree();
     }
 
+#if DESKTOP_BUDDY_ACHIEVEMENTS
     private void ComposeAchievements()
     {
         if (_sandbox is null)
@@ -122,6 +133,7 @@ public partial class WorkshopBootstrap : Node
             _steamBridge);
         AddChild(_achievements);
     }
+#endif
 
     private void ComposeUi()
     {
@@ -298,7 +310,7 @@ public partial class WorkshopBootstrap : Node
             Log.Info(
                 Category,
                 $"Steam recovered in-session; runtimeAppId={identity.RuntimeAppId} workshopOwnerAppId={identity.WorkshopOwnerAppId}. " +
-                "Workshop and pending achievement reconciliation are available without restarting.");
+                "Optional Steam services are available without restarting.");
             ClearSteamRetry();
             return;
         }
