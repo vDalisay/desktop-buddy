@@ -71,11 +71,16 @@ public sealed class PlayerProgressSavePolicyTests
         Assert.Equal("v1", restored.Extensions!.Values!["feature.test"]);
         Assert.Contains("future.content", restored.Extensions.UnknownContentIds!);
 
-        // The account document structurally cannot carry Buddy-local semantic fields.
-        Assert.DoesNotContain("mood", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("fullness", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("harmfulContentIds", json, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("funActivities", json, StringComparison.OrdinalIgnoreCase);
+        // Mood extrema remain valid account-wide lifetime statistics. What must never appear in
+        // this document are the live Buddy-local state fields themselves at the account root.
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement root = document.RootElement;
+        Assert.False(root.TryGetProperty("mood", out _));
+        Assert.False(root.TryGetProperty("fullness", out _));
+        Assert.False(root.TryGetProperty("harmfulContentIds", out _));
+        Assert.False(root.TryGetProperty("funActivities", out _));
+        Assert.False(root.TryGetProperty("buddyIdentityId", out _));
+        Assert.False(root.TryGetProperty("characterId", out _));
     }
 
     [Fact]
