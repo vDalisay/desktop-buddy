@@ -106,19 +106,20 @@ public sealed class BuildScopePolicyTests
     }
 
     [Theory]
-    [InlineData(false, true, false, false, false)] // Initial Steam Demo
-    [InlineData(false, true, true, false, true)]   // Next Fest Demo
-    [InlineData(false, false, false, true, true)]  // Full Release
-    [InlineData(true, false, false, false, false)] // itch.io
-    [InlineData(false, false, false, false, false)] // untagged fallback
-    [InlineData(false, true, true, true, false)]   // malformed Full + Demo family
-    [InlineData(false, false, true, false, false)] // stray next_fest_demo
-    public void Next_Fest_systems_are_exposed_only_on_their_fail_closed_release_surfaces(
+    [InlineData(false, true, false, false, false, false)] // Initial Steam Demo
+    [InlineData(false, true, true, false, true, false)]   // Next Fest Demo: local qualification only
+    [InlineData(false, false, false, true, true, true)]   // Full Release: qualify + publish
+    [InlineData(true, false, false, false, false, false)] // itch.io
+    [InlineData(false, false, false, false, false, false)] // untagged fallback
+    [InlineData(false, true, true, true, false, false)]   // malformed Full + Demo family
+    [InlineData(false, false, true, false, false, false)] // stray next_fest_demo
+    public void Next_Fest_systems_and_full_only_publishing_follow_fail_closed_scope(
         bool itchIo,
         bool steamDemo,
         bool nextFestDemo,
         bool fullRelease,
-        bool expected)
+        bool expectedNextFestSystems,
+        bool expectedPublishing)
     {
         BuildScopePolicy policy = BuildScopePolicy.Resolve(
             itchIo,
@@ -126,10 +127,12 @@ public sealed class BuildScopePolicyTests
             nextFestDemo,
             fullRelease);
 
-        Assert.Equal(expected, policy.IncludesRoomDecorator);
-        Assert.Equal(expected, policy.IncludesAchievements);
+        Assert.Equal(expectedNextFestSystems, policy.IncludesRoomDecorator);
+        Assert.Equal(expectedNextFestSystems, policy.IncludesAchievements);
+        Assert.Equal(expectedPublishing, policy.PublishesSteamAchievements);
         Assert.Equal(policy.IncludesScenes, policy.IncludesRoomDecorator);
         Assert.Equal(policy.IncludesScenes, policy.IncludesAchievements);
+        Assert.False(policy.PublishesSteamAchievements && policy.IsSteamDemo);
     }
 
     [Fact]
