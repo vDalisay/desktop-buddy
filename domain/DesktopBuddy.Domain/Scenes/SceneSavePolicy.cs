@@ -24,7 +24,7 @@ public sealed record BuddyPlacementSave
 
     public BuddyPlacement CreatePlacement() => new(
         BuddyPlacementId.From(PlacementId),
-        BuddyIdentityId.From(BuddyIdentityId),
+        DesktopBuddy.Domain.Persistence.BuddyIdentityId.From(BuddyIdentityId),
         new CanonicalRoomPosition(CanonicalX, CanonicalY));
 }
 
