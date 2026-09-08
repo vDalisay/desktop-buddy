@@ -46,6 +46,33 @@
   </PropertyGroup>
 
   <!--
+    Achievements are a compile-time distribution capability, not only a Godot feature gate:
+      itch.io                -> excluded
+      Initial Steam Demo     -> excluded
+      Steam Next Fest Demo   -> included, local qualification only
+      Full Release           -> included, full-game Steam reconciliation
+
+    Developer/test builds keep achievements unless an explicit distribution profile narrows them.
+    Steam release automation supplies DesktopBuddySteamDemoScope/DesktopBuddyNextFestDemoScope to
+    both the managed build and Godot export so changing custom feature tags cannot restore code that
+    was never compiled into an Initial Demo artifact.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND ('$(DesktopBuddyItchScope)' == 'true' OR '$(TargetFramework)' == 'net10.0') ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyAchievementsScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ACHIEVEMENTS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' != 'true' ">
+    <Compile Remove="src/Achievements/**/*.cs" />
+    <Compile Remove="src/Platform/Steam/GodotSteamAchievementRemote.cs" />
+  </ItemGroup>
+
+  <!--
     A build that goes to players. Godot's export-release path compiles ExportRelease, so every
     Steam Demo, Full Release and itch package is one; editor runs, `dotnet build` and the whole
     scenario/journey suite are not, and keep the developer tree.
@@ -122,9 +149,6 @@
       the room-editing code and the decoration catalogue out of the assembly.
     -->
     <Compile Remove="src/Environment/**/*.cs" />
-
-    <!-- Achievement runtime and Steam publisher are Next Fest/Full-only product code. -->
-    <Compile Remove="src/Achievements/**/*.cs" />
 
     <!--
       Steam Workshop. Remove the UI/composition, its staging/persistence implementation, and the
