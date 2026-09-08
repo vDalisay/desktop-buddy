@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
@@ -31,6 +32,44 @@ public static class ProgressReset
     }
 
     /// <summary>
+    /// Resets a Scene-enabled run as one manifest generation. The fresh legacy aggregate exists only
+    /// long enough to reuse the deterministic account/Buddy partition policy; no legacy progress
+    /// write occurs. Character documents are deleted only after the manifest commit succeeds because
+    /// filesystem deletion is the one reset step that cannot be transactionally rolled back.
+    /// </summary>
+    public static async Task<bool> ResetSceneAsync(
+        SceneProgressCoordinator scenes,
+        EconomyService? economy = null,
+        Func<CancellationToken, Task<int>>? deleteCharacters = null,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(scenes);
+        DeletedCharacterCount = 0;
+
+        BuddyProgressState freshLegacy = CreateNewProgress(scenes.Player.CashPerPain);
+        LegacyNextFestMigrationProjection fresh = LegacyNextFestMigrationPolicy.Project(
+            freshLegacy.Snapshot(),
+            activeCharacterId: null,
+            new EnvironmentProgressSnapshot(0, new EnvironmentLayout(), []),
+            new CanonicalRoomPosition(0.5f, 0.5f));
+
+        try
+        {
+            await scenes.ResetToFreshGraphAsync(fresh, token).ConfigureAwait(false);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        if (deleteCharacters is not null)
+            DeletedCharacterCount = await deleteCharacters(token).ConfigureAwait(false);
+
+        economy?.NotifyBalanceChanged();
+        return true;
+    }
+
+    /// <summary>
     /// Resets gameplay, Work progression and optional character selection in place. One explicit
     /// durable write owns the transaction; a failed write restores all exact prior snapshots and
     /// never touches machine-local settings. Character documents are deleted only after that
@@ -46,6 +85,7 @@ public static class ProgressReset
     {
         ArgumentNullException.ThrowIfNull(progress);
         ArgumentNullException.ThrowIfNull(saves);
+        DeletedCharacterCount = 0;
         characterSelection ??= saves.CharacterSelection;
         WorkProgressState? workProgress = saves.WorkProgress;
         EnvironmentProgressState? environmentProgress = saves.EnvironmentProgress;
