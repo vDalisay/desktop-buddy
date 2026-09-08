@@ -45,21 +45,39 @@ public sealed class CharacterSelectionCoordinator
     private PendingActivation? _pending;
     private long _nextSequence;
 
+    /// <summary>
+    /// Persistence-agnostic constructor used by Scene-enabled runtime. The selection state remains
+    /// the presentation observable; an external Scene binding owns durable Buddy-identity writes.
+    /// </summary>
     public CharacterSelectionCoordinator(
         CharacterStore store,
         CharacterSelectionState selection,
         BuddyVisualRigView rigView,
-        SaveCoordinator saves,
         CharacterFeatureCatalog? catalog = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _paintStore = store.CreatePaintStore();
         _selection = selection ?? throw new ArgumentNullException(nameof(selection));
         _rigView = rigView ?? throw new ArgumentNullException(nameof(rigView));
+        _catalog = catalog ?? store.FeatureCatalog;
+    }
+
+    /// <summary>
+    /// Initial Demo compatibility constructor. SaveCoordinator still observes the same selection
+    /// state there, so keep the identity guard while routing all actual selection behavior through
+    /// the persistence-agnostic constructor above.
+    /// </summary>
+    public CharacterSelectionCoordinator(
+        CharacterStore store,
+        CharacterSelectionState selection,
+        BuddyVisualRigView rigView,
+        SaveCoordinator saves,
+        CharacterFeatureCatalog? catalog = null)
+        : this(store, selection, rigView, catalog)
+    {
         ArgumentNullException.ThrowIfNull(saves);
         if (!ReferenceEquals(saves.CharacterSelection, selection))
             throw new ArgumentException("Coordinator requires the same character selection state.", nameof(saves));
-        _catalog = catalog ?? store.FeatureCatalog;
     }
 
     /// <summary>
