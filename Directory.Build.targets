@@ -1,0 +1,53 @@
+<Project>
+  <PropertyGroup>
+    <ShippingPythonExecutable Condition=" '$(OS)' == 'Windows_NT' ">python</ShippingPythonExecutable>
+    <ShippingPythonExecutable Condition=" '$(OS)' != 'Windows_NT' ">python3</ShippingPythonExecutable>
+  </PropertyGroup>
+
+  <!--
+    C# comments never enter IL, but project-owned .gd/.gdshader files can be packaged as text.
+    Scrub those at the first root C# compilation in every GitHub Actions disposable checkout. This
+    deliberately happens before a later Godot import/export can cache text resources with comments.
+    GITHUB_ACTIONS keeps local developer builds untouched, while all CI configurations exercise the
+    same semantics-preserving scrubber and its self-test.
+  -->
+  <Target Name="StripShippingGodotSourceComments"
+          BeforeTargets="CoreCompile"
+          Condition=" '$(GITHUB_ACTIONS)' == 'true' AND '$(MSBuildProjectName)' == 'DesktopBuddy' ">
+    <Exec Command="&quot;$(ShippingPythonExecutable)&quot; &quot;$(MSBuildThisFileDirectory)devtools/verification/strip_godot_source_comments.py&quot; --self-test" />
+    <Exec Command="&quot;$(ShippingPythonExecutable)&quot; &quot;$(MSBuildThisFileDirectory)devtools/verification/strip_godot_source_comments.py&quot; --root &quot;$(MSBuildThisFileDirectory)&quot;" />
+    <Exec Command="&quot;$(ShippingPythonExecutable)&quot; &quot;$(MSBuildThisFileDirectory)devtools/verification/strip_godot_source_comments.py&quot; --root &quot;$(MSBuildThisFileDirectory)&quot; --check" />
+  </Target>
+
+  <!--
+    Fail closed if a later SDK/package/project import overrides the shipping metadata policy from
+    Directory.Build.props. This verifies the final values MSBuild will actually use.
+  -->
+  <Target Name="VerifyShippingSourceMetadataPolicy"
+          BeforeTargets="CoreCompile"
+          Condition=" '$(Configuration)' == 'ExportRelease' ">
+    <Error Condition=" '$(DebugSymbols)' != 'false' "
+           Text="Shipping build rejected: DebugSymbols must remain false." />
+    <Error Condition=" '$(DebugType)' != 'none' "
+           Text="Shipping build rejected: DebugType must remain none." />
+    <Error Condition=" '$(GenerateDocumentationFile)' != 'false' "
+           Text="Shipping build rejected: GenerateDocumentationFile must remain false." />
+    <Error Condition=" '$(EmbedAllSources)' == 'true' "
+           Text="Shipping build rejected: EmbedAllSources must remain false." />
+    <Error Condition=" '$(EmbedUntrackedSources)' == 'true' "
+           Text="Shipping build rejected: EmbedUntrackedSources must remain false." />
+  </Target>
+
+  <!--
+    The compiler settings above should prevent these files from existing at all. Verify that
+    invariant at the project-output boundary instead of relying only on a later packaging cleanup.
+  -->
+  <Target Name="VerifyShippingSourceMetadataOutputs"
+          AfterTargets="Build"
+          Condition=" '$(Configuration)' == 'ExportRelease' ">
+    <Error Condition=" Exists('$(TargetDir)$(TargetName).pdb') "
+           Text="Shipping build rejected: project PDB was produced: $(TargetDir)$(TargetName).pdb" />
+    <Error Condition=" Exists('$(TargetDir)$(TargetName).xml') "
+           Text="Shipping build rejected: project XML documentation was produced: $(TargetDir)$(TargetName).xml" />
+  </Target>
+</Project>

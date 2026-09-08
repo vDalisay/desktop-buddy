@@ -1,0 +1,429 @@
+name: itch.io hardened encrypted build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: itch-io-hardened-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  GODOT_WEB_PR_SHA: f680cb44eb18c9b354678a487e43e07efb56d9be
+  EMSDK_VERSION: 3.1.56
+  EMSDK_REPO_SHA: e10826f9196bb0e704014af2252ef58fb4ba261b
+  GODOT_WEB_CACHE_VERSION: v3-hardened
+
+jobs:
+  web-toolchain:
+    name: Prepare pinned free Web toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Restore pinned toolchain cache
+        id: web-toolchain-cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/desktop-buddy/godot-web
+          key: godot-web-${{ runner.os }}-${{ env.GODOT_WEB_PR_SHA }}-${{ env.EMSDK_VERSION }}-${{ env.EMSDK_REPO_SHA }}-${{ env.GODOT_WEB_CACHE_VERSION }}
+
+      - name: Set up .NET 10 for toolchain build
+        if: steps.web-toolchain-cache.outputs.cache-hit != 'true'
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install native build dependencies
+        if: steps.web-toolchain-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential scons pkg-config git python3 python3-dev \
+            libx11-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev \
+            libasound2-dev libpulse-dev libudev-dev libxi-dev libxrandr-dev \
+            libwayland-dev libxkbcommon-dev libfontconfig1-dev libdbus-1-dev
+          (cd "$RUNNER_TEMP" && dotnet workload install wasm-tools)
+
+      - name: Build pinned editor and .NET SDK on cache miss
+        if: steps.web-toolchain-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          CACHE_DIR="$HOME/.cache/desktop-buddy/godot-web/$GODOT_WEB_PR_SHA-$EMSDK_VERSION-$EMSDK_REPO_SHA-$GODOT_WEB_CACHE_VERSION"
+          rm -rf "$CACHE_DIR"
+          mkdir -p "$CACHE_DIR"
+
+          SRC="$RUNNER_TEMP/godot-csharp-web"
+          git init "$SRC"
+          git -C "$SRC" remote add origin https://github.com/godotengine/godot.git
+          git -C "$SRC" fetch --depth=1 origin pull/118976/head
+          git -C "$SRC" checkout --detach FETCH_HEAD
+          ACTUAL_SHA="$(git -C "$SRC" rev-parse HEAD)"
+          if [ "$ACTUAL_SHA" != "$GODOT_WEB_PR_SHA" ]; then
+            echo "Godot Web PR moved: expected $GODOT_WEB_PR_SHA, fetched $ACTUAL_SHA" >&2
+            exit 1
+          fi
+
+          python3 - "$SRC/platform/web/export/export_plugin.cpp" <<'PY'
+          import pathlib
+          import sys
+
+          path = pathlib.Path(sys.argv[1])
+          text = path.read_text(encoding="utf-8")
+          needle = '\t// Web export is still a work in progress, keep a message as a warning.\n\terr += TTR("Exporting to Web when using C#/.NET is experimental.") + "\\n";\n'
+          replacement = '\t// Desktop Buddy CI: experimental status is tracked by the workflow; do not return it as a headless export error.\n'
+          if needle not in text:
+              raise SystemExit("Pinned Godot Web PR no longer contains the expected experimental export warning.")
+          path.write_text(text.replace(needle, replacement, 1), encoding="utf-8")
+          PY
+
+          cd "$SRC"
+          scons -j2 module_mono_enabled=yes
+          GODOT_WEB_EDITOR="$(find "$SRC/bin" -maxdepth 1 -type f -executable -name 'godot.*editor*mono*' | head -n 1)"
+          if [ -z "$GODOT_WEB_EDITOR" ]; then
+            echo "Could not locate the fork's Mono editor binary." >&2
+            exit 1
+          fi
+
+          "$GODOT_WEB_EDITOR" --headless --generate-mono-glue modules/mono/glue
+          python3 modules/mono/build_scripts/build_assemblies.py \
+            --godot-output-dir ./bin \
+            --push-nupkgs-local "$RUNNER_TEMP/godot-web-nuget"
+          test -n "$(find "$RUNNER_TEMP/godot-web-nuget" -type f -name 'Godot.NET.Sdk*.nupkg' -print -quit)"
+
+          EMSDK="$CACHE_DIR/emsdk"
+          git init "$EMSDK"
+          git -C "$EMSDK" remote add origin https://github.com/emscripten-core/emsdk.git
+          git -C "$EMSDK" fetch --depth=1 origin "$EMSDK_REPO_SHA"
+          git -C "$EMSDK" checkout --detach FETCH_HEAD
+          ACTUAL_EMSDK_SHA="$(git -C "$EMSDK" rev-parse HEAD)"
+          if [ "$ACTUAL_EMSDK_SHA" != "$EMSDK_REPO_SHA" ]; then
+            echo "emsdk checkout mismatch: expected $EMSDK_REPO_SHA, got $ACTUAL_EMSDK_SHA" >&2
+            exit 1
+          fi
+          "$EMSDK/emsdk" install "$EMSDK_VERSION"
+          "$EMSDK/emsdk" activate "$EMSDK_VERSION"
+
+          mkdir -p "$CACHE_DIR/godot-bin" "$CACHE_DIR/nuget"
+          cp -a "$SRC/bin/." "$CACHE_DIR/godot-bin/"
+          cp -a "$RUNNER_TEMP/godot-web-nuget/." "$CACHE_DIR/nuget/"
+
+      - name: Validate reusable pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          CACHE_DIR="$HOME/.cache/desktop-buddy/godot-web/$GODOT_WEB_PR_SHA-$EMSDK_VERSION-$EMSDK_REPO_SHA-$GODOT_WEB_CACHE_VERSION"
+          GODOT_WEB_EDITOR="$(find "$CACHE_DIR/godot-bin" -maxdepth 1 -type f -name 'godot.*editor*mono*' | head -n 1)"
+          test -n "$GODOT_WEB_EDITOR"
+          test -n "$(find "$CACHE_DIR/nuget" -type f -name 'Godot.NET.Sdk*.nupkg' -print -quit)"
+          test -f "$CACHE_DIR/emsdk/emsdk_env.sh"
+          test "$(git -C "$CACHE_DIR/emsdk" rev-parse HEAD)" = "$EMSDK_REPO_SHA"
+          echo "Pinned editor/.NET/emsdk toolchain ready. No unencrypted release template is cached."
+
+  encrypted-export:
+    name: Build and audit encrypted itch artifact
+    needs: web-toolchain
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET 10 for browser-wasm
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Install export and keyed-template dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential scons pkg-config git openssl rsync python3 unzip \
+            libx11-dev libxcursor-dev libxinerama-dev libgl1-mesa-dev libglu1-mesa-dev \
+            libasound2-dev libpulse-dev libudev-dev libxi-dev libxrandr-dev \
+            libwayland-dev libxkbcommon-dev libfontconfig1-dev libdbus-1-dev
+          (cd "$RUNNER_TEMP" && dotnet workload install wasm-tools)
+
+      - name: Restore pinned Web toolchain
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cache/desktop-buddy/godot-web
+          key: godot-web-${{ runner.os }}-${{ env.GODOT_WEB_PR_SHA }}-${{ env.EMSDK_VERSION }}-${{ env.EMSDK_REPO_SHA }}-${{ env.GODOT_WEB_CACHE_VERSION }}
+          fail-on-cache-miss: true
+
+      - name: Activate cached editor, .NET SDK and Emscripten
+        shell: bash
+        run: |
+          set -euo pipefail
+          CACHE_DIR="$HOME/.cache/desktop-buddy/godot-web/$GODOT_WEB_PR_SHA-$EMSDK_VERSION-$EMSDK_REPO_SHA-$GODOT_WEB_CACHE_VERSION"
+          GODOT_WEB_EDITOR="$(find "$CACHE_DIR/godot-bin" -maxdepth 1 -type f -name 'godot.*editor*mono*' | head -n 1)"
+          NUPKG_DIR="$CACHE_DIR/nuget"
+          EMSDK="$CACHE_DIR/emsdk"
+          test -n "$GODOT_WEB_EDITOR"
+          chmod +x "$GODOT_WEB_EDITOR"
+          test -n "$(find "$NUPKG_DIR" -type f -name 'Godot.NET.Sdk*.nupkg' -print -quit)"
+          test -f "$EMSDK/emsdk_env.sh"
+          test "$(git -C "$EMSDK" rev-parse HEAD)" = "$EMSDK_REPO_SHA"
+          echo "GODOT_WEB_EDITOR=$GODOT_WEB_EDITOR" >> "$GITHUB_ENV"
+          echo "NUPKG_DIR=$NUPKG_DIR" >> "$GITHUB_ENV"
+          echo "EMSDK=$EMSDK" >> "$GITHUB_ENV"
+
+      - name: Compile one-use AES-keyed release template
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          SRC="$RUNNER_TEMP/godot-csharp-web-keyed"
+          git init "$SRC"
+          git -C "$SRC" remote add origin https://github.com/godotengine/godot.git
+          git -C "$SRC" fetch --depth=1 origin pull/118976/head
+          git -C "$SRC" checkout --detach FETCH_HEAD
+          ACTUAL_SHA="$(git -C "$SRC" rev-parse HEAD)"
+          if [ "$ACTUAL_SHA" != "$GODOT_WEB_PR_SHA" ]; then
+            echo "Godot Web PR moved: expected $GODOT_WEB_PR_SHA, fetched $ACTUAL_SHA" >&2
+            exit 1
+          fi
+
+          "$GODOT_WEB_EDITOR" --headless --generate-mono-glue "$SRC/modules/mono/glue"
+          source "$EMSDK/emsdk_env.sh"
+
+          PCK_KEY_FILE="$RUNNER_TEMP/itch-pck.key"
+          umask 077
+          openssl rand -hex 32 > "$PCK_KEY_FILE"
+          test "$(wc -c < "$PCK_KEY_FILE")" -eq 65
+
+          export SCRIPT_AES256_ENCRYPTION_KEY="$(cat "$PCK_KEY_FILE")"
+          cd "$SRC"
+          scons -j2 \
+            target=template_release \
+            platform=web \
+            library_type=static_library \
+            module_mono_enabled=yes \
+            lto=none \
+            debug_symbols=no \
+            disable_crash_handler=yes \
+            threads=no \
+            2>&1 | tee "$RUNNER_TEMP/keyed-template-build.log"
+          unset SCRIPT_AES256_ENCRYPTION_KEY
+
+          if ! grep -Fq 'Compiling Godot with custom `SCRIPT_AES256_ENCRYPTION_KEY`' \
+              "$RUNNER_TEMP/keyed-template-build.log"; then
+            echo "Godot did not confirm that the AES-256 key was compiled into the release template." >&2
+            exit 1
+          fi
+
+          KEYED_TEMPLATE="$(find "$SRC/bin" -maxdepth 1 -type f -name 'godot.web.template_release.wasm32.nothreads.mono.zip' | head -n 1)"
+          if [ -z "$KEYED_TEMPLATE" ]; then
+            echo "Keyed Web release template was not produced." >&2
+            exit 1
+          fi
+          echo "KEYED_TEMPLATE=$KEYED_TEMPLATE" >> "$GITHUB_ENV"
+          echo "PCK_KEY_FILE=$PCK_KEY_FILE" >> "$GITHUB_ENV"
+          echo "One-use keyed release template compiled; key value was never written to the log/cache."
+
+      - name: Prepare reduced disposable Web project
+        shell: bash
+        run: |
+          set -euo pipefail
+          WEB_WORK="$RUNNER_TEMP/desktop-buddy-web-hardened"
+          rm -rf "$WEB_WORK"
+          mkdir -p "$WEB_WORK"
+          rsync -a \
+            --exclude='.git/' \
+            --exclude='.godot/' \
+            --exclude='build/' \
+            --exclude='.protected/' \
+            ./ "$WEB_WORK/"
+          rm -f "$WEB_WORK/global.json"
+
+          SDK_PACKAGE="$(find "$NUPKG_DIR" -maxdepth 1 -type f -name 'Godot.NET.Sdk.*.nupkg' | sort | tail -n 1)"
+          if [ -z "$SDK_PACKAGE" ]; then
+            echo "Cached toolchain does not contain a Godot.NET.Sdk package." >&2
+            exit 1
+          fi
+          SDK_FILE="$(basename "$SDK_PACKAGE")"
+          SDK_VERSION="${SDK_FILE#Godot.NET.Sdk.}"
+          SDK_VERSION="${SDK_VERSION%.nupkg}"
+
+          python3 - "$WEB_WORK" "$SDK_VERSION" <<'PY'
+          import pathlib
+          import sys
+
+          root = pathlib.Path(sys.argv[1])
+          version = sys.argv[2]
+          for relative in (
+              "DesktopBuddy.csproj",
+              "shared/DesktopBuddy.Visuals/DesktopBuddy.Visuals.csproj",
+          ):
+              path = root / relative
+              text = path.read_text(encoding="utf-8")
+              text = text.replace("Godot.NET.Sdk/4.6.1", f"Godot.NET.Sdk/{version}")
+              text = text.replace("<TargetFramework>net8.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>")
+              path.write_text(text, encoding="utf-8")
+
+          domain = root / "domain/DesktopBuddy.Domain/DesktopBuddy.Domain.csproj"
+          text = domain.read_text(encoding="utf-8")
+          text = text.replace("<TargetFramework>net8.0</TargetFramework>", "<TargetFramework>net10.0</TargetFramework>")
+          domain.write_text(text, encoding="utf-8")
+          PY
+
+          python3 "$GITHUB_WORKSPACE/devtools/verification/apply_itch_scope.py" \
+            "$WEB_WORK" --pck-key-file "$PCK_KEY_FILE"
+
+          cat > "$WEB_WORK/nuget.config" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="godot-web-fork" value="$NUPKG_DIR" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+          </configuration>
+          EOF
+
+          mkdir -p "$WEB_WORK/.web-build"
+          cp "$KEYED_TEMPLATE" "$WEB_WORK/.web-build/godot.web.template_release.wasm32.nothreads.mono.zip"
+          echo "WEB_WORK=$WEB_WORK" >> "$GITHUB_ENV"
+
+      - name: Import reduced Web project
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          {
+            cd "$WEB_WORK"
+            dotnet restore DesktopBuddy.csproj --configfile nuget.config
+            dotnet build DesktopBuddy.csproj -c Debug --no-restore
+            "$GODOT_WEB_EDITOR" --headless --verbose --path "$WEB_WORK" --import
+          } 2>&1 | tee "$RUNNER_TEMP/desktop-buddy-hardened-import.log"
+
+          if grep -Eq '\.NET: Failed to load project assembly|Failed to create an autoload.*not compiling' \
+              "$RUNNER_TEMP/desktop-buddy-hardened-import.log"; then
+            echo "Disposable Web project imported without a valid native C# assembly." >&2
+            exit 1
+          fi
+
+      - name: Export encrypted C# Web build
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -o pipefail
+          source "$EMSDK/emsdk_env.sh"
+          rm -rf "$WEB_WORK/build/itch-web"
+          mkdir -p "$WEB_WORK/build/itch-web"
+
+          export GODOT_SCRIPT_ENCRYPTION_KEY="$(cat "$PCK_KEY_FILE")"
+          "$GODOT_WEB_EDITOR" --headless --verbose --path "$WEB_WORK" \
+            --export-release "Web itch.io experimental" "$WEB_WORK/build/itch-web/index.html" \
+            2>&1 | tee "$RUNNER_TEMP/desktop-buddy-hardened-export.log"
+          unset GODOT_SCRIPT_ENCRYPTION_KEY
+
+          test -f "$WEB_WORK/build/itch-web/index.html"
+          test -f "$WEB_WORK/build/itch-web/index.pck"
+          test -n "$(find "$WEB_WORK/build/itch-web" -type f -name '*.wasm' -print -quit)"
+          test -d "$WEB_WORK/build/itch-web/_framework"
+
+          rm -f "$PCK_KEY_FILE" "$WEB_WORK/.godot/export_credentials.cfg"
+          test ! -e "$PCK_KEY_FILE"
+
+      - name: Sanitize generated Web debugging breadcrumbs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devtools/verification/sanitize_web_artifact.py --root "$WEB_WORK/build/itch-web"
+          python3 devtools/verification/sanitize_web_artifact.py --root "$WEB_WORK/build/itch-web" --check
+
+      - name: Audit final encrypted artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devtools/verification/audit_itch_artifact.py \
+            --root "$WEB_WORK/build/itch-web" \
+            --expect-encrypted-pck
+          python3 devtools/verification/audit_web_source_disclosure.py \
+            --root "$WEB_WORK/build/itch-web"
+
+      - name: Generate and verify SHA-256 provenance before third-party browser tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="hardened-${GITHUB_SHA::12}"
+          python3 devtools/release/release_manifest.py generate \
+            --root "$WEB_WORK/build/itch-web" \
+            --output "$WEB_WORK/build/itch-web/release-manifest.json" \
+            --distribution itch-web \
+            --version "$VERSION" \
+            --git-sha "$GITHUB_SHA" \
+            --build-id "$GITHUB_RUN_ID" \
+            --godot-version "web-fork-$GODOT_WEB_PR_SHA"
+          python3 devtools/release/release_manifest.py verify \
+            --root "$WEB_WORK/build/itch-web" \
+            --manifest "$WEB_WORK/build/itch-web/release-manifest.json"
+
+      # Upload before installing npm/Playwright. The successful workflow later proves that these
+      # exact encrypted bytes boot, but untrusted browser-test dependencies never get a chance to
+      # rewrite the retained release artifact.
+      - name: Upload encrypted audited release site
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: DesktopBuddy-itch-web-hardened-site
+          path: ${{ runner.temp }}/desktop-buddy-web-hardened/build/itch-web/
+          if-no-files-found: error
+          retention-days: 7
+          overwrite: true
+
+  encrypted-smoke:
+    name: Smoke exact retained encrypted artifact
+    needs: encrypted-export
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out trusted verification tooling
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Download exact encrypted artifact from this run
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: DesktopBuddy-itch-web-hardened-site
+          path: build/itch-web
+
+      - name: Verify retained bytes before browser dependency install
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devtools/release/release_manifest.py verify \
+            --root build/itch-web \
+            --manifest build/itch-web/release-manifest.json
+          python3 devtools/verification/sanitize_web_artifact.py \
+            --root build/itch-web --check
+          python3 devtools/verification/audit_itch_artifact.py \
+            --root build/itch-web --expect-encrypted-pck
+          python3 devtools/verification/audit_web_source_disclosure.py \
+            --root build/itch-web
+
+      - name: Browser interaction smoke for encrypted PCK
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m http.server 8123 --bind 127.0.0.1 --directory build/itch-web > "$RUNNER_TEMP/itch-hardened-http.log" 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID >/dev/null 2>&1 || true' EXIT
+
+          cd "$RUNNER_TEMP"
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright@1.55.0
+          npx playwright install --with-deps chromium
+          node "$GITHUB_WORKSPACE/devtools/verification/hardened_web_smoke.mjs"
