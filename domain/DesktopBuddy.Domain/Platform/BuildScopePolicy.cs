@@ -40,6 +40,8 @@ public enum BuildSurface
 /// </summary>
 public readonly struct BuildScopePolicy
 {
+    public const int NextFestMaximumSceneCount = 10;
+
     private BuildScopePolicy(BuildSurface surface)
     {
         Surface = surface;
@@ -63,6 +65,34 @@ public readonly struct BuildScopePolicy
     public bool IsFullRelease => Surface == BuildSurface.FullRelease;
 
     public bool IsUntaggedFallback => Surface == BuildSurface.UntaggedFallback;
+
+    /// <summary>
+    /// The Scene/multi-Buddy product surface starts at Next Fest. Initial Demo, itch.io and an
+    /// untagged/fail-closed build must not expose Scene creation or switching.
+    /// </summary>
+    public bool IncludesScenes =>
+        Surface is BuildSurface.NextFestDemo or BuildSurface.FullRelease;
+
+    /// <summary>
+    /// Next Fest has the owner-locked ten-Scene product cap. Full Release has no artificial Scene
+    /// count cap; null means practical storage/UI/safety policy rather than entitlement. A zero
+    /// value means the active build surface does not include Scenes at all.
+    /// </summary>
+    public int? MaximumSceneCount => Surface switch
+    {
+        BuildSurface.NextFestDemo => NextFestMaximumSceneCount,
+        BuildSurface.FullRelease => null,
+        _ => 0,
+    };
+
+    public bool CanCreateScene(int existingSceneCount)
+    {
+        if (existingSceneCount < 0)
+            throw new System.ArgumentOutOfRangeException(nameof(existingSceneCount));
+        if (!IncludesScenes)
+            return false;
+        return MaximumSceneCount is not int limit || existingSceneCount < limit;
+    }
 
     public static BuildScopePolicy Resolve(
         bool itchIo,
