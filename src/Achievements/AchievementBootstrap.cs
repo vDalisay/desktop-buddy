@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
@@ -6,31 +7,39 @@ using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Platform.Steam;
 using Godot;
 
 namespace DesktopBuddy.Achievements;
 
 /// <summary>
 /// Production adapter from the Scene-owned runtime to the engine-free achievement rules.
-/// Next Fest and Full Release compose this node; Initial Demo and itch never do. This adapter
-/// performs local qualification only. Steam reconciliation is intentionally owned by a separate
-/// full-release-only platform adapter so the Demo AppID can never receive achievement unlock calls.
+/// Next Fest and Full Release compose local qualification. Only a valid Full Release receives the
+/// already-initialized Workshop-owned Steam bridge and may mirror qualified state to Steam.
 /// </summary>
 public sealed partial class AchievementBootstrap : Node
 {
     private const double EvaluationSeconds = 0.5;
+    private const double SteamPollSeconds = 5.0;
 
     private SandboxRoot _sandbox = null!;
     private SceneProgressCoordinator _scenes = null!;
     private IRunProgressPersistence _persistence = null!;
     private AchievementCoordinator _coordinator = null!;
+    private Node? _initializedSteamBridge;
+    private SteamAchievementPublisher? _publisher;
     private double _evaluationCountdown;
+    private double _steamCountdown;
     private long _observedPlayerRevision;
-    private bool _flushRunning;
+    private int _flushRunning;
+    private bool _steamSyncRequested;
 
     public AchievementCoordinator Coordinator => _coordinator;
 
-    public void Configure(SandboxRoot sandbox, RunContext context)
+    public void Configure(
+        SandboxRoot sandbox,
+        RunContext context,
+        Node? initializedSteamBridge = null)
     {
         if (IsInsideTree())
             throw new InvalidOperationException("AchievementBootstrap must be configured before entering the tree.");
@@ -40,6 +49,7 @@ public sealed partial class AchievementBootstrap : Node
             ?? throw new ArgumentException("Achievement runtime requires Scene-owned progress.", nameof(context));
         _persistence = context.RunProgressPersistence;
         _coordinator = new AchievementCoordinator(_scenes.Player, _scenes.Work);
+        _initializedSteamBridge = initializedSteamBridge;
         _observedPlayerRevision = _scenes.Player.Revision;
         ProcessMode = ProcessModeEnum.Always;
     }
@@ -52,6 +62,17 @@ public sealed partial class AchievementBootstrap : Node
         _sandbox.Pipeline.ImpactAccepted += OnImpactAccepted;
         _coordinator.Store.Qualified += OnQualified;
         EvaluateDurableState();
+
+        if (DemoScope.ActiveBuildScope.PublishesSteamAchievements)
+        {
+            _publisher = new SteamAchievementPublisher(
+                _coordinator.Store,
+                SteamAppIdentityResolver.Resolve(),
+                _initializedSteamBridge);
+            // Reconcile qualifications carried from Next Fest/offline play on the first valid Full
+            // launch. If Steam is unavailable the local desired state simply remains authoritative.
+            _publisher.TrySynchronize();
+        }
     }
 
     public override void _ExitTree()
@@ -68,18 +89,31 @@ public sealed partial class AchievementBootstrap : Node
         if (_coordinator is null)
             return;
 
-        // Reset/rollback can move the authoritative account revision backwards. Process-local
-        // rolling windows must not span that discontinuity.
         long revision = _scenes.Player.Revision;
         if (revision < _observedPlayerRevision)
             _coordinator.ResetTransientObservations();
         _observedPlayerRevision = revision;
 
-        _evaluationCountdown -= Math.Max(0.0, delta);
-        if (_evaluationCountdown > 0.0)
-            return;
-        _evaluationCountdown = EvaluationSeconds;
-        EvaluateDurableState();
+        double acceptedDelta = Math.Max(0.0, delta);
+        _evaluationCountdown -= acceptedDelta;
+        if (_evaluationCountdown <= 0.0)
+        {
+            _evaluationCountdown = EvaluationSeconds;
+            EvaluateDurableState();
+        }
+
+        if (_steamSyncRequested)
+        {
+            _steamSyncRequested = false;
+            _publisher?.TrySynchronize();
+        }
+
+        _steamCountdown -= acceptedDelta;
+        if (_steamCountdown <= 0.0)
+        {
+            _steamCountdown = SteamPollSeconds;
+            _publisher?.TrySynchronize();
+        }
     }
 
     private void EvaluateDurableState()
@@ -92,9 +126,8 @@ public sealed partial class AchievementBootstrap : Node
     private void OnImpactAccepted(AcceptedImpact impact)
     {
         // The current production Scene host still has one physical actor and requires the reserved
-        // legacy-primary placement. Keep the attribution explicit instead of guessing a Buddy from
-        // UI focus. When multi-actor spawning lands this adapter can resolve the actor from the
-        // accepted-impact source without changing the domain rule API.
+        // legacy-primary placement. Keep attribution explicit instead of guessing UI focus. When
+        // production multi-actor spawning lands, resolve the actor identity from the accepted hit.
         _scenes.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? buddy);
         _coordinator.RecordDamage(
             impact.ContentId,
@@ -107,16 +140,18 @@ public sealed partial class AchievementBootstrap : Node
     private void OnQualified(AchievementDefinition definition)
     {
         GD.Print($"ACHIEVEMENT_QUALIFIED {definition.SteamApiName} ({definition.DisplayName})");
-        if (!_flushRunning)
+        _steamSyncRequested = true;
+        if (Interlocked.CompareExchange(ref _flushRunning, 1, 0) == 0)
             _ = FlushQualificationAsync();
     }
 
     private async Task FlushQualificationAsync()
     {
-        _flushRunning = true;
         try
         {
-            await _persistence.FlushAsync().ConfigureAwait(false);
+            // force:true performs a second generation if another synchronous qualification lands
+            // after the first generation was captured but before its manifest commit completes.
+            await _persistence.FlushAsync(force: true).ConfigureAwait(false);
         }
         catch (Exception exception)
         {
@@ -125,7 +160,7 @@ public sealed partial class AchievementBootstrap : Node
         }
         finally
         {
-            _flushRunning = false;
+            Interlocked.Exchange(ref _flushRunning, 0);
         }
     }
 }
