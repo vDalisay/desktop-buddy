@@ -13,16 +13,30 @@ namespace DesktopBuddy.Persistence;
 /// </summary>
 public interface IEnvironmentProgressPersistence
 {
+    long BalanceMilliCredits { get; }
+    EnvironmentProgressSnapshot Snapshot();
     Task CommitAsync(EnvironmentEditSession session, CancellationToken token = default);
 }
 
 /// <summary>Initial Demo/legacy adapter over the existing aggregate transaction.</summary>
 public sealed class LegacyEnvironmentProgressPersistence : IEnvironmentProgressPersistence
 {
+    private readonly BuddyProgressState _progress;
+    private readonly EnvironmentProgressState _environment;
     private readonly SaveCoordinator _saves;
 
-    public LegacyEnvironmentProgressPersistence(SaveCoordinator saves) =>
+    public LegacyEnvironmentProgressPersistence(
+        BuddyProgressState progress,
+        EnvironmentProgressState environment,
+        SaveCoordinator saves)
+    {
+        _progress = progress ?? throw new ArgumentNullException(nameof(progress));
+        _environment = environment ?? throw new ArgumentNullException(nameof(environment));
         _saves = saves ?? throw new ArgumentNullException(nameof(saves));
+    }
+
+    public long BalanceMilliCredits => _progress.BalanceMilliCredits;
+    public EnvironmentProgressSnapshot Snapshot() => _environment.Snapshot();
 
     public Task CommitAsync(EnvironmentEditSession session, CancellationToken token = default) =>
         _saves.CommitEnvironmentAsync(session, token);
@@ -50,6 +64,17 @@ public sealed class SceneEnvironmentProgressPersistence : IEnvironmentProgressPe
             throw new ArgumentException("Environment persistence requires a stable Scene ID.", nameof(sceneId));
         _sceneId = sceneId;
         _view = view ?? throw new ArgumentNullException(nameof(view));
+    }
+
+    public long BalanceMilliCredits => _scenes.Player.BalanceMilliCredits;
+    public EnvironmentProgressSnapshot Snapshot()
+    {
+        if (_scenes.ActiveSceneId != _sceneId)
+        {
+            throw new InvalidOperationException(
+                "The active Scene changed; reopen the Room Decorator in the current Scene.");
+        }
+        return _scenes.ActiveEnvironmentProgress;
     }
 
     public async Task CommitAsync(EnvironmentEditSession session, CancellationToken token = default)
