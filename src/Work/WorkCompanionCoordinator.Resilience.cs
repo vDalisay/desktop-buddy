@@ -148,8 +148,8 @@ public partial class WorkCompanionCoordinator
         {
             if (_geometryDirty)
                 await PersistPreferencesAsync(forceGeometry: true);
-            if (_context.Saves.IsDirty)
-                await _context.Saves.FlushProgressAsync(force: true);
+            if (_context.RunProgressPersistence.IsDirty)
+                await _context.RunProgressPersistence.FlushAsync(force: true);
         }
         catch (Exception exception)
         {
