@@ -4,6 +4,7 @@ using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
@@ -21,13 +22,17 @@ public sealed class SceneProgressResetTests
         OperatingSystem.IsWindows() ? @"C:\scene-progress-reset-test" : "/scene-progress-reset-test";
 
     [Fact]
-    public async Task Public_scene_reset_deletes_characters_only_after_manifest_commit()
+    public async Task Public_scene_reset_commits_before_deletion_and_preserves_only_qualified_achievements()
     {
         var files = new MemoryFiles();
         SceneProgressCoordinator scenes = Coordinator(files);
         await scenes.FlushAsync(force: true);
         scenes.Player.Deposit(50_000);
         scenes.Work.Record(WorkActivityKind.KeyboardPress, 42);
+        var achievements = new AchievementProgressStore(scenes.Player);
+        achievements.Qualify(AchievementIds.FirstImpression);
+        achievements.IncrementCounter("boxing_glove_hits", 42);
+        achievements.SetValue("working", "discard-me");
 
         bool deleteCalled = false;
         bool reset = await ProgressReset.ResetSceneAsync(
@@ -43,10 +48,18 @@ public sealed class SceneProgressResetTests
 
         Assert.True(reset);
         Assert.True(deleteCalled);
+        var after = new AchievementProgressStore(scenes.Player);
+        Assert.True(after.IsQualified(AchievementIds.FirstImpression));
+        Assert.Equal(0, after.Counter("boxing_glove_hits"));
+        Assert.Null(after.Value("working"));
+
         SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
         Assert.Single(loaded.Scenes);
         Assert.Single(loaded.BuddyIdentities);
         Assert.Equal(SceneId.LegacyHome.Value, loaded.Index.ActiveSceneId);
+        var loadedAchievements = new AchievementProgressStore(loaded.Player);
+        Assert.True(loadedAchievements.IsQualified(AchievementIds.FirstImpression));
+        Assert.Equal(0, loadedAchievements.Counter("boxing_glove_hits"));
     }
 
     [Fact]
@@ -56,6 +69,9 @@ public sealed class SceneProgressResetTests
         SceneProgressCoordinator scenes = Coordinator(files);
         await scenes.FlushAsync(force: true);
         scenes.Player.Deposit(17_000);
+        var achievements = new AchievementProgressStore(scenes.Player);
+        achievements.Qualify(AchievementIds.LightsOut);
+        achievements.IncrementCounter("partial", 9);
         await scenes.FlushAsync(force: true);
         string before = PlayerProgressSavePolicy.Serialize(scenes.Player);
         long committedBefore = scenes.LastCommittedRevision;
@@ -75,6 +91,9 @@ public sealed class SceneProgressResetTests
         Assert.Equal(before, PlayerProgressSavePolicy.Serialize(scenes.Player));
         Assert.Equal(committedBefore, scenes.LastCommittedRevision);
         Assert.False(scenes.IsDirty);
+        var restored = new AchievementProgressStore(scenes.Player);
+        Assert.True(restored.IsQualified(AchievementIds.LightsOut));
+        Assert.Equal(9, restored.Counter("partial"));
 
         SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
         Assert.Equal(before, PlayerProgressSavePolicy.Serialize(loaded.Player));
