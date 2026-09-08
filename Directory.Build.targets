@@ -1,53 +1,58 @@
 <Project>
-  <PropertyGroup>
+  <PropertyGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
     <ShippingPythonExecutable Condition=" '$(OS)' == 'Windows_NT' ">python</ShippingPythonExecutable>
     <ShippingPythonExecutable Condition=" '$(OS)' != 'Windows_NT' ">python3</ShippingPythonExecutable>
   </PropertyGroup>
 
   <!--
-    C# comments never enter IL, but project-owned .gd/.gdshader files can be packaged as text.
-    Scrub those at the first root C# compilation in every GitHub Actions disposable checkout. This
-    deliberately happens before a later Godot import/export can cache text resources with comments.
-    GITHUB_ACTIONS keeps local developer builds untouched, while all CI configurations exercise the
-    same semantics-preserving scrubber and its self-test.
+    Directory.Build.props is imported before project files, so TargetFramework is not reliably
+    available there when a project declares it in the project file. Directory.Build.targets is
+    imported after the project and can safely scope this policy to the disposable net10.0 itch
+    export without changing native net8.0 Steam Demo or Full Release builds.
   -->
-  <Target Name="StripShippingGodotSourceComments"
+  <PropertyGroup Condition=" '$(Configuration)' == 'ExportRelease' AND '$(TargetFramework)' == 'net10.0' ">
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <EmbedAllSources>false</EmbedAllSources>
+    <EmbedUntrackedSources>false</EmbedUntrackedSources>
+  </PropertyGroup>
+
+  <!--
+    The hardened itch Web export rewrites DesktopBuddy to net10.0 in a disposable
+    CI checkout. Scrub project-owned .gd/.gdshader comments before Godot can
+    import/package them, while leaving native net8.0 Steam builds untouched.
+  -->
+  <Target Name="StripItchGodotSourceComments"
           BeforeTargets="CoreCompile"
-          Condition=" '$(GITHUB_ACTIONS)' == 'true' AND '$(MSBuildProjectName)' == 'DesktopBuddy' ">
+          Condition=" '$(GITHUB_ACTIONS)' == 'true' AND '$(MSBuildProjectName)' == 'DesktopBuddy' AND '$(TargetFramework)' == 'net10.0' ">
     <Exec Command="&quot;$(ShippingPythonExecutable)&quot; &quot;$(MSBuildThisFileDirectory)devtools/verification/strip_godot_source_comments.py&quot; --self-test" />
     <Exec Command="&quot;$(ShippingPythonExecutable)&quot; &quot;$(MSBuildThisFileDirectory)devtools/verification/strip_godot_source_comments.py&quot; --root &quot;$(MSBuildThisFileDirectory)&quot;" />
     <Exec Command="&quot;$(ShippingPythonExecutable)&quot; &quot;$(MSBuildThisFileDirectory)devtools/verification/strip_godot_source_comments.py&quot; --root &quot;$(MSBuildThisFileDirectory)&quot; --check" />
   </Target>
 
-  <!--
-    Fail closed if a later SDK/package/project import overrides the shipping metadata policy from
-    Directory.Build.props. This verifies the final values MSBuild will actually use.
-  -->
-  <Target Name="VerifyShippingSourceMetadataPolicy"
+  <!-- Fail closed if a later SDK/package/project import overrides the itch source-metadata policy. -->
+  <Target Name="VerifyItchSourceMetadataPolicy"
           BeforeTargets="CoreCompile"
-          Condition=" '$(Configuration)' == 'ExportRelease' ">
+          Condition=" '$(Configuration)' == 'ExportRelease' AND '$(TargetFramework)' == 'net10.0' ">
     <Error Condition=" '$(DebugSymbols)' != 'false' "
-           Text="Shipping build rejected: DebugSymbols must remain false." />
+           Text="Hardened itch build rejected: DebugSymbols must remain false." />
     <Error Condition=" '$(DebugType)' != 'none' "
-           Text="Shipping build rejected: DebugType must remain none." />
+           Text="Hardened itch build rejected: DebugType must remain none." />
     <Error Condition=" '$(GenerateDocumentationFile)' != 'false' "
-           Text="Shipping build rejected: GenerateDocumentationFile must remain false." />
+           Text="Hardened itch build rejected: GenerateDocumentationFile must remain false." />
     <Error Condition=" '$(EmbedAllSources)' == 'true' "
-           Text="Shipping build rejected: EmbedAllSources must remain false." />
+           Text="Hardened itch build rejected: EmbedAllSources must remain false." />
     <Error Condition=" '$(EmbedUntrackedSources)' == 'true' "
-           Text="Shipping build rejected: EmbedUntrackedSources must remain false." />
+           Text="Hardened itch build rejected: EmbedUntrackedSources must remain false." />
   </Target>
 
-  <!--
-    The compiler settings above should prevent these files from existing at all. Verify that
-    invariant at the project-output boundary instead of relying only on a later packaging cleanup.
-  -->
-  <Target Name="VerifyShippingSourceMetadataOutputs"
+  <Target Name="VerifyItchSourceMetadataOutputs"
           AfterTargets="Build"
-          Condition=" '$(Configuration)' == 'ExportRelease' ">
+          Condition=" '$(Configuration)' == 'ExportRelease' AND '$(TargetFramework)' == 'net10.0' ">
     <Error Condition=" Exists('$(TargetDir)$(TargetName).pdb') "
-           Text="Shipping build rejected: project PDB was produced: $(TargetDir)$(TargetName).pdb" />
+           Text="Hardened itch build rejected: project PDB was produced: $(TargetDir)$(TargetName).pdb" />
     <Error Condition=" Exists('$(TargetDir)$(TargetName).xml') "
-           Text="Shipping build rejected: project XML documentation was produced: $(TargetDir)$(TargetName).xml" />
+           Text="Hardened itch build rejected: project XML documentation was produced: $(TargetDir)$(TargetName).xml" />
   </Target>
 </Project>
