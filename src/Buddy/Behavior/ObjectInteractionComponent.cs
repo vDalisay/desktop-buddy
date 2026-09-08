@@ -41,7 +41,7 @@ public partial class ObjectInteractionComponent : Area2D
     private LooseObjectBody? _soccerBall;
 
     private LooseObjectRegistry _registry = null!;
-    private BuddyProgressState _progress = null!;
+    private BuddyRuntimeProgressBinding _progress = null!;
     private Func<string, bool> _isHarmful = null!;
     private ObjectInteractionModel _model = null!;
     private LooseObjectBody? _heldBody;
@@ -260,6 +260,20 @@ public partial class ObjectInteractionComponent : Area2D
     public void Initialize(
         LooseObjectRegistry registry,
         BuddyProgressState progress,
+        SocialTuningSet? socialTuning = null)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        Initialize(registry, new BuddyRuntimeProgressBinding(progress), socialTuning);
+    }
+
+    /// <summary>
+    /// Initializes this actor against its exact persistent Buddy binding. Scene-enabled runs use
+    /// the Buddy identity referenced by the active placement; Initial Demo/scenario callers keep
+    /// the legacy overload above. Object/care/soccer behavior is otherwise identical.
+    /// </summary>
+    public void Initialize(
+        LooseObjectRegistry registry,
+        BuddyRuntimeProgressBinding progress,
         SocialTuningSet? socialTuning = null)
     {
         ArgumentNullException.ThrowIfNull(registry);
