@@ -15,6 +15,7 @@ namespace DesktopBuddy.Achievements;
 public partial class AchievementBootstrap
 {
     private bool _usageObserversWired;
+    private bool _swordWasWielded;
     private int _observedPunchCount;
     private int _observedLaunchCount;
 
@@ -36,6 +37,7 @@ public partial class AchievementBootstrap
         // achievement consumer. One routed physics tick can commit at most one of either action.
         _observedPunchCount = _sandbox.CursorTools.PunchCount;
         _observedLaunchCount = _sandbox.Launcher.LaunchCount;
+        _swordWasWielded = _sandbox.CursorTools.IsWieldingPointFirst;
 
         TreeExiting += UnwireUsageObservers;
         _usageObserversWired = true;
@@ -48,6 +50,7 @@ public partial class AchievementBootstrap
 
         ObserveCommittedPunches();
         ObserveCommittedLaunches();
+        ObserveSwordWield();
     }
 
     private void OnUsageGunShotFired(GunProfile profile)
@@ -117,6 +120,17 @@ public partial class AchievementBootstrap
         // a larger jump after a component reset/reparent, recording the latest committed launch is
         // still sufficient for Variety Hour's monotonic "used at least once" state.
         _observedLaunchCount = current;
+    }
+
+    private void ObserveSwordWield()
+    {
+        bool wielded = _sandbox.CursorTools.IsWieldingPointFirst;
+        if (wielded && !_swordWasWielded &&
+            string.Equals(_sandbox.CursorTools.ActiveContentId, ContentIds.ToolSword, StringComparison.Ordinal))
+        {
+            _progress.RecordContentUse(ContentIds.ToolSword);
+        }
+        _swordWasWielded = wielded;
     }
 
     private void UnwireUsageObservers()
