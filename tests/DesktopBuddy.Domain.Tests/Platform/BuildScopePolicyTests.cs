@@ -105,6 +105,31 @@ public sealed class BuildScopePolicyTests
         Assert.False(policy.IsNextFestDemo);
     }
 
+    [Theory]
+    [InlineData(false, true, false, false, false)] // Initial Steam Demo
+    [InlineData(false, true, true, false, true)]   // Next Fest Demo
+    [InlineData(false, false, false, true, true)]  // Full Release
+    [InlineData(true, false, false, false, false)] // itch.io
+    [InlineData(false, false, false, false, false)] // untagged fallback
+    [InlineData(false, true, true, true, false)]   // malformed Full + Demo family
+    [InlineData(false, false, true, false, false)] // stray next_fest_demo
+    public void Room_Decorator_is_exposed_only_on_scene_owned_release_surfaces(
+        bool itchIo,
+        bool steamDemo,
+        bool nextFestDemo,
+        bool fullRelease,
+        bool expected)
+    {
+        BuildScopePolicy policy = BuildScopePolicy.Resolve(
+            itchIo,
+            steamDemo,
+            nextFestDemo,
+            fullRelease);
+
+        Assert.Equal(expected, policy.IncludesRoomDecorator);
+        Assert.Equal(policy.IncludesScenes, policy.IncludesRoomDecorator);
+    }
+
     [Fact]
     public void Export_presets_encode_the_master_plan_feature_tags_exactly()
     {
