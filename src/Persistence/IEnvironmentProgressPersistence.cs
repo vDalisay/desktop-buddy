@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Scenes;
 
 namespace DesktopBuddy.Persistence;
