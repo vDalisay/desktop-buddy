@@ -74,6 +74,13 @@ public readonly struct BuildScopePolicy
         Surface is BuildSurface.NextFestDemo or BuildSurface.FullRelease;
 
     /// <summary>
+    /// Room Decorator becomes public only after its Environment state is Scene-owned. That boundary
+    /// is now the same Next Fest + Full surface as Scenes themselves; Initial Demo and itch remain
+    /// deliberately unchanged, and malformed tags inherit the resolver's fail-closed surface.
+    /// </summary>
+    public bool IncludesRoomDecorator => IncludesScenes;
+
+    /// <summary>
     /// Next Fest has the owner-locked ten-Scene product cap. Full Release has no artificial Scene
     /// count cap; null means practical storage/UI/safety policy rather than entitlement. A zero
     /// value means the active build surface does not include Scenes at all.
