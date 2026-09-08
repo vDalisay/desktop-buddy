@@ -341,6 +341,7 @@ public partial class Bootstrap : Node
             Log.Info(Category, "Steam Workshop excluded by this build's distribution scope.");
         }
 
+#if DESKTOP_BUDDY_ACHIEVEMENTS
         if (DemoScope.IncludesAchievements)
         {
             if (sceneProgress is null)
@@ -353,6 +354,7 @@ public partial class Bootstrap : Node
             achievements.Configure(sandbox, context, initializedSteamBridge);
             AddChild(achievements);
         }
+#endif
 #endif
 
         var guidance = new FirstSessionGuidanceController
