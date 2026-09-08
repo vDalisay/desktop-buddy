@@ -35,18 +35,13 @@
   </PropertyGroup>
 
   <!--
-    The low-scope builds retain only a tiny absent composition seam so shared Steam/Workshop
-    composition does not need a parallel source tree. The rule engine, publisher and Steam adapter
-    are physically absent from the game/domain assemblies and cannot be enabled by editing Godot
-    feature tags in an exported PCK.
+    Low-scope builds physically omit the entire first-party achievement runtime plus the Steam
+    achievement adapter. Shared Workshop composition uses the compile constant and therefore has no
+    reference to these types when the capability is absent. Editing Godot feature tags in an
+    exported PCK cannot materialize code that was never compiled.
   -->
-  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' == 'true' ">
-    <Compile Remove="src/Achievements/AchievementBootstrap.Absent.cs" />
-  </ItemGroup>
-
   <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' != 'true' ">
-    <Compile Remove="src/Achievements/AchievementBootstrap.cs" />
-    <Compile Remove="src/Achievements/SteamAchievementPublisher.cs" />
+    <Compile Remove="src/Achievements/**/*.cs" />
     <Compile Remove="src/Platform/Steam/GodotSteamAchievementRemote.cs" />
   </ItemGroup>
 
