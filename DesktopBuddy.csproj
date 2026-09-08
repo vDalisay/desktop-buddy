@@ -23,9 +23,13 @@
     The distribution hardening branch owns the broader build-profile/manifest work. These property
     names intentionally match that direction: Steam Demo is the family, Next Fest is the promoted
     Demo variant. Developer/test builds keep achievements unless a scope is explicitly selected.
+
+    net10.0 is also fail-closed because the disposable itch.io Web project is currently the only
+    net10.0 game build. This makes the existing Web workflow safe even before the broader profile
+    branch supplies DesktopBuddyItchScope explicitly.
   -->
   <PropertyGroup>
-    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddyItchScope)' == 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND ('$(DesktopBuddyItchScope)' == 'true' OR '$(TargetFramework)' == 'net10.0') ">false</DesktopBuddyAchievementsScope>
     <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
     <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
   </PropertyGroup>
