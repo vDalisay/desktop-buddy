@@ -113,7 +113,7 @@ public sealed class BuildScopePolicyTests
     [InlineData(false, false, false, false, false)] // untagged fallback
     [InlineData(false, true, true, true, false)]   // malformed Full + Demo family
     [InlineData(false, false, true, false, false)] // stray next_fest_demo
-    public void Room_Decorator_is_exposed_only_on_scene_owned_release_surfaces(
+    public void Next_Fest_systems_are_exposed_only_on_their_fail_closed_release_surfaces(
         bool itchIo,
         bool steamDemo,
         bool nextFestDemo,
@@ -127,7 +127,9 @@ public sealed class BuildScopePolicyTests
             fullRelease);
 
         Assert.Equal(expected, policy.IncludesRoomDecorator);
+        Assert.Equal(expected, policy.IncludesAchievements);
         Assert.Equal(policy.IncludesScenes, policy.IncludesRoomDecorator);
+        Assert.Equal(policy.IncludesScenes, policy.IncludesAchievements);
     }
 
     [Fact]
