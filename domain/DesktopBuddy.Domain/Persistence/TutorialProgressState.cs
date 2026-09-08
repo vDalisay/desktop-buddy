@@ -159,7 +159,9 @@ public readonly record struct TutorialProgressSnapshot(
 }
 
 /// <summary>
-/// Semantic onboarding progress backed by the existing cloud-eligible progress extension map.
+/// Semantic onboarding progress backed by the cloud-eligible account extension map. Tutorial state
+/// is account-global: it must not move to or be duplicated per Buddy merely because Next Fest splits
+/// Buddy identity state from player state.
 /// V2 deliberately does not reinterpret the old broad v1 hints: an existing loaded player with no
 /// v2 record is still auto-skipped by the runtime controller, while fresh/reset progress starts the
 /// action-driven sequence from Grab Buddy.
@@ -174,9 +176,17 @@ public sealed class TutorialProgressState
     public const string LegacyExtensionKey = "demo.onboarding.v1";
     private const string SkippedToken = "skip";
 
-    private readonly BuddyProgressState _progress;
+    private readonly PlayerRuntimeProgressBinding _progress;
 
-    public TutorialProgressState(BuddyProgressState progress) =>
+    /// <summary>Initial Demo compatibility constructor.</summary>
+    public TutorialProgressState(BuddyProgressState progress) :
+        this(new PlayerRuntimeProgressBinding(
+            progress ?? throw new ArgumentNullException(nameof(progress))))
+    {
+    }
+
+    /// <summary>Account-global constructor used by Scene-enabled Next Fest/Full runs.</summary>
+    public TutorialProgressState(PlayerRuntimeProgressBinding progress) =>
         _progress = progress ?? throw new ArgumentNullException(nameof(progress));
 
     public TutorialProgressSnapshot Snapshot()
