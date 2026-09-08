@@ -81,10 +81,11 @@ public readonly record struct AcceptedContactEpisode(
 /// The contact→pain→money/mood pipeline (RAGDOLL §7–§8, ARCHITECTURE §7 steps 7–8,
 /// §11). Owns the <b>transient</b> Domain workers — impact router, pain curve, knockout
 /// window, care cadence — and runs them on the owning root's fixed tick. Persistent
-/// semantic state (mood, harmful history, balance, selected tool, statistics) lives in the
-/// injected per-run <see cref="BuddyProgressState"/>, and currency changes go through the
-/// injected <see cref="EconomyService"/>: nothing here may outlive or privately own
-/// progress, or it would die with the node. Consumes the raw solver contacts each
+/// semantic state is supplied through a <see cref="BuddyRuntimeProgressBinding"/> so a
+/// legacy one-Buddy run can keep its aggregate while a Scene actor routes account semantics
+/// to one <see cref="PlayerProgressState"/> and emotional/memory semantics to its exact
+/// <see cref="BuddyIdentityState"/>. Currency changes still go only through the injected
+/// <see cref="EconomyService"/>. Consumes the raw solver contacts each
 /// <see cref="PuppetPartBody"/>
 /// buffered during the previous physics step (one-tick trail accepted per §23),
 /// resolves source attribution, and applies accepted events in spec order: the
@@ -109,7 +110,7 @@ public partial class InteractionDamageComponent : Node
     private PainCurve _curve = null!;
     private PainKnockoutModel _knockout = null!;
     private NerfMoodToleranceModel _nerfMood = null!;
-    private BuddyProgressState _progress = null!;
+    private BuddyRuntimeProgressBinding _progress = null!;
     private EconomyService _economy = null!;
     private CareModel _care = null!;
     private double _fixedDelta;
@@ -152,16 +153,24 @@ public partial class InteractionDamageComponent : Node
     public int KnockoutCount => _knockout.KnockoutCount;
 
     // Compatibility telemetry: scenarios, the lab panel, and the M3 HUD read progress
-    // through the pipeline today. These forward to the injected per-run state; callers
-    // migrate to BuddyProgressState/EconomyService as later M4 tasks touch them.
+    // through the pipeline today. The binding keeps those reads correct on both backends.
     public long BalanceMilliCredits => _progress.BalanceMilliCredits;
     public long BalanceCredits => _progress.BalanceCredits;
     public float Mood => _progress.Mood;
     public MoodBand MoodBand => _progress.MoodBand;
     public ToolId SelectedTool => _progress.SelectedTool;
 
-    /// <summary>The per-run persistent state this pipeline mutates.</summary>
-    public BuddyProgressState Progress => _progress;
+    /// <summary>
+    /// Legacy aggregate surface retained for the Initial Demo and existing scenario callers.
+    /// Split Scene actors must use <see cref="ProgressBinding"/> instead of regaining access to a
+    /// monolithic per-Buddy wallet.
+    /// </summary>
+    public BuddyProgressState Progress => _progress.LegacyProgress
+        ?? throw new InvalidOperationException(
+            "This damage pipeline uses split player/Buddy progress; use ProgressBinding.");
+
+    /// <summary>The exact persistent-state binding for this Buddy actor.</summary>
+    public BuddyRuntimeProgressBinding ProgressBinding => _progress;
 
     /// <summary>The sole currency/unlock mutator for this run.</summary>
     public EconomyService Economy => _economy;
@@ -194,13 +203,58 @@ public partial class InteractionDamageComponent : Node
         return Profile;
     }
 
-    /// <param name="progress">The single per-run persistent state owned by the composition root.</param>
-    /// <param name="economy">The sole currency/unlock mutator for this run.</param>
+    /// <summary>Initial Demo/legacy aggregate initialization path.</summary>
     public void Initialize(BuddyProgressState progress, EconomyService economy)
     {
         ArgumentNullException.ThrowIfNull(progress);
         ArgumentNullException.ThrowIfNull(economy);
+        if (!economy.IsBackedBy(progress))
+        {
+            throw new ArgumentException(
+                "Damage pipeline progress and economy must reference the same legacy ledger.",
+                nameof(economy));
+        }
 
+        InitializeCore(new BuddyRuntimeProgressBinding(progress), economy);
+    }
+
+    /// <summary>
+    /// Scene actor initialization path. The binding decides whether semantics are legacy or split;
+    /// split bindings must share the exact player state that backs the supplied economy service.
+    /// </summary>
+    public void Initialize(BuddyRuntimeProgressBinding progress, EconomyService economy)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        ArgumentNullException.ThrowIfNull(economy);
+
+        if (progress.IsSplit)
+        {
+            PlayerProgressState player = progress.PlayerProgress
+                ?? throw new ArgumentException("Split progress binding has no player state.", nameof(progress));
+            if (!economy.IsBackedBy(player))
+            {
+                throw new ArgumentException(
+                    "Damage pipeline split binding and economy must share the same player ledger.",
+                    nameof(economy));
+            }
+        }
+        else
+        {
+            BuddyProgressState legacy = progress.LegacyProgress
+                ?? throw new ArgumentException("Legacy progress binding has no aggregate state.", nameof(progress));
+            if (!economy.IsBackedBy(legacy))
+            {
+                throw new ArgumentException(
+                    "Damage pipeline progress and economy must reference the same legacy ledger.",
+                    nameof(economy));
+            }
+        }
+
+        InitializeCore(progress, economy);
+    }
+
+    private void InitializeCore(BuddyRuntimeProgressBinding progress, EconomyService economy)
+    {
         if (!GodotObject.IsInstanceValid(Buddy) || !Buddy.IsInitialized ||
             !GodotObject.IsInstanceValid(Grab))
         {
@@ -465,6 +519,35 @@ public partial class InteractionDamageComponent : Node
         ToolChanged?.Invoke(previous, tool);
     }
 
+    private long AcceptDamageForBoundBuddy(
+        string contentId,
+        float pain,
+        PayoutRegion region,
+        DamageConsciousness consciousness,
+        double now,
+        ImpactMoodEffect moodEffect)
+    {
+        if (_progress.SplitProgress is BuddyProgressCoordinator split)
+        {
+            return _economy.AcceptDamage(
+                split,
+                contentId,
+                pain,
+                region,
+                consciousness,
+                now,
+                moodEffect);
+        }
+
+        return _economy.AcceptDamage(
+            contentId,
+            pain,
+            region,
+            consciousness,
+            now,
+            moodEffect);
+    }
+
     private void ApplyAcceptedImpact(
         in ImpactSample accepted,
         in RawPartContact contact,
@@ -510,9 +593,7 @@ public partial class InteractionDamageComponent : Node
         // Darts sting and pay, but a toy may not put anyone under (owner instruction
         // 2026-08-22), so their pain never reaches the knockout window.
         PainAcceptance acceptance = _knockout.RegisterPain(pain, now, countsTowardKnockout: !toyGun);
-        // Payout, harmful memory, and statistics move together through the economy service
-        // so the balance has exactly one mutator (ARCHITECTURE §11).
-        long milli = _economy.AcceptDamage(
+        long milli = AcceptDamageForBoundBuddy(
             accepted.ContentId,
             pain,
             region,
@@ -604,7 +685,7 @@ public partial class InteractionDamageComponent : Node
 
         PayoutRegion region = PayoutRegions.Of(part);
         PainAcceptance acceptance = _knockout.RegisterPain(pain, NowSeconds);
-        long milli = _economy.AcceptDamage(
+        long milli = AcceptDamageForBoundBuddy(
             contentId,
             pain,
             region,
