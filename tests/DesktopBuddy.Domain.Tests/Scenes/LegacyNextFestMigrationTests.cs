@@ -41,12 +41,30 @@ public sealed class LegacyNextFestMigrationTests
             environment,
             anchor);
 
-        Assert.Equal(first.Player, retry.Player);
+        Assert.Equal(first.Player.Revision, retry.Player.Revision);
+        Assert.Equal(first.Player.BalanceMilliCredits, retry.Player.BalanceMilliCredits);
+        Assert.Equal(first.Player.SelectedToolId, retry.Player.SelectedToolId);
+        Assert.Equal(first.Player.UnlockedContentIds, retry.Player.UnlockedContentIds);
+        Assert.Equal(first.Player.Statistics.ScoredImpacts, retry.Player.Statistics.ScoredImpacts);
+        Assert.Equal(first.Player.Statistics.Knockouts, retry.Player.Statistics.Knockouts);
+        Assert.Equal(first.Player.Statistics.CareAwards, retry.Player.Statistics.CareAwards);
+        Assert.Equal(first.Player.Statistics.EarnedMilliCredits, retry.Player.Statistics.EarnedMilliCredits);
+        Assert.Equal(first.Player.Times, retry.Player.Times);
+        Assert.Equal(first.Player.Extensions, retry.Player.Extensions);
+
         Assert.Equal(BuddyIdentityId.LegacyPrimary, first.Buddy.BuddyIdentityId);
         Assert.Equal(first.Buddy.BuddyIdentityId, retry.Buddy.BuddyIdentityId);
+        Assert.Equal(first.Buddy.Revision, retry.Buddy.Revision);
+        Assert.Equal(first.Buddy.Mood, retry.Buddy.Mood);
+        Assert.Equal(first.Buddy.Fullness, retry.Buddy.Fullness);
+        Assert.Equal(first.Buddy.HarmfulContentIds, retry.Buddy.HarmfulContentIds);
+        Assert.Equal(first.Buddy.Traits, retry.Buddy.Traits);
         Assert.Equal(characterId, first.Buddy.CharacterId);
+        Assert.Equal(characterId, retry.Buddy.CharacterId);
+
         Assert.Equal(SceneId.LegacyHome, first.Scene.SceneId);
         Assert.Equal(first.Scene.SceneId, retry.Scene.SceneId);
+        Assert.Equal(first.Scene.Name, retry.Scene.Name);
         Assert.Equal(BuddyPlacementId.LegacyPrimary, first.Scene.BuddyPlacements[0].PlacementId);
         Assert.Equal(first.Scene.BuddyPlacements[0], retry.Scene.BuddyPlacements[0]);
     }
