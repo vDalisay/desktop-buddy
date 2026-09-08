@@ -1,5 +1,6 @@
-using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence;
@@ -33,10 +34,37 @@ public sealed record RunContext(
     public bool UsesSplitSceneProgress => SceneProgress is not null;
 
     /// <summary>
+    /// Account-global runtime seam. The value is intentionally created on demand rather than cached,
+    /// so record copying cannot retain a binding for a different SceneProgress instance.
+    /// </summary>
+    public PlayerRuntimeProgressBinding PlayerProgress => CreatePlayerProgressBinding();
+
+    /// <summary>
+    /// Semantic autosave/flush seam for the active persistence model. Scene-enabled code must use
+    /// this instead of reaching through to the compatibility <see cref="SaveCoordinator"/>.
+    /// </summary>
+    public IRunProgressPersistence RunProgressPersistence => CreateRunProgressPersistence();
+
+    /// <summary>
+    /// Progress binding for the one existing production Buddy actor during the staged Scene-runtime
+    /// migration. A Scene run must contain the stable legacy-primary placement until production
+    /// multi-Buddy spawning replaces this single-actor compatibility seam.
+    /// </summary>
+    public BuddyRuntimeProgressBinding ActiveBuddyProgress
+    {
+        get
+        {
+            if (SceneProgress is null)
+                return new BuddyRuntimeProgressBinding(Progress);
+
+            SceneProgressBindingRegistry bindings = SceneProgress.CreateActiveBindings();
+            return bindings.ForPlacement(BuddyPlacementId.LegacyPrimary).Progress;
+        }
+    }
+
+    /// <summary>
     /// Creates the account-global runtime seam for a consumer that must not depend on Buddy-local
-    /// mood/hunger state merely to read or mutate wallet, unlock or lifetime progress. Call once at
-    /// composition time and retain the returned binding; this method is deliberately not a cached
-    /// property so record copying cannot carry a binding for a different SceneProgress instance.
+    /// mood/hunger state merely to read or mutate wallet, unlock or lifetime progress.
     /// </summary>
     public PlayerRuntimeProgressBinding CreatePlayerProgressBinding() =>
         SceneProgress is not null
