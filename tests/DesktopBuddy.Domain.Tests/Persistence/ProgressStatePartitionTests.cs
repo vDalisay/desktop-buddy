@@ -225,8 +225,8 @@ public sealed class ProgressStatePartitionTests
         Assert.Equal(expected.Count, actual.Count);
         foreach ((string key, TValue value) in expected)
         {
-            Assert.True(actual.TryGetValue(key, out TValue actualValue));
-            Assert.Equal(value, actualValue);
+            Assert.True(actual.ContainsKey(key));
+            Assert.Equal(value, actual[key]);
         }
     }
 }
