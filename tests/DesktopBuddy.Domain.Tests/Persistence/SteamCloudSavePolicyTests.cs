@@ -16,20 +16,27 @@ public sealed class SteamCloudSavePolicyTests
 
     [Theory]
     [InlineData("progress.json")]
+    [InlineData("progress.json.next")]
     [InlineData("work-progress.json")]
+    [InlineData("work-progress.json.next")]
     [InlineData("scene-progress.commit.json")]
     [InlineData("environment/background.png")]
-    public void Canonical_root_files_are_cloud_eligible(string relativePath) =>
+    public void Canonical_root_and_transaction_recovery_files_are_cloud_eligible(string relativePath) =>
         Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(relativePath));
 
     [Fact]
-    public void Split_buddy_and_scene_documents_are_cloud_eligible()
+    public void Split_buddy_and_scene_documents_and_transaction_recovery_are_cloud_eligible()
     {
         Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
             $"buddy-identities/{BuddyId}.json"));
+        Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"buddy-identities/{BuddyId}.json.next"));
         Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath("scenes/index.json"));
+        Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath("scenes/index.json.next"));
         Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
             $"scenes/{SceneId}/scene.json"));
+        Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"scenes/{SceneId}/scene.json.next"));
         Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
             $"scenes/{SceneId}/environment/background.png"));
     }
@@ -53,28 +60,33 @@ public sealed class SteamCloudSavePolicyTests
     [InlineData("settings.json")]
     [InlineData("progress.json.bak")]
     [InlineData("progress.json.tmp")]
-    [InlineData("progress.json.next")]
-    [InlineData("work-progress.json.next")]
+    [InlineData("progress.json.invalid-20260908")]
+    [InlineData("work-progress.json.bak")]
     [InlineData("scene-progress.commit.json.bak")]
+    [InlineData("scene-progress.commit.json.next")]
     [InlineData("shared_rooms/123/room.png")]
     [InlineData("sharing/workshop/staging/item.json")]
     [InlineData("steam_appid.txt")]
-    public void Machine_local_or_derived_files_are_not_cloud_eligible(string relativePath) =>
+    public void Machine_local_or_uncommitted_derived_files_are_not_cloud_eligible(string relativePath) =>
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(relativePath));
 
     [Fact]
-    public void Split_save_recovery_files_and_malformed_ids_are_not_cloud_eligible()
+    public void Malformed_split_paths_and_nontransaction_recovery_are_not_cloud_eligible()
     {
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
-            $"buddy-identities/{BuddyId}.json.next"));
+            $"buddy-identities/{BuddyId}.json.bak"));
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
             $"buddy-identities/not-a-guid.json"));
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
-            $"scenes/{SceneId}/scene.json.next"));
+            $"buddy-identities/not-a-guid.json.next"));
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"scenes/{SceneId}/scene.json.bak"));
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
             $"scenes/{SceneId}/environment/background.png.bak"));
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
             "scenes/not-a-guid/scene.json"));
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            "scenes/not-a-guid/scene.json.next"));
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
             $"scenes/{SceneId}/sandbox.json"));
     }
@@ -107,11 +119,16 @@ public sealed class SteamCloudSavePolicyTests
         Assert.Collection(
             rows,
             row => AssertRow(row, "DesktopBuddy", "progress.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy", "progress.json.next", recursive: false),
             row => AssertRow(row, "DesktopBuddy", "work-progress.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy", "work-progress.json.next", recursive: false),
             row => AssertRow(row, "DesktopBuddy", "scene-progress.commit.json", recursive: false),
             row => AssertRow(row, "DesktopBuddy/buddy-identities", "*.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy/buddy-identities", "*.json.next", recursive: false),
             row => AssertRow(row, "DesktopBuddy/scenes", "index.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy/scenes", "index.json.next", recursive: false),
             row => AssertRow(row, "DesktopBuddy/scenes", "scene.json", recursive: true),
+            row => AssertRow(row, "DesktopBuddy/scenes", "scene.json.next", recursive: true),
             row => AssertRow(row, "DesktopBuddy/scenes", "background.png", recursive: true),
             row => AssertRow(row, "DesktopBuddy/characters", "character.json", recursive: true),
             row => AssertRow(row, "DesktopBuddy/characters", "*.png", recursive: true),
