@@ -21,7 +21,7 @@ namespace DesktopBuddy.Persistence;
 /// legacy aggregate until their product surface is upgraded. This coordinator is the first-class
 /// injected capability for Next Fest and Full Release code.
 /// </summary>
-public sealed class SceneProgressCoordinator
+public sealed partial class SceneProgressCoordinator
 {
     public const double AutosaveSeconds = 30.0;
 
