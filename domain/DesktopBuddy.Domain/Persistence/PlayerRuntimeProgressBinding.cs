@@ -35,7 +35,8 @@ public sealed class PlayerRuntimeProgressBinding
     public string SelectedToolId => ContentIds.ForTool(SelectedTool);
     public ProgressStatistics Statistics => _player?.Statistics ?? RequireLegacy().Statistics;
     public CumulativeTimes Times => _player?.Times ?? RequireLegacy().Times;
-    public ProgressExtensionData? Extensions => _player?.Extensions ?? RequireLegacy().Extensions;
+    public ProgressExtensionData? Extensions =>
+        _player is not null ? _player.Extensions : RequireLegacy().Extensions;
 
     public bool IsUnlocked(string contentId) =>
         _player?.IsUnlocked(contentId) ?? RequireLegacy().IsToolUnlocked(contentId);
