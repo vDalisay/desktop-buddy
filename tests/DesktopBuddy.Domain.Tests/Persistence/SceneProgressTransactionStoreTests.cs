@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Scenes;
+using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Persistence;
 using Xunit;
 
@@ -20,13 +21,16 @@ public sealed class SceneProgressTransactionStoreTests
         TestGraph graph = Graph();
 
         SceneProgressCommitResult committed = await store.CommitAsync(
-            graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+            graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
         SceneProgressLoadResult loaded = await store.LoadCommittedAsync(CashPerPain);
 
         Assert.Equal(0, committed.Revision);
         Assert.True(committed.CanonicalPromotionComplete);
         Assert.Equal(0, loaded.Revision);
         Assert.Equal(2_000, loaded.Player.BalanceMilliCredits);
+        Assert.Equal(100, loaded.Work.Lifetime.KeyboardPresses);
+        Assert.Equal(50, loaded.Work.Lifetime.MouseClicks);
+        Assert.True(loaded.Work.FirstEntryGlassesGranted);
         Assert.Single(loaded.BuddyIdentities);
         Assert.Equal(15.0f, loaded.BuddyIdentities[0].Mood);
         Assert.Single(loaded.Scenes);
@@ -40,18 +44,20 @@ public sealed class SceneProgressTransactionStoreTests
         var files = new MemoryFiles();
         var store = Store(files);
         TestGraph graph = Graph();
-        await store.CommitAsync(graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+        await store.CommitAsync(graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
 
         graph.Player.Deposit(5_000);
+        graph.Work.Record(WorkActivityKind.KeyboardPress, 10);
         graph.Buddy.ApplyCareMood(20.0f);
         files.FailWriteDestination = ScenePath(graph.Scene) + ".next";
 
         await Assert.ThrowsAsync<IOException>(() => store.CommitAsync(
-            graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId));
+            graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId));
 
         SceneProgressLoadResult loaded = await store.LoadCommittedAsync(CashPerPain);
         Assert.Equal(0, loaded.Revision);
         Assert.Equal(2_000, loaded.Player.BalanceMilliCredits);
+        Assert.Equal(100, loaded.Work.Lifetime.KeyboardPresses);
         Assert.Equal(15.0f, loaded.BuddyIdentities[0].Mood);
     }
 
@@ -61,22 +67,25 @@ public sealed class SceneProgressTransactionStoreTests
         var files = new MemoryFiles();
         var store = Store(files);
         TestGraph graph = Graph();
-        await store.CommitAsync(graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+        await store.CommitAsync(graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
 
         graph.Player.Deposit(5_000);
+        graph.Work.Record(WorkActivityKind.KeyboardPress, 10);
         graph.Buddy.ApplyCareMood(20.0f);
         files.FailReplaceDestination = ProgressPath;
 
         SceneProgressCommitResult committed = await store.CommitAsync(
-            graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+            graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
         SceneProgressLoadResult loaded = await store.LoadCommittedAsync(CashPerPain);
 
         Assert.Equal(1, committed.Revision);
         Assert.False(committed.CanonicalPromotionComplete);
         Assert.Equal(1, loaded.Revision);
         Assert.Equal(7_000, loaded.Player.BalanceMilliCredits);
+        Assert.Equal(110, loaded.Work.Lifetime.KeyboardPresses);
         Assert.Equal(35.0f, loaded.BuddyIdentities[0].Mood);
         Assert.True(files.Exists(ProgressPath + ".next"));
+        Assert.True(files.Exists(WorkPath + ".next"));
     }
 
     [Fact]
@@ -85,30 +94,35 @@ public sealed class SceneProgressTransactionStoreTests
         var files = new MemoryFiles();
         var store = Store(files);
         TestGraph graph = Graph();
-        await store.CommitAsync(graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+        await store.CommitAsync(graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
 
         graph.Player.Deposit(1_000);
+        graph.Work.Record(WorkActivityKind.MouseClick, 5);
         files.FailReplaceDestination = ProgressPath;
         SceneProgressCommitResult partial = await store.CommitAsync(
-            graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+            graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
         Assert.False(partial.CanonicalPromotionComplete);
 
         files.FailReplaceDestination = null;
         graph.Player.Deposit(2_000);
+        graph.Work.Record(WorkActivityKind.MouseClick, 7);
         SceneProgressCommitResult next = await store.CommitAsync(
-            graph.Player, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
+            graph.Player, graph.Work, [graph.Buddy], [graph.Scene], graph.Scene.SceneId);
         SceneProgressLoadResult loaded = await store.LoadCommittedAsync(CashPerPain);
 
         Assert.Equal(2, next.Revision);
         Assert.True(next.CanonicalPromotionComplete);
         Assert.Equal(5_000, loaded.Player.BalanceMilliCredits);
+        Assert.Equal(62, loaded.Work.Lifetime.MouseClicks);
         Assert.False(files.Exists(ProgressPath + ".next"));
+        Assert.False(files.Exists(WorkPath + ".next"));
     }
 
     private const double CashPerPain = 0.01;
     private static readonly string SaveRoot =
         OperatingSystem.IsWindows() ? @"C:\scene-progress-transaction-test" : "/scene-progress-transaction-test";
     private static readonly string ProgressPath = Path.Combine(SaveRoot, SteamCloudSavePolicy.ProgressFileName);
+    private static readonly string WorkPath = Resolve(SceneStoragePaths.WorkProgress);
 
     private static SceneProgressTransactionStore Store(MemoryFiles files) => new(SaveRoot, files);
 
@@ -123,8 +137,14 @@ public sealed class SceneProgressTransactionStoreTests
             activeCharacterId: null,
             legacyEnvironment: new EnvironmentLayout([]),
             buddyPosition: new CanonicalRoomPosition(0.5f, 0.5f));
+        var work = new WorkProgressState(
+            lifetime: new WorkCounterSnapshot(100, 50),
+            claimedLifetimeMilestoneIds: ["work.test.lifetime"],
+            firstEntryGlassesGranted: true,
+            revision: 3);
         return new TestGraph(
             new PlayerProgressState(CashPerPain, projection.Player),
+            work,
             new BuddyIdentityState(projection.Buddy),
             projection.Scene);
     }
@@ -137,6 +157,7 @@ public sealed class SceneProgressTransactionStoreTests
 
     private sealed record TestGraph(
         PlayerProgressState Player,
+        WorkProgressState Work,
         BuddyIdentityState Buddy,
         SceneDocument Scene);
 

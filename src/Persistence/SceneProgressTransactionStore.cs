@@ -9,15 +9,16 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Scenes;
+using DesktopBuddy.Domain.Work;
 
 namespace DesktopBuddy.Persistence;
 
 /// <summary>
-/// One crash-consistent commit boundary for account progress, Buddy identities and Scene documents.
-/// Every new document is staged at its canonical path plus <c>.next</c>. The manifest is then replaced
-/// atomically and becomes the commit point. Promotion to canonical paths happens afterwards; a loader
-/// resolves each manifest hash from either the canonical file or its staged sibling, so a process
-/// crash during promotion cannot expose a mixed generation.
+/// One crash-consistent commit boundary for account progress, Work progress, Buddy identities and
+/// Scene documents. Every new document is staged at its canonical path plus <c>.next</c>. The
+/// manifest is then replaced atomically and becomes the commit point. Promotion to canonical paths
+/// happens afterwards; a loader resolves each manifest hash from either the canonical file or its
+/// staged sibling, so a process crash during promotion cannot expose a mixed generation.
 /// </summary>
 public sealed class SceneProgressTransactionStore
 {
@@ -42,14 +43,22 @@ public sealed class SceneProgressTransactionStore
         _manifestPath = Path.Combine(_saveRoot, ManifestFileName);
     }
 
+    /// <summary>
+    /// True when a Scene progress manifest exists. Callers must still load and validate it before
+    /// treating the generation as usable; this is only the format discriminator used at bootstrap.
+    /// </summary>
+    public bool HasCommittedGeneration => _files.Exists(_manifestPath);
+
     public async Task<SceneProgressCommitResult> CommitAsync(
         PlayerProgressState player,
+        WorkProgressState work,
         IReadOnlyCollection<BuddyIdentityState> buddyIdentities,
         IReadOnlyList<SceneDocument> scenes,
         SceneId activeSceneId,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(player);
+        ArgumentNullException.ThrowIfNull(work);
         ArgumentNullException.ThrowIfNull(buddyIdentities);
         ArgumentNullException.ThrowIfNull(scenes);
 
@@ -58,7 +67,7 @@ public sealed class SceneProgressTransactionStore
         await PersistenceWork.Run(EnsureCurrentCommitPromoted, token).ConfigureAwait(false);
 
         long revision = ReadCurrentManifest()?.Revision + 1 ?? 0;
-        PreparedCommit prepared = Prepare(player, buddyIdentities, scenes, activeSceneId, revision);
+        PreparedCommit prepared = Prepare(player, work, buddyIdentities, scenes, activeSceneId, revision);
 
         // Prepare phase: no authoritative pointer changes here. A crash/failure leaves the previous
         // manifest and its canonical generation untouched; abandoned .next files are overwritten by
@@ -110,6 +119,12 @@ public sealed class SceneProgressTransactionStore
             throw new InvalidDataException($"Committed player progress is invalid: {playerDecoded.Detail}");
         var player = new PlayerProgressState(cashPerPain, playerDecoded.Snapshot.Value);
 
+        string workJson = ReadCommitted(WorkProgressPath(), manifest.WorkSha256);
+        WorkProgressDecodeResult workDecoded = WorkProgressSavePolicy.Decode(workJson);
+        if (workDecoded.Status != SaveDecodeStatus.Valid || workDecoded.State is null)
+            throw new InvalidDataException($"Committed Work progress is invalid: {workDecoded.Detail}");
+        WorkProgressState work = workDecoded.State;
+
         string indexJson = ReadCommitted(SceneIndexPath(), manifest.SceneIndexSha256);
         SceneIndexDecodeResult indexDecoded = SceneSavePolicy.DecodeIndex(indexJson);
         if (indexDecoded.Status != SaveDecodeStatus.Valid || indexDecoded.Index is null)
@@ -144,11 +159,12 @@ public sealed class SceneProgressTransactionStore
         }
 
         ValidateLoadedGraph(manifest, index, scenes, buddyIds);
-        return new SceneProgressLoadResult(player, buddies, scenes, index, manifest.Revision);
+        return new SceneProgressLoadResult(player, work, buddies, scenes, index, manifest.Revision);
     }
 
     private PreparedCommit Prepare(
         PlayerProgressState player,
+        WorkProgressState work,
         IReadOnlyCollection<BuddyIdentityState> buddies,
         IReadOnlyList<SceneDocument> scenes,
         SceneId activeSceneId,
@@ -185,9 +201,11 @@ public sealed class SceneProgressTransactionStore
             }
         }
 
-        var documents = new List<PreparedDocument>(2 + scenes.Count + buddies.Count);
+        var documents = new List<PreparedDocument>(3 + scenes.Count + buddies.Count);
         PreparedDocument playerDocument = PrepareDocument(ProgressPath(), PlayerProgressSavePolicy.Serialize(player));
         documents.Add(playerDocument);
+        PreparedDocument workDocument = PrepareDocument(WorkProgressPath(), WorkProgressSavePolicy.Serialize(work));
+        documents.Add(workDocument);
 
         var buddyEntries = new List<SceneProgressBuddyCommit>(buddyMap.Count);
         foreach (BuddyIdentityState buddy in buddyMap.Values.OrderBy(value => value.BuddyIdentityId))
@@ -218,6 +236,7 @@ public sealed class SceneProgressTransactionStore
         {
             Revision = revision,
             PlayerSha256 = playerDocument.Sha256,
+            WorkSha256 = workDocument.Sha256,
             SceneIndexSha256 = indexDocument.Sha256,
             Scenes = sceneEntries,
             Buddies = buddyEntries,
@@ -234,6 +253,7 @@ public sealed class SceneProgressTransactionStore
         manifest.Validate();
 
         Promote(ProgressPath(), manifest.PlayerSha256);
+        Promote(WorkProgressPath(), manifest.WorkSha256);
         Promote(SceneIndexPath(), manifest.SceneIndexSha256);
         foreach (SceneProgressSceneCommit scene in manifest.Scenes)
             Promote(SceneDocumentPath(SceneId.From(scene.SceneId)), scene.Sha256);
@@ -319,6 +339,7 @@ public sealed class SceneProgressTransactionStore
     }
 
     private string ProgressPath() => Path.Combine(_saveRoot, SteamCloudSavePolicy.ProgressFileName);
+    private string WorkProgressPath() => ResolveRelative(SceneStoragePaths.WorkProgress);
     private string SceneIndexPath() => ResolveRelative(SceneStoragePaths.SceneIndex);
     private string SceneDocumentPath(SceneId id) => ResolveRelative(SceneStoragePaths.SceneDocument(id));
     private string BuddyIdentityPath(BuddyIdentityId id) => ResolveRelative(SceneStoragePaths.BuddyIdentity(id));
@@ -374,6 +395,7 @@ public sealed record SceneProgressCommitResult(long Revision, bool CanonicalProm
 
 public sealed record SceneProgressLoadResult(
     PlayerProgressState Player,
+    WorkProgressState Work,
     IReadOnlyList<BuddyIdentityState> BuddyIdentities,
     IReadOnlyList<SceneDocument> Scenes,
     SceneIndexSave Index,
@@ -384,11 +406,12 @@ public sealed record SceneProgressBuddyCommit(Guid BuddyIdentityId, string Sha25
 
 public sealed record SceneProgressCommitManifest
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public long Revision { get; init; }
     public string PlayerSha256 { get; init; } = string.Empty;
+    public string WorkSha256 { get; init; } = string.Empty;
     public string SceneIndexSha256 { get; init; } = string.Empty;
     public List<SceneProgressSceneCommit> Scenes { get; init; } = [];
     public List<SceneProgressBuddyCommit> Buddies { get; init; } = [];
@@ -396,7 +419,7 @@ public sealed record SceneProgressCommitManifest
     public void Validate()
     {
         if (SchemaVersion != CurrentSchemaVersion || Revision < 0 ||
-            !IsSha256(PlayerSha256) || !IsSha256(SceneIndexSha256) ||
+            !IsSha256(PlayerSha256) || !IsSha256(WorkSha256) || !IsSha256(SceneIndexSha256) ||
             Scenes is null || Scenes.Count == 0 || Buddies is null)
             throw new InvalidDataException("Scene progress commit manifest is invalid.");
 

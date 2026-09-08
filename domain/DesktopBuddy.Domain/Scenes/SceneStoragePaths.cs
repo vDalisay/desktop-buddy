@@ -12,6 +12,7 @@ public static class SceneStoragePaths
     public const string ScenesRoot = "scenes";
     public const string SceneIndex = "scenes/index.json";
     public const string BuddyIdentitiesRoot = "buddy-identities";
+    public const string WorkProgress = "work-progress.json";
 
     public static string SceneRoot(SceneId sceneId)
     {
