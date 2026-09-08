@@ -1103,6 +1103,34 @@ Do not begin broad systemic features in a way that destabilizes the Initial Demo
 
 Status effects are secondary to Scenes, multi-Buddy, construction, Blueprints and Creator Studio Lite; do not let optional effect polish hold the event build hostage.
 
+### Immediate next step — Scene persistence audit follow-up (2026-09-08)
+
+**OPEN — complete before activating split Scene persistence or advancing the production multi-Buddy integration.** The owner requested this follow-up for the implementing agent. It closes correctness gaps in Phase 1 steps 4–6; it does not widen product scope.
+
+Evidence: the audit examined `9094f33e`; the follow-up was refreshed after fetching and pulling origin through `ac46db25`. That newer head adds `SceneProgressBootstrapCoordinator`, split-safe `RunContext` bindings, and managed bootstrap/compatibility tests. Reuse those additions rather than introducing another coordinator. Production `Bootstrap` still constructs the legacy store directly. Recheck the latest head before editing because implementation is ongoing.
+
+1. **[P1] Wire save-format selection before any legacy decode or write.**
+   - Concern: `src/App/Bootstrap.cs` constructs `JsonProgressStore` directly, bypassing `LegacyProgressCompatibilityStore`. A targeted check confirmed `ProgressSavePolicy.Decode` accepts serialized account-only `PlayerProgressSave` as valid legacy data. Subsequent legacy writes can overwrite the account document and invalidate the committed Scene graph.
+   - Proposed fix: inspect the Scene manifest before loading legacy semantic progress. For Scene-enabled builds, use the existing `SceneProgressBootstrapCoordinator` to load the committed graph or migrate genuine legacy data. Do not first decode a committed account document as legacy merely to satisfy the coordinator's legacy argument; adjust that API minimally if needed. For Initial Demo/itch/fallback, inject `LegacyProgressCompatibilityStore` and preserve the existing safe refusal behavior. Route the resulting account, Work, actor bindings and saves through the existing split seams, with no parallel legacy writer for the same files. Keep settings independent.
+   - Acceptance: production-bootstrap coverage proves committed Scene data bypasses legacy decode; Initial Demo refuses the richer format without modifying any semantic file; a genuine Initial Demo save migrates once and restarts with wallet, ownership, Work, identity and Scene state intact. Include an incomplete-promotion generation and a malformed manifest; neither may fall through to destructive legacy recovery.
+
+2. **[P1] Make the Cloud save generation self-contained after interrupted promotion.**
+   - Concern: `SteamCloudSavePolicy` includes `scene-progress.commit.json` but excludes `.next`. `SceneProgressTransactionStore` intentionally reports a committed generation as successful even when its newest document bytes remain only in `.next`. Copying only Cloud-eligible files then leaves another machine with a manifest whose hashes cannot be resolved.
+   - Proposed fix: keep one transaction format and make every document needed by its committed manifest available through the Cloud boundary, including recovery bytes when canonical promotion is incomplete. Evaluate the smallest safe whitelist/configuration change against actual Auto-Cloud matching; do not assume an in-process eligibility predicate filters Steam's files. Alternatively, synchronize an explicitly durable, complete generation. A clean-exit promotion alone is insufficient because crashes must also recover. In the new bootstrap coordinator, do not report `CanonicalPromotionComplete: true` merely because loading succeeded: loading can resolve staged bytes without promoting them.
+   - Acceptance: extend the existing injected promotion-failure test into a simulated Cloud copy to an empty destination, then load the exact committed account/Work/Buddy/Scene values there. Cover interruption after manifest commit and midway through promotion, and verify configured Cloud rows include the required recovery paths while excluding unrelated temporary/quarantined content. Keep live Steam Cloud cross-machine validation explicitly external until run.
+
+3. **[P2] Preserve null extensions in both split progress bindings.**
+   - Concern: `PlayerRuntimeProgressBinding.Extensions` and `BuddyRuntimeProgressBinding.Extensions` use `?? RequireLegacy()` to select the backend. A valid split player with null extensions therefore throws `InvalidOperationException`; character-slot entitlement reads are one affected consumer.
+   - Proposed fix: select the backend by whether the split binding exists, not whether its nullable `Extensions` value exists. Return null unchanged. Apply the same correction to both bindings; no new abstraction is needed.
+   - Acceptance: tests read null extensions through both split bindings without throwing, then set/read an extension successfully. Retain legacy behavior and check character-slot capacity with no extension present.
+
+4. **[P2] Persist a fresh Scene coordinator's initial generation.**
+   - Concern: the `SceneProgressCoordinator` constructor initializes saved revisions to current revisions even when `committedRevision == -1`. A targeted check confirmed `FlushAsync(force: true)` on a fresh coordinator with an empty store creates no manifest.
+   - Proposed fix: treat an uncommitted generation as dirty until its first successful commit, using the existing committed-revision state where possible. Already-loaded or successfully migrated generations should remain clean. A failed initial commit must remain retryable.
+   - Acceptance: force-flush a fresh unchanged graph and reload it; verify failure/retry; verify an unchanged loaded generation does not generate redundant commits. The new bootstrap migration normally commits before constructing its coordinator, but that does not fix the public fresh-coordinator contract.
+
+**Handoff gate:** record fixes and regression results against the implementing head, run the complete managed suite and solution build, then run the relevant Godot bootstrap/migration/restart journeys for the production wiring. The original audit passed 1,691 managed tests and built with 12 CA2255 warnings; those results predate the refreshed origin head and are not verification of these fixes. No interactive or live Cloud acceptance was claimed. Do not mark Scene/multi-Buddy completion from managed seams alone: the current host still wraps the existing single Buddy, and cast UI, tabs, switching and Scene-owned environment remain subsequent integration work.
+
 ## Phase 2 — Full Release breadth
 
 On the same architecture:
