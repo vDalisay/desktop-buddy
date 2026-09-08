@@ -40,8 +40,19 @@ public partial class ShopPanel : PanelContainer
         BuddyProgressState progress,
         EconomyService economy,
         ToolCatalogue catalogue,
-        InteractionDamageComponent pipeline) =>
-        Configure(new PlayerRuntimeProgressBinding(progress), economy, catalogue, pipeline);
+        InteractionDamageComponent pipeline)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        ArgumentNullException.ThrowIfNull(pipeline);
+        // CharacterEditorHost still has a compatibility aggregate in its constructor surface. In a
+        // composed Scene run the pipeline is already initialized against the authoritative account,
+        // so prefer that validated binding and never let purchases/rendering observe stale legacy
+        // state. Uninitialized isolated UI fixtures retain the historical aggregate path.
+        PlayerRuntimeProgressBinding binding = pipeline.IsInitialized
+            ? pipeline.CreatePlayerProgressBinding()
+            : new PlayerRuntimeProgressBinding(progress);
+        Configure(binding, economy, catalogue, pipeline);
+    }
 
     public void Configure(
         PlayerRuntimeProgressBinding progress,
@@ -172,7 +183,7 @@ public partial class ShopPanel : PanelContainer
             bool owned = row.Entry.IsStarting || _progress.IsUnlocked(row.Entry.ContentId);
             bool active = _progress.SelectedTool == row.Tool;
             bool affordable = _progress.BalanceMilliCredits >= row.Entry.PriceMilliCredits;
-            string name = ContentDisplayName.For(row.Entry.ContentId);
+            string name = ContentDisplayName.For(entry: row.Entry.ContentId);
             string price = ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
 
             row.Price.Text = owned ? string.Empty : price;
