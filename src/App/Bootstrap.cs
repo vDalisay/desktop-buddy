@@ -318,19 +318,6 @@ public partial class Bootstrap : Node
 
         AddChild(sandbox);
 
-        if (DemoScope.IncludesAchievements)
-        {
-            if (sceneProgress is null)
-                throw new InvalidOperationException("Achievement-enabled build must use Scene-owned progress.");
-
-            var achievements = new DesktopBuddy.Achievements.AchievementBootstrap
-            {
-                Name = nameof(DesktopBuddy.Achievements.AchievementBootstrap),
-            };
-            achievements.Configure(sandbox, context);
-            AddChild(achievements);
-        }
-
         TutorialStepIds.Active = DemoScope.TutorialSteps;
         if (TutorialStepIds.Active.Count < TutorialStepIds.Ordered.Count)
         {
@@ -341,15 +328,30 @@ public partial class Bootstrap : Node
         }
 
 #if !DESKTOP_BUDDY_PUBLIC_WEB
+        Node? initializedSteamBridge = null;
         if (DemoScope.IncludesWorkshop)
         {
             var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
             workshop.Configure(characters, characterSelection, sandbox, environmentCustomization, commandRegistrar);
             AddChild(workshop);
+            initializedSteamBridge = workshop.InitializedSteamBridge;
         }
         else
         {
             Log.Info(Category, "Steam Workshop excluded by this build's distribution scope.");
+        }
+
+        if (DemoScope.IncludesAchievements)
+        {
+            if (sceneProgress is null)
+                throw new InvalidOperationException("Achievement-enabled build must use Scene-owned progress.");
+
+            var achievements = new DesktopBuddy.Achievements.AchievementBootstrap
+            {
+                Name = nameof(DesktopBuddy.Achievements.AchievementBootstrap),
+            };
+            achievements.Configure(sandbox, context, initializedSteamBridge);
+            AddChild(achievements);
         }
 #endif
 
