@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+#if DESKTOP_BUDDY_ACHIEVEMENTS
 using DesktopBuddy.Domain.Achievements;
+#endif
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
@@ -18,10 +20,9 @@ namespace DesktopBuddy.App;
 /// "Reset Progress": everything the player has built goes back to a first run — the gameplay
 /// save, Work progression, the decorated room, and the characters they made (owner instruction
 /// 2026-08-21). Machine-local settings are kept because they are preferences rather than progress.
-/// Already-earned achievement qualification is also retained: a local reset cannot revoke an
-/// achievement Steam may already have awarded, and Demo-qualified achievements still need to
-/// reconcile when the player later launches the full game. Partial achievement counters and
-/// rule-specific working values reset with ordinary progress.
+/// In achievement-enabled builds, already-earned qualification is retained because a local reset
+/// cannot revoke an award Steam may already have granted. Builds that do not ship achievements do
+/// not reference or preserve achievement-specific state.
 /// </summary>
 public static class ProgressReset
 {
@@ -59,8 +60,12 @@ public static class ProgressReset
         CharacterSelectionSnapshot? selectionBefore = characterSelection?.Snapshot();
         WorkProgressSnapshot? workBefore = workProgress?.Snapshot();
         EnvironmentProgressSnapshot? environmentBefore = environmentProgress?.Snapshot();
+#if DESKTOP_BUDDY_ACHIEVEMENTS
         IReadOnlyDictionary<string, string> achievementValues =
             AchievementProgressStore.PreserveQualifiedAchievementValues(before.Extensions);
+#else
+        IReadOnlyDictionary<string, string> achievementValues = new Dictionary<string, string>();
+#endif
         ProgressSnapshot fresh = CreateNewProgress(progress.CashPerPain).Snapshot();
         progress.Adopt(fresh with
         {
