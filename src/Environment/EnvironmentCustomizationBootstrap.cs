@@ -113,8 +113,13 @@ public partial class EnvironmentCustomizationBootstrap : Node
         GetTree().Root.AddChild(_backgroundPresenter);
 
         // The stored room painting is a local PNG asset; a missing or unreadable one simply leaves
-        // the room blank, so composition never depends on it.
-        _paintStore = new EnvironmentPaintStore(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"));
+        // the room blank, so composition never depends on it. Scene-enabled runs derive the path
+        // solely from the stable active Scene ID; Initial Demo/fixtures retain the global path.
+        var paintFiles = new CharacterFileSystem();
+        string saveRoot = ProjectSettings.GlobalizePath("user://");
+        _paintStore = _sandbox?.SceneProgress is { } sceneProgress
+            ? EnvironmentPaintStore.ForScene(paintFiles, saveRoot, sceneProgress.ActiveSceneId)
+            : new EnvironmentPaintStore(paintFiles, saveRoot);
         if (_paintStore.Load() is byte[] painted) _backgroundPresenter.Canvas.Replace(painted);
         _backgroundEditor = new EnvironmentBackgroundEditor { Name = nameof(EnvironmentBackgroundEditor) };
         _backgroundEditor.Configure(
