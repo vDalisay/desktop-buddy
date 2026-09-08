@@ -13,43 +13,6 @@
   </PropertyGroup>
 
   <!--
-    Achievement content is a compile-time distribution capability, not a Godot runtime flag.
-
-      itch.io                              -> excluded
-      Initial Steam Demo                   -> excluded
-      Steam Next Fest Demo                 -> included (local qualification only)
-      Full Release                         -> included (publishes to the full-game AppID)
-
-    The distribution hardening branch owns the broader build-profile/manifest work. These property
-    names intentionally match that direction: Steam Demo is the family, Next Fest is the promoted
-    Demo variant. Developer/test builds keep achievements unless a scope is explicitly selected.
-
-    net10.0 is also fail-closed because the disposable itch.io Web project is currently the only
-    net10.0 game build. This makes the existing Web workflow safe even before the broader profile
-    branch supplies DesktopBuddyItchScope explicitly.
-  -->
-  <PropertyGroup>
-    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND ('$(DesktopBuddyItchScope)' == 'true' OR '$(TargetFramework)' == 'net10.0') ">false</DesktopBuddyAchievementsScope>
-    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
-    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
-  </PropertyGroup>
-
-  <PropertyGroup Condition=" '$(DesktopBuddyAchievementsScope)' == 'true' ">
-    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ACHIEVEMENTS</DefineConstants>
-  </PropertyGroup>
-
-  <!--
-    Low-scope builds physically omit the entire first-party achievement runtime plus the Steam
-    achievement adapter. Shared Workshop composition uses the compile constant and therefore has no
-    reference to these types when the capability is absent. Editing Godot feature tags in an
-    exported PCK cannot materialize code that was never compiled.
-  -->
-  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' != 'true' ">
-    <Compile Remove="src/Achievements/**/*.cs" />
-    <Compile Remove="src/Platform/Steam/GodotSteamAchievementRemote.cs" />
-  </ItemGroup>
-
-  <!--
     Godot's experimental static-LibGodot Web exporter publishes the game as a browser-wasm
     application. Keep the native/desktop project unchanged, but enable the fork's required
     Web AOT path whenever Godot targets Web.
@@ -65,6 +28,82 @@
     debug maps and symbols, and keep WebCIL packaging. This cannot make client-delivered WASM
     secret, but it removes the easy managed-code/debugging path without changing native builds.
   -->
+  <!--
+    The reduced itch.io distribution. itch is web-only — CI rewrites this project to net10.0 for
+    that export and it is the only Web preset — so the web target is what selects the reduced
+    scope, and DESKTOP_BUDDY_PUBLIC_WEB is its compile constant (owner confirmation 2026-09-07).
+
+    Set this property directly to compile the same reduced surface on the normal desktop target:
+
+        dotnet build DesktopBuddy.sln -p:DesktopBuddyItchScope=true
+
+    That is the only way to prove the #if-guarded code still compiles without the excluded
+    subsystems, short of the pinned Web fork the real export needs.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyItchScope Condition=" '$(DesktopBuddyItchScope)' == '' AND '$(TargetFramework)' == 'net10.0' ">true</DesktopBuddyItchScope>
+    <DesktopBuddyItchScope Condition=" '$(DesktopBuddyItchScope)' == '' ">false</DesktopBuddyItchScope>
+  </PropertyGroup>
+
+  <!--
+    Achievement content is a compile-time distribution capability, not a Godot runtime flag.
+
+      itch.io                              -> excluded
+      Initial Steam Demo                   -> excluded
+      Steam Next Fest Demo                 -> included (local qualification only)
+      Full Release                         -> included (publishes to the full-game AppID)
+
+    Developer/test builds keep achievements unless a distribution scope explicitly removes them.
+    The itch scope is evaluated above so both the real net10.0 export and explicit hardened-scope
+    validation fail closed before achievement source selection is evaluated.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND ('$(DesktopBuddyItchScope)' == 'true' OR '$(TargetFramework)' == 'net10.0') ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyAchievementsScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ACHIEVEMENTS</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+    Low-scope builds physically omit the first-party achievement runtime plus its Steam adapter.
+    Shared Workshop composition is compile-gated, so editing exported feature tags cannot restore
+    code that was never compiled into the distribution.
+  -->
+  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' != 'true' ">
+    <Compile Remove="src/Achievements/**/*.cs" />
+    <Compile Remove="src/Platform/Steam/GodotSteamAchievementRemote.cs" />
+  </ItemGroup>
+
+  <!--
+    A build that goes to players. Godot's export-release path compiles ExportRelease, so every
+    Steam Demo, Full Release and itch package is one; editor runs, `dotnet build` and the whole
+    scenario/journey suite are not, and keep the developer tree.
+
+    This exists because the developer scenario tree was shipping in the Windows builds. It is not
+    dead weight there, it is a live unlock: Bootstrap routes a scenario argument to the TestRunner,
+    and BuddyStudioUiCompositionScenario sets DemoScope.FullReleaseOverride = true. A Demo player
+    could open full-release content from the command line of the shipped exe.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyShippingBuild Condition=" '$(DesktopBuddyShippingBuild)' == '' AND '$(Configuration)' == 'ExportRelease' ">true</DesktopBuddyShippingBuild>
+    <DesktopBuddyShippingBuild Condition=" '$(DesktopBuddyShippingBuild)' == '' ">false</DesktopBuddyShippingBuild>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_NO_DEV_TOOLS</DefineConstants>
+  </PropertyGroup>
+
+  <ItemGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' ">
+    <Compile Remove="src/Testing/**/*.cs" />
+  </ItemGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_PUBLIC_WEB</DefineConstants>
+  </PropertyGroup>
+
   <PropertyGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
     <PublishTrimmed>true</PublishTrimmed>
     <TrimMode>full</TrimMode>
@@ -82,12 +121,67 @@
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_PUBLIC_WEB</DefineConstants>
   </PropertyGroup>
 
-  <!-- Developer-only scenarios must not be compiled into the public browser assembly. -->
-  <ItemGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
-    <Compile Remove="src/Testing/**/*.cs" />
+  <!--
+    Source the reduced distribution does not ship. Held back at compile time, not by a runtime
+    boolean: feature tags live in the exported project settings inside an unencrypted .pck, so a
+    gate that only switches a shipped feature off is a data edit away from being switched back on
+    (see docs/ITCH_HARDENING_PLAN_2026-09-07.md).
+
+    Buddy Studio's folder is deliberately split rather than globbed. The workspace UI goes; the
+    cosmetic data types beside it stay, because the buddy still wears and saves cosmetics on itch —
+    BuddyGeneratedCosmeticRegistry and the two GeneratedBuddyCosmetic*Resource types are used by the
+    renderer, the editor session and character persistence. New Studio UI files belong on this list.
+  -->
+  <ItemGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">
+    <!-- Buddy Studio: workspace UI only. -->
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.CaptureStorePolish.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.Generated.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioWorkspace.PreviewNavigation.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioBootstrap.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioStartupProbe.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStudioThumbnailCache.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/BuddyStyleTastes.cs" />
+    <Compile Remove="src/CharacterEditor/BuddyStudio/CharacterEditorHost.BuddyStudio.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Studio.cs" />
+
+    <!--
+      Paint Room and Room Decorator: the whole folder. EnvironmentCustomizationBootstrap already
+      returned early under the itch scope, so none of it ran there — no decoration layer and no
+      background presenter was ever constructed. Removing it changes nothing at runtime and takes
+      the room-editing code and the decoration catalogue out of the assembly.
+    -->
+    <Compile Remove="src/Environment/**/*.cs" />
+
+    <!--
+      Steam Workshop. Remove the UI/composition, its staging/persistence implementation, and the
+      Steam transport layer. Leaving Platform/Steam compiled would still ship the real Workshop
+      client even though the visible Workshop surface had been removed.
+    -->
+    <Compile Remove="src/Sharing/**/*.cs" />
+    <Compile Remove="src/Persistence/Sharing/**/*.cs" />
+    <Compile Remove="src/Platform/Steam/**/*.cs" />
+
+    <!--
+      Work Mode. Needs real OS transparent windows, which a browser cannot provide, and the itch
+      scope has always hidden it — Bootstrap.CharacterEditor already skipped its coordinator and
+      ItchDistributionScopeBootstrap hid the command button after the fact.
+    -->
+    <Compile Remove="src/Work/**/*.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Work.cs" />
+
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.Background.cs" />
+    <Compile Remove="src/Buddy/Behavior/RoomInterestBootstrap.Environment.cs" />
+  </ItemGroup>
+
+  <!-- The "no Buddy Studio" half of that seam is the one build that must not see both. -->
+  <ItemGroup Condition=" '$(DesktopBuddyItchScope)' != 'true' ">
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.StudioAbsent.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.BackgroundAbsent.cs" />
+    <Compile Remove="src/Buddy/Behavior/RoomInterestBootstrap.EnvironmentAbsent.cs" />
+    <Compile Remove="src/Onboarding/FirstSessionGuidanceController.WorkAbsent.cs" />
   </ItemGroup>
 
   <PropertyGroup>
@@ -96,10 +190,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Command-line distribution properties are MSBuild global properties and naturally flow to
-         referenced projects. Do not use AdditionalProperties here: the solution also builds the
-         domain project directly, and a second property-qualified instance would race the same
-         bin/obj outputs during parallel solution builds. -->
     <ProjectReference Include="domain\DesktopBuddy.Domain\DesktopBuddy.Domain.csproj" />
     <ProjectReference Include="shared\DesktopBuddy.Visuals\DesktopBuddy.Visuals.csproj" />
   </ItemGroup>
