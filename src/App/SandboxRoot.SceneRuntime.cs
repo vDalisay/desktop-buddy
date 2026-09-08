@@ -41,13 +41,14 @@ public partial class SandboxRoot
         }
 
         SceneDocument scene;
+        SceneProgressBindingRegistry? progressBindings = null;
         BuddyPlacementId placementId = BuddyPlacementId.LegacyPrimary;
         BuddyIdentityId buddyIdentityId = BuddyIdentityId.LegacyPrimary;
 
         if (_runContext?.SceneProgress is { } sceneProgress)
         {
-            SceneProgressBindingRegistry bindings = sceneProgress.CreateActiveBindings();
-            SceneBuddyProgressBinding binding = bindings.ForPlacement(BuddyPlacementId.LegacyPrimary);
+            progressBindings = sceneProgress.CreateActiveBindings();
+            SceneBuddyProgressBinding binding = progressBindings.ForPlacement(BuddyPlacementId.LegacyPrimary);
             scene = sceneProgress.ActiveScene;
             placementId = binding.Placement.PlacementId;
             buddyIdentityId = binding.Placement.BuddyIdentityId;
@@ -71,7 +72,9 @@ public partial class SandboxRoot
             ToolReactions,
             Reactions,
             VisualPresenter);
-        _sceneRuntime = new SceneRuntimeHost(scene, [actor]);
+        _sceneRuntime = progressBindings is not null
+            ? new SceneRuntimeHost(progressBindings, [actor])
+            : new SceneRuntimeHost(scene, [actor]);
     }
 
     private void CaptureBuddyTickSnapshot()
