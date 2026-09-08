@@ -16,6 +16,21 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
+  <!--
+    Keep this standalone rule identical to the game project's derived scope so direct domain builds
+    and scoped game builds agree. The game ProjectReference also forwards the resolved value.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddyItchScope)' == 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
+  </PropertyGroup>
+
+  <!-- No achievement IDs, rules, counters or reconciliation code exists in low-scope domain DLLs. -->
+  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' != 'true' ">
+    <Compile Remove="Achievements/**/*.cs" />
+  </ItemGroup>
+
   <!-- The disposable itch.io Web project is the only net10.0 variant. Do not ship the
        developer economy benchmark/calibration implementation or its symbol information. -->
   <PropertyGroup Condition=" '$(TargetFramework)' == 'net10.0' ">
