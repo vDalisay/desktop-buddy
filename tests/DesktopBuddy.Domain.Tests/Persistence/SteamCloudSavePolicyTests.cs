@@ -11,12 +11,28 @@ namespace DesktopBuddy.Domain.Tests.Persistence;
 public sealed class SteamCloudSavePolicyTests
 {
     private static readonly string CharacterId = Guid.Parse("11111111-2222-3333-4444-555555555555").ToString("N");
+    private static readonly string BuddyId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").ToString("N");
+    private static readonly string SceneId = Guid.Parse("12345678-1234-5678-9abc-def012345678").ToString("N");
 
     [Theory]
     [InlineData("progress.json")]
+    [InlineData("work-progress.json")]
+    [InlineData("scene-progress.commit.json")]
     [InlineData("environment/background.png")]
     public void Canonical_root_files_are_cloud_eligible(string relativePath) =>
         Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(relativePath));
+
+    [Fact]
+    public void Split_buddy_and_scene_documents_are_cloud_eligible()
+    {
+        Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"buddy-identities/{BuddyId}.json"));
+        Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath("scenes/index.json"));
+        Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"scenes/{SceneId}/scene.json"));
+        Assert.True(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"scenes/{SceneId}/environment/background.png"));
+    }
 
     [Theory]
     [InlineData("head.png")]
@@ -37,11 +53,31 @@ public sealed class SteamCloudSavePolicyTests
     [InlineData("settings.json")]
     [InlineData("progress.json.bak")]
     [InlineData("progress.json.tmp")]
+    [InlineData("progress.json.next")]
+    [InlineData("work-progress.json.next")]
+    [InlineData("scene-progress.commit.json.bak")]
     [InlineData("shared_rooms/123/room.png")]
     [InlineData("sharing/workshop/staging/item.json")]
     [InlineData("steam_appid.txt")]
     public void Machine_local_or_derived_files_are_not_cloud_eligible(string relativePath) =>
         Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(relativePath));
+
+    [Fact]
+    public void Split_save_recovery_files_and_malformed_ids_are_not_cloud_eligible()
+    {
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"buddy-identities/{BuddyId}.json.next"));
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"buddy-identities/not-a-guid.json"));
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"scenes/{SceneId}/scene.json.next"));
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"scenes/{SceneId}/environment/background.png.bak"));
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            "scenes/not-a-guid/scene.json"));
+        Assert.False(SteamCloudSavePolicy.IsCloudEligibleRelativePath(
+            $"scenes/{SceneId}/sandbox.json"));
+    }
 
     [Fact]
     public void Character_backups_temporaries_quarantine_and_unknown_paint_are_not_cloud_eligible()
@@ -70,30 +106,16 @@ public sealed class SteamCloudSavePolicyTests
         var rows = SteamCloudSavePolicy.WindowsAutoCloudRoots.ToArray();
         Assert.Collection(
             rows,
-            row =>
-            {
-                Assert.Equal("DesktopBuddy", row.Subdirectory);
-                Assert.Equal("progress.json", row.Pattern);
-                Assert.False(row.Recursive);
-            },
-            row =>
-            {
-                Assert.Equal("DesktopBuddy/characters", row.Subdirectory);
-                Assert.Equal("character.json", row.Pattern);
-                Assert.True(row.Recursive);
-            },
-            row =>
-            {
-                Assert.Equal("DesktopBuddy/characters", row.Subdirectory);
-                Assert.Equal("*.png", row.Pattern);
-                Assert.True(row.Recursive);
-            },
-            row =>
-            {
-                Assert.Equal("DesktopBuddy/environment", row.Subdirectory);
-                Assert.Equal("background.png", row.Pattern);
-                Assert.False(row.Recursive);
-            });
+            row => AssertRow(row, "DesktopBuddy", "progress.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy", "work-progress.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy", "scene-progress.commit.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy/buddy-identities", "*.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy/scenes", "index.json", recursive: false),
+            row => AssertRow(row, "DesktopBuddy/scenes", "scene.json", recursive: true),
+            row => AssertRow(row, "DesktopBuddy/scenes", "background.png", recursive: true),
+            row => AssertRow(row, "DesktopBuddy/characters", "character.json", recursive: true),
+            row => AssertRow(row, "DesktopBuddy/characters", "*.png", recursive: true),
+            row => AssertRow(row, "DesktopBuddy/environment", "background.png", recursive: false));
     }
 
     [Fact]
@@ -124,6 +146,17 @@ public sealed class SteamCloudSavePolicyTests
         Assert.Contains($"user://{SteamCloudSavePolicy.ProgressFileName}", bootstrap, StringComparison.Ordinal);
         Assert.Contains($"user://{SteamCloudSavePolicy.SettingsFileName}", bootstrap, StringComparison.Ordinal);
         Assert.Contains($"user://{SteamCloudSavePolicy.CharactersDirectoryName}", bootstrap, StringComparison.Ordinal);
+    }
+
+    private static void AssertRow(
+        SteamAutoCloudRoot row,
+        string subdirectory,
+        string pattern,
+        bool recursive)
+    {
+        Assert.Equal(subdirectory, row.Subdirectory);
+        Assert.Equal(pattern, row.Pattern);
+        Assert.Equal(recursive, row.Recursive);
     }
 
     private static string? FindRepositoryRoot(string start)
