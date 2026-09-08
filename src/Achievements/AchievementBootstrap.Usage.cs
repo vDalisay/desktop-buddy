@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Interaction;
 using DesktopBuddy.Objects;
@@ -174,14 +175,15 @@ public partial class AchievementBootstrap
                     body.GlobalPosition.X + body.Radius >=
                     bounds.End.X - BankShotWallTolerancePixels;
 
-                bool reboundedFromLeft = nearLeftWall &&
-                    previousVelocityX < -BankShotMinimumHorizontalSpeed &&
-                    currentVelocityX > BankShotMinimumHorizontalSpeed;
-                bool reboundedFromRight = nearRightWall &&
-                    previousVelocityX > BankShotMinimumHorizontalSpeed &&
-                    currentVelocityX < -BankShotMinimumHorizontalSpeed;
-                if (reboundedFromLeft || reboundedFromRight)
+                if (AchievementPhysicsRules.IsSideWallRicochet(
+                        previousVelocityX,
+                        currentVelocityX,
+                        nearLeftWall,
+                        nearRightWall,
+                        BankShotMinimumHorizontalSpeed))
+                {
                     _confirmedBaseballRicochets.Add(interactionId);
+                }
             }
 
             _baseballPreviousVelocityX[interactionId] = currentVelocityX;
