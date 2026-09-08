@@ -37,6 +37,7 @@
     <Compile Include="..\..\src\Persistence\RunProgressPersistenceAdapters.cs" Link="RuntimePersistence\RunProgressPersistenceAdapters.cs" />
     <Compile Include="..\..\src\Persistence\SceneProgressCoordinator.cs" Link="RuntimePersistence\SceneProgressCoordinator.cs" />
     <Compile Include="..\..\src\Persistence\SceneProgressTransactionStore.cs" Link="RuntimePersistence\SceneProgressTransactionStore.cs" />
+    <Compile Include="..\..\src\Persistence\LegacyProgressCompatibilityStore.cs" Link="RuntimePersistence\LegacyProgressCompatibilityStore.cs" />
     <Compile Include="..\..\src\Persistence\SaveCoordinator.cs" Link="RuntimePersistence\SaveCoordinator.cs" />
     <Compile Include="..\..\src\Persistence\SteamCloudSavePolicy.cs" Link="RuntimePersistence\SteamCloudSavePolicy.cs" />
     <Compile Include="..\..\src\Persistence\Characters\CharacterSelectionState.cs" Link="RuntimePersistence\CharacterSelectionState.cs" />
