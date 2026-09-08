@@ -29,18 +29,23 @@ public sealed record BuddyPlacementSave
 }
 
 /// <summary>
-/// Versioned disk DTO for <c>user://scenes/&lt;scene-id&gt;/scene.json</c>. The painted background is
-/// intentionally a sibling file and systemic sandbox data gets its own versioned document later.
+/// Versioned disk DTO for <c>user://scenes/&lt;scene-id&gt;/scene.json</c>. Schema 2 makes the
+/// complete Room Decorator state Scene-owned: the placed layout, purchased-but-unplaced storage and
+/// environment revision are committed together. Schema 1 remains readable and upgrades to an empty
+/// storage inventory at revision zero. The painted background is intentionally a sibling file and
+/// systemic sandbox data gets its own versioned document later.
 /// </summary>
 public sealed record SceneDocumentSave
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; init; } = CurrentSchemaVersion;
     public Guid SceneId { get; init; }
     public string Name { get; init; } = string.Empty;
+    public long EnvironmentRevision { get; init; }
     public int EnvironmentSchemaVersion { get; init; } = EnvironmentLayout.CurrentSchemaVersion;
     public List<PlacedDecorationSave> Decorations { get; init; } = [];
+    public List<string> OwnedUnplaced { get; init; } = [];
     public List<BuddyPlacementSave> BuddyPlacements { get; init; } = [];
 
     public static SceneDocumentSave FromDocument(SceneDocument scene)
@@ -50,10 +55,12 @@ public sealed record SceneDocumentSave
         {
             SceneId = scene.SceneId.Value,
             Name = scene.Name,
+            EnvironmentRevision = scene.EnvironmentRevision,
             EnvironmentSchemaVersion = scene.Environment.SchemaVersion,
             Decorations = scene.Environment.Decorations
                 .Select(item => PlacedDecorationSave.FromPlaced(item))
                 .ToList(),
+            OwnedUnplaced = scene.OwnedUnplaced.Select(id => id.Value).ToList(),
             BuddyPlacements = scene.BuddyPlacements
                 .Select(item => BuddyPlacementSave.FromPlacement(item))
                 .ToList(),
@@ -62,19 +69,39 @@ public sealed record SceneDocumentSave
 
     public SceneDocument CreateDocument()
     {
-        if (SchemaVersion != CurrentSchemaVersion)
+        if (SchemaVersion is not (1 or CurrentSchemaVersion))
             throw new ArgumentOutOfRangeException(nameof(SchemaVersion), "Unsupported Scene document save schema.");
         if (EnvironmentSchemaVersion != EnvironmentLayout.CurrentSchemaVersion)
             throw new ArgumentOutOfRangeException(nameof(EnvironmentSchemaVersion), "Unsupported Scene environment schema.");
+        if (Decorations is null || BuddyPlacements is null)
+            throw new ArgumentException("Scene collections cannot be null.");
+        if (SchemaVersion == CurrentSchemaVersion && OwnedUnplaced is null)
+            throw new ArgumentException("Scene environment storage cannot be null.");
 
-        var environment = new EnvironmentLayout(
-            Decorations.Select(item => item.CreatePlaced()),
-            EnvironmentSchemaVersion);
+        long environmentRevision = SchemaVersion == 1 ? 0 : EnvironmentRevision;
+        if (environmentRevision < 0)
+            throw new ArgumentOutOfRangeException(nameof(EnvironmentRevision), "Scene environment revision cannot be negative.");
+
+        var environment = new EnvironmentProgressSnapshot(
+            environmentRevision,
+            new EnvironmentLayout(
+                Decorations.Select(item => item.CreatePlaced()),
+                EnvironmentSchemaVersion),
+            SchemaVersion == 1
+                ? []
+                : OwnedUnplaced.Select(ParseDecorationDefinitionId).ToArray());
         return new SceneDocument(
             DesktopBuddy.Domain.Scenes.SceneId.From(SceneId),
             Name,
             environment,
             BuddyPlacements.Select(item => item.CreatePlacement()));
+    }
+
+    private static DecorationDefinitionId ParseDecorationDefinitionId(string value)
+    {
+        if (!DecorationDefinitionId.TryCreate(value, out DecorationDefinitionId id))
+            throw new ArgumentException($"Invalid stored decoration definition ID '{value}'.", nameof(OwnedUnplaced));
+        return id;
     }
 }
 
@@ -131,15 +158,13 @@ public static class SceneSavePolicy
                 null,
                 $"Scene schema {schema} is newer than {SceneDocumentSave.CurrentSchemaVersion}.");
         }
-        if (schema != SceneDocumentSave.CurrentSchemaVersion)
+        if (schema is not (1 or SceneDocumentSave.CurrentSchemaVersion))
             return new SceneDocumentDecodeResult(SaveDecodeStatus.Invalid, null, $"Unsupported Scene schema {schema}.");
 
         try
         {
             SceneDocumentSave save = JsonSerializer.Deserialize<SceneDocumentSave>(json, Options)
                 ?? throw new JsonException("Scene payload was null.");
-            if (save.Decorations is null || save.BuddyPlacements is null)
-                throw new ArgumentException("Scene collections cannot be null.");
             SceneDocument scene = save.CreateDocument();
             return new SceneDocumentDecodeResult(SaveDecodeStatus.Valid, scene);
         }
