@@ -153,12 +153,10 @@ public static class DemoScope
         IsItchIo ? TutorialStepIds.ItchIo : TutorialStepIds.Ordered;
 
     /// <summary>
-    /// Whether the Room Decorator command is offered at all. The master release plan moves it to
-    /// Next Fest, but Phase 1 explicitly requires Environment/Room Decorator state to become
-    /// Scene-owned before exposure. Keep the existing full-release-only gate until that migration
-    /// lands rather than exposing the current global-room implementation prematurely.
+    /// Room Decorator is part of the Scene-owned Next Fest surface and remains in Full Release.
+    /// Initial Demo, itch.io and malformed/untagged builds stay excluded through the pure policy.
     /// </summary>
-    public static bool IncludesRoomDecorator => IsFullRelease && !IsItchIo;
+    public static bool IncludesRoomDecorator => BuildScope.IncludesRoomDecorator;
 
     /// <summary>
     /// Whether this build ships Gore Mode at all — the Settings toggle, the bleeding, and the
