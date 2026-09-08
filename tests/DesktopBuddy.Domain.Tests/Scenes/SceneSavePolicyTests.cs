@@ -11,7 +11,7 @@ namespace DesktopBuddy.Domain.Tests.Scenes;
 public sealed class SceneSavePolicyTests
 {
     [Fact]
-    public void Scene_round_trip_preserves_ids_environment_and_buddy_anchors()
+    public void Scene_round_trip_preserves_ids_environment_storage_and_buddy_anchors()
     {
         SceneId sceneId = SceneId.From(Id(1));
         BuddyIdentityId buddyId = BuddyIdentityId.From(Id(2));
@@ -23,10 +23,11 @@ public sealed class SceneSavePolicyTests
             RotationDegrees: 90,
             DecorationRenderBand.BehindBuddyFloor,
             PurchasePriceMilliCredits: 5_000);
+        var stored = new DecorationDefinitionId("decoration.sofa.test");
         var source = new SceneDocument(
             sceneId,
             "Home",
-            new EnvironmentLayout([decoration]),
+            new EnvironmentProgressSnapshot(7, new EnvironmentLayout([decoration]), [stored, stored]),
             [new BuddyPlacement(placementId, buddyId, new CanonicalRoomPosition(0.45f, 0.7f))]);
 
         string json = SceneSavePolicy.SerializeScene(source);
@@ -36,13 +37,39 @@ public sealed class SceneSavePolicyTests
         SceneDocument restored = Assert.IsType<SceneDocument>(decoded.Scene);
         Assert.Equal(sceneId, restored.SceneId);
         Assert.Equal("Home", restored.Name);
+        Assert.Equal(SceneDocument.CurrentSchemaVersion, restored.SchemaVersion);
+        Assert.Equal(7, restored.EnvironmentRevision);
         Assert.Single(restored.Environment.Decorations);
         Assert.Equal(decoration, restored.Environment.Decorations[0]);
+        Assert.Equal(new[] { stored, stored }, restored.OwnedUnplaced);
         Assert.Single(restored.BuddyPlacements);
         Assert.Equal(placementId, restored.BuddyPlacements[0].PlacementId);
         Assert.Equal(buddyId, restored.BuddyPlacements[0].BuddyIdentityId);
         Assert.Equal(0.45f, restored.BuddyPlacements[0].Position.X);
         Assert.Equal(0.7f, restored.BuddyPlacements[0].Position.Y);
+    }
+
+    [Fact]
+    public void Schema_one_scene_upgrades_with_empty_storage_and_environment_revision_zero()
+    {
+        string legacy = $$"""
+        {
+          "schemaVersion": 1,
+          "sceneId": "{{Id(1)}}",
+          "name": "Home",
+          "environmentSchemaVersion": {{EnvironmentLayout.CurrentSchemaVersion}},
+          "decorations": [],
+          "buddyPlacements": []
+        }
+        """;
+
+        SceneDocumentDecodeResult decoded = SceneSavePolicy.DecodeScene(legacy);
+
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        SceneDocument scene = Assert.IsType<SceneDocument>(decoded.Scene);
+        Assert.Equal(SceneDocument.CurrentSchemaVersion, scene.SchemaVersion);
+        Assert.Equal(0, scene.EnvironmentRevision);
+        Assert.Empty(scene.OwnedUnplaced);
     }
 
     [Fact]
@@ -98,6 +125,28 @@ public sealed class SceneSavePolicyTests
               "purchasePriceMilliCredits": 1000
             }
           ],
+          "buddyPlacements": []
+        }
+        """;
+
+        SceneDocumentDecodeResult decoded = SceneSavePolicy.DecodeScene(json);
+
+        Assert.Equal(SaveDecodeStatus.Invalid, decoded.Status);
+        Assert.Null(decoded.Scene);
+    }
+
+    [Fact]
+    public void Scene_decode_rejects_invalid_scene_owned_storage_id()
+    {
+        string json = $$"""
+        {
+          "schemaVersion": {{SceneDocumentSave.CurrentSchemaVersion}},
+          "sceneId": "{{Id(1)}}",
+          "name": "Home",
+          "environmentRevision": 2,
+          "environmentSchemaVersion": {{EnvironmentLayout.CurrentSchemaVersion}},
+          "decorations": [],
+          "ownedUnplaced": ["not-a-decoration-id"],
           "buddyPlacements": []
         }
         """;
