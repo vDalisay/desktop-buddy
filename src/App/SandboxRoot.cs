@@ -242,6 +242,7 @@ public partial class SandboxRoot : Node2D
         Gore.Initialize();
         MoneyHud.Initialize(Economy);
         VisualPresenter.Initialize();
+        InitializeSceneRuntimeHostIfEnabled();
         // After the visual presenter: the scorch driver writes through that presenter's own
         // per-part materials, so it cannot be composed before they exist.
         Scorch.Initialize();
@@ -328,7 +329,7 @@ public partial class SandboxRoot : Node2D
     public override void _PhysicsProcess(double delta)
     {
         Pointer.ResolvePendingInput();
-        VisualPresenter.CaptureTickSnapshot();
+        CaptureBuddyTickSnapshot();
         CursorToolVisual.CaptureTickSnapshot();
         GrenadeVisual.CaptureTickSnapshot();
         LooseObjectVisual.CaptureTickSnapshot();
@@ -348,21 +349,10 @@ public partial class SandboxRoot : Node2D
         GrabState grab = Grab.CurrentGrab;
         Objects.PhysicsTick(grab, Boundaries.InnerBounds);
         PuppetPartBody? grabbedBody = grab.Active ? grab.Target as PuppetPartBody : null;
-        bool buddyPartGrabbed = grabbedBody is not null;
-        Buddy.GrabResistance.SetGrabContext(buddyPartGrabbed, grab.CursorAnchor);
         CursorTools.PhysicsTick(delta);
         CursorGuns.PhysicsTick();
         CameraKick.PhysicsTick();
-        CareStroke.PhysicsTick(delta);
-        ToolReactions.PhysicsTick(delta);
-        Reactions.PhysicsTick();
-        Buddy.PhysicsTick(
-            grabbedBody?.PartId,
-            grab.CursorAnchor,
-            Pointer.WorldCursor,
-            Pointer.HasPointerInput,
-            Ropes.HoldsAny(Buddy.Rig.Parts));
-        Pipeline.PhysicsTick();
+        TickBuddyActors(delta, grab, grabbedBody);
         // After the pipeline, so a blast is scored against the same simulation clock
         // every contact this tick was scored against.
         Grenades.PhysicsTick();
