@@ -60,12 +60,28 @@ public partial class SandboxRoot : Node2D
     [Export] public LooseObjectRegistry Objects { get; set; } = null!;
     [Export] public PullbackLauncherComponent Launcher { get; set; } = null!;
 
-    /// <summary>The single per-run persistent semantic state (ARCHITECTURE §12).</summary>
+    /// <summary>
+    /// Legacy aggregate retained for Initial Demo/scenario compatibility. Scene-enabled runtime
+    /// systems must use <see cref="ProgressBinding"/> so Buddy-local state cannot drift back into
+    /// the account-global compatibility object.
+    /// </summary>
     public BuddyProgressState Progress { get; private set; } = null!;
+
+    /// <summary>The exact account/Buddy progress seam used by the current production actor.</summary>
+    public BuddyRuntimeProgressBinding ProgressBinding { get; private set; } = null!;
 
     /// <summary>The sole currency/unlock mutator for this run (ARCHITECTURE §11).</summary>
     public EconomyService Economy { get; private set; } = null!;
+
+    /// <summary>
+    /// Legacy coordinator retained for Initial Demo and machine-local settings compatibility.
+    /// Semantic runtime saves must use <see cref="RunProgressPersistence"/>.
+    /// </summary>
     public SaveCoordinator Saves { get; private set; } = null!;
+
+    /// <summary>The active semantic persistence backend for focus-loss, autosave and quit.</summary>
+    public IRunProgressPersistence RunProgressPersistence { get; private set; } = null!;
+
     public LocalSettingsSave Settings { get; private set; } = null!;
     private RunContext? _runContext;
     private bool _quitSaveStarted;
@@ -181,14 +197,16 @@ public partial class SandboxRoot : Node2D
         // Normal boot injects a disk-backed context from Bootstrap.
         _runContext ??= CreateInMemoryRunContext();
         Progress = _runContext.Progress;
+        ProgressBinding = _runContext.ActiveBuddyProgress;
         Economy = _runContext.Economy;
         Saves = _runContext.Saves;
+        RunProgressPersistence = _runContext.RunProgressPersistence;
         Settings = _runContext.Settings;
-        Pipeline.Initialize(Progress, Economy);
+        Pipeline.Initialize(ProgressBinding, Economy);
         Objects.Initialize();
         Launcher.Initialize(ClearLooseObjectsForReplacement);
-        Buddy.Arbiter.Initialize(Progress);
-        Buddy.ObjectInteraction.Initialize(Objects, Progress, Buddy.Arbiter.SocialTuning);
+        Buddy.Arbiter.Initialize(ProgressBinding);
+        Buddy.ObjectInteraction.Initialize(Objects, ProgressBinding, Buddy.Arbiter.SocialTuning);
         CursorTools.Initialize();
         CursorGuns.Initialize();
         CursorGunVisual.Initialize(CursorGuns);
@@ -280,9 +298,9 @@ public partial class SandboxRoot : Node2D
         Window.WindowFocusLost += OnWindowFocusLost;
         Lifecycle = new LifecycleCoordinator { Name = nameof(LifecycleCoordinator) };
         Lifecycle.Configure(
-            Progress,
+            ProgressBinding,
             Economy,
-            Saves,
+            RunProgressPersistence,
             MoodEconomy,
             () => Grab.IsGrabbing || CursorTools.IsActive || CursorGuns.IsActive || FireSprayer.IsActive ||
                   CareStroke.IsHeld || Buddy.ObjectInteraction.IsHolding,
@@ -435,7 +453,7 @@ public partial class SandboxRoot : Node2D
         // CloseRequested normally performs the awaited save before Quit. This blocking
         // fallback covers other clean tree exits (runner shutdown, host-initiated quit)
         // so a dirty final revision is never abandoned by a fire-and-forget task.
-        if (Saves is not null && Saves.IsDirty)
+        if (RunProgressPersistence is not null && RunProgressPersistence.IsDirty)
         {
             if (GodotObject.IsInstanceValid(Lifecycle))
             {
@@ -453,7 +471,7 @@ public partial class SandboxRoot : Node2D
 
             try
             {
-                Saves.FlushProgressAsync(force: true).GetAwaiter().GetResult();
+                RunProgressPersistence.FlushAsync(force: true).GetAwaiter().GetResult();
             }
             catch (Exception exception)
             {
@@ -479,7 +497,7 @@ public partial class SandboxRoot : Node2D
     }
 
     private void OnWindowFocusLost() =>
-        _ = ObserveSaveAsync(Saves.FlushProgressAsync(), "Focus-loss save");
+        _ = ObserveSaveAsync(RunProgressPersistence.FlushAsync(), "Focus-loss save");
 
     /// <summary>Tray/UI command seam for the minimal M4 Save &amp; Quit surface.</summary>
     public void RequestSaveAndQuit() => OnCloseRequested();
@@ -494,6 +512,17 @@ public partial class SandboxRoot : Node2D
     /// </summary>
     private async void OnResetProgressConfirmed()
     {
+        // A Scene graph must reset account, Buddy identities, Scene documents and Work state in one
+        // transaction. Until that transaction exists, failing closed is safer than mutating the
+        // compatibility aggregate and writing it over an account-only progress.json.
+        if (_runContext?.UsesSplitSceneProgress == true)
+        {
+            Log.Error(
+                "Persistence",
+                "Reset Progress is unavailable for Scene progress until the split reset transaction is composed.");
+            return;
+        }
+
         CharacterStore? characters = _runContext?.Characters;
         bool reset = await ProgressReset.ResetAsync(
             Progress,
@@ -558,8 +587,9 @@ public partial class SandboxRoot : Node2D
             Lifecycle.BeginShutdown();
             // Forced: this is the last chance to write, so a mutation that landed during
             // the flush must not be abandoned.
-            await Saves.FlushProgressAsync(force: true);
+            await RunProgressPersistence.FlushAsync(force: true);
             Shell.CaptureWindowStateForSave();
+            // Settings remain machine-local and are deliberately independent of Scene progress.
             await Saves.SaveSettingsAsync(Settings);
         }
         catch (Exception exception)
