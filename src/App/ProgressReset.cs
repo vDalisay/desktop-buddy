@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
@@ -17,7 +19,8 @@ namespace DesktopBuddy.App;
 /// "Reset Progress": everything the player has built goes back to a first run — the gameplay
 /// save, Work progression, the decorated room, and the characters they made (owner instruction
 /// 2026-08-21). Machine-local settings are the one thing kept, because they are preferences
-/// rather than progress.
+/// rather than progress. Scene-enabled achievement qualification is monotonic and is therefore
+/// retained while partial counters/working values reset.
 /// </summary>
 public static class ProgressReset
 {
@@ -32,10 +35,11 @@ public static class ProgressReset
     }
 
     /// <summary>
-    /// Resets a Scene-enabled run as one manifest generation. The fresh legacy aggregate exists only
-    /// long enough to reuse the deterministic account/Buddy partition policy; no legacy progress
-    /// write occurs. Character documents are deleted only after the manifest commit succeeds because
-    /// filesystem deletion is the one reset step that cannot be transactionally rolled back.
+    /// Resets a Scene-enabled run as one manifest generation. Already-qualified achievements survive
+    /// because Full Release must reconcile awards qualified under the Next Fest Demo and Steam awards
+    /// are not revocable through Reset Progress. Achievement counters/working state are deliberately
+    /// omitted from the fresh Player snapshot. Character documents are deleted only after the
+    /// manifest commit succeeds because filesystem deletion cannot be transactionally rolled back.
     /// </summary>
     public static async Task<bool> ResetSceneAsync(
         SceneProgressCoordinator scenes,
@@ -46,12 +50,25 @@ public static class ProgressReset
         ArgumentNullException.ThrowIfNull(scenes);
         DeletedCharacterCount = 0;
 
+        IReadOnlyDictionary<string, string> qualifiedAchievements =
+            AchievementProgressStore.PreserveQualifiedAchievementValues(scenes.Player.Extensions);
+
         BuddyProgressState freshLegacy = CreateNewProgress(scenes.Player.CashPerPain);
         LegacyNextFestMigrationProjection fresh = LegacyNextFestMigrationPolicy.Project(
             freshLegacy.Snapshot(),
             activeCharacterId: null,
             new EnvironmentProgressSnapshot(0, new EnvironmentLayout(), []),
             new CanonicalRoomPosition(0.5f, 0.5f));
+        if (qualifiedAchievements.Count > 0)
+        {
+            fresh = fresh with
+            {
+                Player = fresh.Player with
+                {
+                    Extensions = new ProgressExtensionData(Values: qualifiedAchievements),
+                },
+            };
+        }
 
         try
         {
@@ -72,8 +89,8 @@ public static class ProgressReset
     /// <summary>
     /// Resets gameplay, Work progression and optional character selection in place. One explicit
     /// durable write owns the transaction; a failed write restores all exact prior snapshots and
-    /// never touches machine-local settings. Character documents are deleted only after that
-    /// write lands, because a deletion is the one step a rollback could not undo.
+    /// never touches machine-local settings. This path is retained for Initial Demo/itch builds,
+    /// which do not compose the Next Fest achievement system.
     /// </summary>
     public static async Task<bool> ResetAsync(
         BuddyProgressState progress,
@@ -132,10 +149,6 @@ public static class ProgressReset
             return false;
         }
 
-        // Only after the durable write has succeeded: a failed reset restores every snapshot,
-        // and there would be no restoring a character document that had already been deleted.
-        // A delegate rather than the store itself, so this file stays engine-free for the
-        // domain tests that compile it.
         if (deleteCharacters is not null)
             DeletedCharacterCount = await deleteCharacters(token).ConfigureAwait(false);
 
