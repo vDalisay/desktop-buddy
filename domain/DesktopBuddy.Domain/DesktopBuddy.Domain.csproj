@@ -18,10 +18,11 @@
 
   <!--
     Keep this standalone rule identical to the game project's derived scope so direct domain builds
-    and scoped game builds agree. The game ProjectReference also forwards the resolved value.
+    and scoped game builds agree. net10.0 is the disposable itch.io Web domain build and therefore
+    fails closed even before the broader distribution profile supplies DesktopBuddyItchScope.
   -->
   <PropertyGroup>
-    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddyItchScope)' == 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND ('$(DesktopBuddyItchScope)' == 'true' OR '$(TargetFramework)' == 'net10.0') ">false</DesktopBuddyAchievementsScope>
     <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
     <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
   </PropertyGroup>
