@@ -38,6 +38,7 @@
     <Compile Include="..\..\src\Persistence\IEnvironmentProgressPersistence.cs" Link="RuntimePersistence\IEnvironmentProgressPersistence.cs" />
     <Compile Include="..\..\src\Persistence\SceneProgressBootstrapCoordinator.cs" Link="RuntimePersistence\SceneProgressBootstrapCoordinator.cs" />
     <Compile Include="..\..\src\Persistence\SceneProgressCoordinator.cs" Link="RuntimePersistence\SceneProgressCoordinator.cs" />
+    <Compile Include="..\..\src\Persistence\SceneProgressCoordinator.Reset.cs" Link="RuntimePersistence\SceneProgressCoordinator.Reset.cs" />
     <Compile Include="..\..\src\Persistence\SceneProgressTransactionStore.cs" Link="RuntimePersistence\SceneProgressTransactionStore.cs" />
     <Compile Include="..\..\src\Persistence\SceneEnvironmentAssetMigration.cs" Link="RuntimePersistence\SceneEnvironmentAssetMigration.cs" />
     <Compile Include="..\..\src\Persistence\LegacyProgressCompatibilityStore.cs" Link="RuntimePersistence\LegacyProgressCompatibilityStore.cs" />
