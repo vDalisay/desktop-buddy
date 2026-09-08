@@ -31,4 +31,25 @@ public sealed record RunContext(
     SceneProgressCoordinator? SceneProgress = null)
 {
     public bool UsesSplitSceneProgress => SceneProgress is not null;
+
+    /// <summary>
+    /// Creates the account-global runtime seam for a consumer that must not depend on Buddy-local
+    /// mood/hunger state merely to read or mutate wallet, unlock or lifetime progress. Call once at
+    /// composition time and retain the returned binding; this method is deliberately not a cached
+    /// property so record copying cannot carry a binding for a different SceneProgress instance.
+    /// </summary>
+    public PlayerRuntimeProgressBinding CreatePlayerProgressBinding() =>
+        SceneProgress is not null
+            ? new PlayerRuntimeProgressBinding(SceneProgress.Player)
+            : new PlayerRuntimeProgressBinding(Progress);
+
+    /// <summary>
+    /// Creates the semantic autosave/flush seam for lifecycle and one-shot services. Scene-enabled
+    /// code must use this instead of reaching through to the legacy SaveCoordinator, otherwise a
+    /// migrated run could write the old aggregate format back over account-only progress.json.
+    /// </summary>
+    public IRunProgressPersistence CreateRunProgressPersistence() =>
+        SceneProgress is not null
+            ? new SceneRunProgressPersistence(SceneProgress)
+            : new LegacyRunProgressPersistence(Saves);
 }
