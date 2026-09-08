@@ -85,8 +85,8 @@ public partial class EnvironmentCustomizationBootstrap : Node
         if (_registration is not null)
         {
             SubscribeWorkCompanionState();
-            if (_sandbox?.SceneProgress is { } sceneProgress)
-                RefreshSceneEnvironment(sceneProgress);
+            if (_sandbox?.SceneProgress is { } currentSceneProgress)
+                RefreshSceneEnvironment(currentSceneProgress);
             else
                 SetProcess(false);
             return;
