@@ -85,6 +85,7 @@ public sealed class SceneProgressCoordinator
     public SceneId ActiveSceneId => _scenes.ActiveSceneId;
     public SceneDocument ActiveScene => _scenes.ActiveScene
         ?? throw new InvalidOperationException("Scene-enabled progress requires one active Scene.");
+    public EnvironmentProgressSnapshot ActiveEnvironmentProgress => ActiveScene.EnvironmentProgress;
     public IReadOnlyList<SceneDocument> Scenes => _scenes.Scenes;
     public int SceneCount => _scenes.Count;
     public int BuddyIdentityCount => _buddies.Count;
@@ -159,6 +160,9 @@ public sealed class SceneProgressCoordinator
     public SceneLibraryResult CreateScene(string name, EnvironmentLayout? environment = null) =>
         TrackSceneMutation(_scenes.Create(name, environment));
 
+    public SceneLibraryResult CreateScene(string name, EnvironmentProgressSnapshot environment) =>
+        TrackSceneMutation(_scenes.Create(name, environment));
+
     public SceneLibraryResult SwitchScene(SceneId sceneId) =>
         TrackSceneMutation(_scenes.Switch(sceneId));
 
@@ -189,6 +193,74 @@ public sealed class SceneProgressCoordinator
         BuddyPlacementId placementId,
         CanonicalRoomPosition position) =>
         TrackSceneMutation(_scenes.MoveBuddy(sceneId, placementId, position));
+
+    /// <summary>
+    /// Applies one Room Decorator working copy and its wallet result as one Scene-progress
+    /// generation. The editor must have opened from this exact Scene Environment snapshot. Any
+    /// failed pre-manifest write restores the exact account and Scene snapshots in place; the
+    /// transaction store never throws a post-manifest promotion failure, so a returned success is
+    /// always the durable commit point even when canonical promotion remains recoverable work.
+    /// </summary>
+    public async Task CommitEnvironmentAsync(
+        SceneId sceneId,
+        EnvironmentEditSession session,
+        CancellationToken token = default)
+    {
+        ArgumentNullException.ThrowIfNull(session);
+        if (!session.IsDirty)
+            return;
+
+        // Serialize behind any existing autosave first. Using force here also handles the narrow
+        // race where another flush starts between this await and the edit mutation: the second
+        // forced flush below observes the edit as still dirty and commits another generation.
+        await FlushAsync(force: true, token).ConfigureAwait(false);
+
+        if (!_scenes.TryGet(sceneId, out SceneDocument? scene) || scene is null)
+            throw new KeyNotFoundException($"Scene library has no Scene {sceneId}.");
+        EnvironmentProgressSnapshot environmentBefore = scene.EnvironmentProgress;
+        if (!session.MatchesBaseline(environmentBefore))
+            throw new InvalidOperationException("The Scene environment changed while the room edit session was open.");
+
+        PlayerProgressSnapshot playerBefore = Player.Snapshot();
+        if (playerBefore.Revision == long.MaxValue || environmentBefore.Revision == long.MaxValue)
+            throw new InvalidOperationException("The progress revision is exhausted.");
+        if (!session.TryPrepareCommit(playerBefore.BalanceMilliCredits, out EnvironmentCommit commit))
+            throw new InvalidOperationException("Current funds are insufficient for the staged room changes.");
+
+        var playerAfter = playerBefore with
+        {
+            Revision = playerBefore.Revision + 1,
+            BalanceMilliCredits = commit.BalanceMilliCredits,
+        };
+        var environmentAfter = new EnvironmentProgressSnapshot(
+            environmentBefore.Revision + 1,
+            commit.Layout,
+            commit.OwnedUnplaced);
+        long sceneRevisionBefore = _sceneRevision;
+
+        Player.Adopt(playerAfter);
+        SceneLibraryResult changed = _scenes.UpdateEnvironment(sceneId, environmentAfter);
+        if (!changed.Succeeded)
+        {
+            Player.Adopt(playerBefore);
+            throw new InvalidOperationException($"Scene environment update failed: {changed.Status}.");
+        }
+        Touch(ref _sceneRevision);
+
+        try
+        {
+            await FlushAsync(force: true, token).ConfigureAwait(false);
+        }
+        catch
+        {
+            Player.Adopt(playerBefore);
+            SceneLibraryResult restored = _scenes.UpdateEnvironment(sceneId, environmentBefore);
+            _sceneRevision = sceneRevisionBefore;
+            if (!restored.Succeeded)
+                throw new InvalidOperationException("Scene environment rollback could not restore the prior document.");
+            throw;
+        }
+    }
 
     public SceneProgressBindingRegistry CreateBindings(SceneId sceneId)
     {
