@@ -147,28 +147,62 @@ public partial class Bootstrap : Node
         var sandbox = packed.Instantiate<SandboxRoot>();
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
         bool browser = OperatingSystem.IsBrowser();
+        string saveRoot = ProjectSettings.GlobalizePath("user://");
         string progressPath = ProjectSettings.GlobalizePath("user://progress.json");
         string settingsPath = ProjectSettings.GlobalizePath("user://settings.json");
         string characterRoot = ProjectSettings.GlobalizePath("user://characters");
         IAtomicSaveFileSystem saveFileSystem = browser
             ? new GodotBrowserAtomicSaveFileSystem()
             : new AtomicSaveFileSystem();
-        var store = new JsonProgressStore(progressPath, settingsPath, saveFileSystem);
+        var baseStore = new JsonProgressStore(progressPath, settingsPath, saveFileSystem);
+        IProgressStore runtimeStore = baseStore;
 
         Log.Info(
             Category,
-            $"Loading persistence browser={browser} progress={progressPath} settings={settingsPath}");
+            $"Loading persistence browser={browser} progress={progressPath} settings={settingsPath} scenes={DemoScope.IncludesScenes}");
 
         LoadResult<ProgressSave> progressLoad;
         LoadResult<LocalSettingsSave> settingsLoad;
+        SceneProgressCoordinator? sceneProgress = null;
         try
         {
-            Task<LoadResult<ProgressSave>> progressTask =
-                store.LoadProgressAsync(CancellationToken.None);
             Task<LoadResult<LocalSettingsSave>> settingsTask =
-                store.LoadSettingsAsync(CancellationToken.None);
-            await Task.WhenAll(progressTask, settingsTask);
-            progressLoad = await progressTask;
+                baseStore.LoadSettingsAsync(CancellationToken.None);
+
+            if (DemoScope.IncludesScenes)
+            {
+                // Scene-enabled builds choose the persistence format before progress.json is decoded.
+                // A committed Scene manifest therefore remains authoritative even if the old
+                // aggregate path is corrupt or belongs to an incompatible schema.
+                Task<SceneBootCompatibility> sceneTask = LoadSceneProgressAsync(
+                    baseStore,
+                    saveFileSystem,
+                    progressPath,
+                    saveRoot,
+                    cashPerPain,
+                    browser,
+                    CancellationToken.None);
+                await Task.WhenAll(sceneTask, settingsTask);
+                SceneBootCompatibility sceneBoot = await sceneTask;
+                sceneProgress = sceneBoot.SceneProgress;
+                progressLoad = sceneBoot.CompatibilityProgressLoad;
+
+                // From this point onward the Scene manifest is the semantic commit point. Legacy
+                // consumers may still use SaveCoordinator for local settings, but any accidental
+                // progress write fails closed instead of overwriting account-only progress.json.
+                runtimeStore = new LegacyProgressCompatibilityStore(
+                    baseStore,
+                    saveRoot,
+                    saveFileSystem);
+            }
+            else
+            {
+                Task<LoadResult<ProgressSave>> progressTask =
+                    baseStore.LoadProgressAsync(CancellationToken.None);
+                await Task.WhenAll(progressTask, settingsTask);
+                progressLoad = await progressTask;
+            }
+
             settingsLoad = await settingsTask;
         }
         catch (Exception exception)
@@ -180,7 +214,8 @@ public partial class Bootstrap : Node
 
         Log.Info(
             Category,
-            $"Persistence loaded progress={progressLoad.Status} settings={settingsLoad.Status}");
+            $"Persistence loaded progress={progressLoad.Status} settings={settingsLoad.Status} " +
+            $"semanticOwner={(sceneProgress is null ? "legacy" : "scene")}");
 
         if (progressLoad.Status == SaveLoadStatus.UnsupportedFutureVersion)
         {
@@ -192,19 +227,28 @@ public partial class Bootstrap : Node
         bool newSemanticState = progressLoad.Status is
             SaveLoadStatus.NewSave or SaveLoadStatus.DefaultsRecovered;
         ProgressSave? loadedProgress = progressLoad.Value;
-        BuddyProgressState progress = newSemanticState
-            ? ProgressReset.CreateNewProgress(cashPerPain)
-            : ProgressSavePolicy.CreateState(
-                loadedProgress ?? throw new InvalidOperationException("Load returned no progress."),
-                cashPerPain);
-        WorkProgressState workProgress = newSemanticState
-            ? new WorkProgressState()
-            : loadedProgress?.Work?.CreateState() ?? new WorkProgressState();
-        EnvironmentProgressState environmentProgress = newSemanticState
+
+        // In Scene mode the helper already chose/committed the authoritative graph. Rehydrate this
+        // object only as a compatibility view for legacy consumers; never roll another fresh state
+        // here or traits/selection could diverge from the committed primary Buddy.
+        BuddyProgressState progress = sceneProgress is not null
+            ? ProgressSavePolicy.CreateState(
+                loadedProgress ?? throw new InvalidOperationException("Scene compatibility load returned no progress."),
+                cashPerPain)
+            : newSemanticState
+                ? ProgressReset.CreateNewProgress(cashPerPain)
+                : ProgressSavePolicy.CreateState(
+                    loadedProgress ?? throw new InvalidOperationException("Load returned no progress."),
+                    cashPerPain);
+        WorkProgressState workProgress = sceneProgress?.Work ??
+            (newSemanticState
+                ? new WorkProgressState()
+                : loadedProgress?.Work?.CreateState() ?? new WorkProgressState());
+        EnvironmentProgressState environmentProgress = newSemanticState && sceneProgress is null
             ? new EnvironmentProgressState()
             : loadedProgress?.Environment?.CreateState() ?? new EnvironmentProgressState();
         var characterSelection = new CharacterSelectionState(
-            newSemanticState ? null : loadedProgress?.ActiveCharacterId);
+            newSemanticState && sceneProgress is null ? null : loadedProgress?.ActiveCharacterId);
         ICharacterFileSystem characterFileSystem = browser
             ? new GodotBrowserCharacterFileSystem()
             : new CharacterFileSystem();
@@ -212,17 +256,25 @@ public partial class Bootstrap : Node
             characterFileSystem,
             characterRoot,
             featureCatalog: BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
-        var economy = new EconomyService(progress, CatalogueLoader.Catalogue);
-        var saves = new SaveCoordinator(
-            progress,
-            store,
-            newSemanticState ? -1 : progress.Revision,
-            characterSelection,
-            newSemanticState ? -1 : characterSelection.Revision,
-            workProgress,
-            newSemanticState ? -1 : workProgress.Revision,
-            environmentProgress,
-            newSemanticState ? -1 : environmentProgress.Revision);
+        var economy = sceneProgress is not null
+            ? new EconomyService(sceneProgress.Player, CatalogueLoader.Catalogue)
+            : new EconomyService(progress, CatalogueLoader.Catalogue);
+
+        // Scene builds retain this coordinator only for machine-local settings and compatibility
+        // APIs. Do not attach Character, Work or Environment semantic state to it: each has a
+        // Scene-owned persistence route and the compatibility store blocks aggregate writes anyway.
+        SaveCoordinator saves = sceneProgress is not null
+            ? new SaveCoordinator(progress, runtimeStore, progress.Revision)
+            : new SaveCoordinator(
+                progress,
+                runtimeStore,
+                newSemanticState ? -1 : progress.Revision,
+                characterSelection,
+                newSemanticState ? -1 : characterSelection.Revision,
+                workProgress,
+                newSemanticState ? -1 : workProgress.Revision,
+                environmentProgress,
+                newSemanticState ? -1 : environmentProgress.Revision);
         var settings = settingsLoad.Value ?? new LocalSettingsSave();
 
         if (progressLoad.QuarantinedPath is not null)
@@ -230,7 +282,7 @@ public partial class Bootstrap : Node
         if (settingsLoad.QuarantinedPath is not null)
             Log.Warn(Category, $"Corrupt settings quarantined at {settingsLoad.QuarantinedPath}.");
 
-        if (newSemanticState && !browser)
+        if (sceneProgress is null && newSemanticState && !browser)
         {
             try
             {
@@ -242,7 +294,7 @@ public partial class Bootstrap : Node
                 Log.Error(Category, $"Initial progress save failed; state remains dirty: {exception.Message}");
             }
         }
-        else if (newSemanticState)
+        else if (sceneProgress is null && newSemanticState)
         {
             // A first-run browser build must never gate its first rendered frame on durable
             // filesystem synchronization. The state stays dirty and the normal autosave path
@@ -254,7 +306,7 @@ public partial class Bootstrap : Node
         var context = new RunContext(
             progress,
             economy,
-            store,
+            runtimeStore,
             saves,
             settings,
             progressLoad.Status,
@@ -262,7 +314,8 @@ public partial class Bootstrap : Node
             CharacterSelection: characterSelection,
             Characters: characters,
             WorkProgress: workProgress,
-            EnvironmentProgress: environmentProgress);
+            EnvironmentProgress: environmentProgress,
+            SceneProgress: sceneProgress);
         sandbox.Shell.ConfigureRuntime(settings, saves);
         sandbox.Configure(context);
 
