@@ -87,7 +87,10 @@ public sealed class SceneLibraryState
         return scene is not null;
     }
 
-    public SceneLibraryResult Create(string name, EnvironmentLayout? environment = null)
+    public SceneLibraryResult Create(string name, EnvironmentLayout? environment = null) =>
+        Create(name, new EnvironmentProgressSnapshot(0, environment ?? new EnvironmentLayout(), []));
+
+    public SceneLibraryResult Create(string name, EnvironmentProgressSnapshot environment)
     {
         if (!_scope.IncludesScenes)
             return new SceneLibraryResult(SceneLibraryStatus.ScenesUnavailable);
@@ -95,7 +98,7 @@ public sealed class SceneLibraryState
             return new SceneLibraryResult(SceneLibraryStatus.LimitReached);
 
         SceneId id = NextUniqueSceneId();
-        var scene = new SceneDocument(id, name, environment ?? new EnvironmentLayout());
+        var scene = new SceneDocument(id, name, environment);
         _scenes.Add(scene);
         if (!ActiveSceneId.IsValid)
             ActiveSceneId = id;
@@ -173,6 +176,30 @@ public sealed class SceneLibraryState
             ActiveSceneId = _scenes[replacementIndex].SceneId;
         }
         return new SceneLibraryResult(SceneLibraryStatus.Succeeded, removed);
+    }
+
+    /// <summary>
+    /// Replaces the complete Environment progress owned by one Scene without changing its identity,
+    /// name or Buddy roster. Revision tracking remains the coordinator's responsibility so this same
+    /// primitive can restore the exact prior document after a failed atomic save.
+    /// </summary>
+    public SceneLibraryResult UpdateEnvironment(SceneId sceneId, EnvironmentProgressSnapshot environment)
+    {
+        if (!_scope.IncludesScenes)
+            return new SceneLibraryResult(SceneLibraryStatus.ScenesUnavailable);
+        int index = IndexOf(sceneId);
+        if (index < 0)
+            return new SceneLibraryResult(SceneLibraryStatus.SceneNotFound);
+
+        SceneDocument current = _scenes[index];
+        SceneDocument changed = new(
+            current.SceneId,
+            current.Name,
+            environment,
+            current.BuddyPlacements,
+            current.SchemaVersion);
+        _scenes[index] = changed;
+        return new SceneLibraryResult(SceneLibraryStatus.Succeeded, changed);
     }
 
     public SceneLibraryResult AddBuddy(
@@ -308,7 +335,7 @@ public sealed class SceneLibraryState
         SceneId sceneId,
         string name,
         IEnumerable<BuddyPlacement> placements) =>
-        new(sceneId, name, source.Environment, placements, source.SchemaVersion);
+        new(sceneId, name, source.EnvironmentProgress, placements, source.SchemaVersion);
 
     private BuddyPlacementId NextUniquePlacementIdForCopy()
     {
