@@ -97,8 +97,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="domain\DesktopBuddy.Domain\DesktopBuddy.Domain.csproj"
-                      AdditionalProperties="DesktopBuddyAchievementsScope=$(DesktopBuddyAchievementsScope)" />
+    <!-- Command-line distribution properties are MSBuild global properties and naturally flow to
+         referenced projects. Do not use AdditionalProperties here: the solution also builds the
+         domain project directly, and a second property-qualified instance would race the same
+         bin/obj outputs during parallel solution builds. -->
+    <ProjectReference Include="domain\DesktopBuddy.Domain\DesktopBuddy.Domain.csproj" />
     <ProjectReference Include="shared\DesktopBuddy.Visuals\DesktopBuddy.Visuals.csproj" />
   </ItemGroup>
 
