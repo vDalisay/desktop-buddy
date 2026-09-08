@@ -23,11 +23,17 @@ public static class SteamCloudSavePolicy
     public const string UserDataDirectoryName = "DesktopBuddy";
 
     public const string ProgressFileName = "progress.json";
+    public const string WorkProgressFileName = "work-progress.json";
+    public const string SceneProgressManifestFileName = "scene-progress.commit.json";
     public const string SettingsFileName = "settings.json";
     public const string CharactersDirectoryName = "characters";
     public const string CharacterDocumentFileName = "character.json";
     public const string EnvironmentDirectoryName = "environment";
     public const string EnvironmentBackgroundFileName = "background.png";
+    public const string BuddyIdentitiesDirectoryName = "buddy-identities";
+    public const string ScenesDirectoryName = "scenes";
+    public const string SceneIndexFileName = "index.json";
+    public const string SceneDocumentFileName = "scene.json";
 
     public const string SharedRoomsDirectoryName = "shared_rooms";
     public const string WorkshopStagingDirectory = "sharing/workshop";
@@ -35,12 +41,21 @@ public static class SteamCloudSavePolicy
     /// <summary>
     /// The Windows Auto-Cloud rows to enter in Steamworks. Root is WinAppDataRoaming for every row;
     /// these values are intentionally data-only so the runbook and tests can stay aligned.
+    /// Exact file-name patterns deliberately exclude .next/.tmp/.bak recovery artifacts.
     /// </summary>
     public static IReadOnlyList<SteamAutoCloudRoot> WindowsAutoCloudRoots { get; } =
     [
         new(UserDataDirectoryName, ProgressFileName, Recursive: false),
+        new(UserDataDirectoryName, WorkProgressFileName, Recursive: false),
+        new(UserDataDirectoryName, SceneProgressManifestFileName, Recursive: false),
+        new($"{UserDataDirectoryName}/{BuddyIdentitiesDirectoryName}", "*.json", Recursive: false),
+        new($"{UserDataDirectoryName}/{ScenesDirectoryName}", SceneIndexFileName, Recursive: false),
+        new($"{UserDataDirectoryName}/{ScenesDirectoryName}", SceneDocumentFileName, Recursive: true),
+        new($"{UserDataDirectoryName}/{ScenesDirectoryName}", EnvironmentBackgroundFileName, Recursive: true),
         new($"{UserDataDirectoryName}/{CharactersDirectoryName}", CharacterDocumentFileName, Recursive: true),
         new($"{UserDataDirectoryName}/{CharactersDirectoryName}", "*.png", Recursive: true),
+        // Legacy one-room Demo save. Keep it eligible during the staged upgrade so a user can move
+        // between machines before the deterministic Scene migration has happened there.
         new($"{UserDataDirectoryName}/{EnvironmentDirectoryName}", EnvironmentBackgroundFileName, Recursive: false),
     ];
 
@@ -53,13 +68,22 @@ public static class SteamCloudSavePolicy
         if (!TryNormalize(relativePath, out string normalized))
             return false;
 
-        if (string.Equals(normalized, ProgressFileName, StringComparison.Ordinal))
+        if (string.Equals(normalized, ProgressFileName, StringComparison.Ordinal) ||
+            string.Equals(normalized, WorkProgressFileName, StringComparison.Ordinal) ||
+            string.Equals(normalized, SceneProgressManifestFileName, StringComparison.Ordinal))
+        {
             return true;
+        }
 
         if (string.Equals(
                 normalized,
                 $"{EnvironmentDirectoryName}/{EnvironmentBackgroundFileName}",
                 StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (IsBuddyIdentityPath(normalized) || IsScenePath(normalized))
             return true;
 
         string prefix = CharactersDirectoryName + "/";
@@ -67,7 +91,7 @@ public static class SteamCloudSavePolicy
             return false;
 
         string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (segments.Length < 3 || !Guid.TryParseExact(segments[1], "N", out Guid characterId) || characterId == Guid.Empty)
+        if (segments.Length < 3 || !TryStableGuid(segments[1]))
             return false;
 
         if (segments.Length == 3 && string.Equals(segments[2], CharacterDocumentFileName, StringComparison.Ordinal))
@@ -85,6 +109,48 @@ public static class SteamCloudSavePolicy
 
         return false;
     }
+
+    private static bool IsBuddyIdentityPath(string normalized)
+    {
+        string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length != 2 ||
+            !string.Equals(segments[0], BuddyIdentitiesDirectoryName, StringComparison.Ordinal) ||
+            !segments[1].EndsWith(".json", StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string id = segments[1][..^".json".Length];
+        return TryStableGuid(id);
+    }
+
+    private static bool IsScenePath(string normalized)
+    {
+        string[] segments = normalized.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length == 2 &&
+            string.Equals(segments[0], ScenesDirectoryName, StringComparison.Ordinal) &&
+            string.Equals(segments[1], SceneIndexFileName, StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        if (segments.Length < 3 ||
+            !string.Equals(segments[0], ScenesDirectoryName, StringComparison.Ordinal) ||
+            !TryStableGuid(segments[1]))
+        {
+            return false;
+        }
+
+        if (segments.Length == 3 && string.Equals(segments[2], SceneDocumentFileName, StringComparison.Ordinal))
+            return true;
+
+        return segments.Length == 4 &&
+            string.Equals(segments[2], EnvironmentDirectoryName, StringComparison.Ordinal) &&
+            string.Equals(segments[3], EnvironmentBackgroundFileName, StringComparison.Ordinal);
+    }
+
+    private static bool TryStableGuid(string value) =>
+        Guid.TryParseExact(value, "N", out Guid id) && id != Guid.Empty;
 
     private static bool TryNormalize(string relativePath, out string normalized)
     {
