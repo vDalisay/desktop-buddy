@@ -27,10 +27,10 @@ public partial class SandboxRoot
         fullRelease: OS.HasFeature(BuildFeatureTags.FullRelease));
 
     /// <summary>
-    /// First production activation of the Scene runtime seam. This deliberately wraps only the
-    /// already-existing single Buddy actor; it does not create a second actor or switch persistence
-    /// ownership yet. The purpose of this packet is to put Next Fest/Full Release execution through
-    /// the deterministic Scene host while leaving Initial Demo behavior untouched.
+    /// First production activation of the Scene runtime seam. While the presentation still owns one
+    /// physical Buddy actor, a split run binds that actor to the real active Scene document and its
+    /// stable legacy-primary placement. The placeholder remains only for compatibility fixtures that
+    /// exercise a Scene-tagged sandbox without a production RunContext.
     /// </summary>
     private void InitializeSceneRuntimeHostIfEnabled()
     {
@@ -40,23 +40,38 @@ public partial class SandboxRoot
             return;
         }
 
-        // Temporary compatibility document until the atomic Initial Demo -> Next Fest migration
-        // loads the real active Scene. Environment data is not read from this placeholder and the
-        // runtime host owns no persistence; stable legacy IDs make the binding deterministic.
-        SceneDocument compatibilityScene = LegacySceneMigrationPolicy.CreateDefaultScene(
-            BuddyIdentityId.LegacyPrimary,
-            new EnvironmentLayout([]),
-            new CanonicalRoomPosition(0.5f, 0.5f));
+        SceneDocument scene;
+        BuddyPlacementId placementId = BuddyPlacementId.LegacyPrimary;
+        BuddyIdentityId buddyIdentityId = BuddyIdentityId.LegacyPrimary;
+
+        if (_runContext?.SceneProgress is { } sceneProgress)
+        {
+            SceneProgressBindingRegistry bindings = sceneProgress.CreateActiveBindings();
+            SceneBuddyProgressBinding binding = bindings.ForPlacement(BuddyPlacementId.LegacyPrimary);
+            scene = sceneProgress.ActiveScene;
+            placementId = binding.Placement.PlacementId;
+            buddyIdentityId = binding.Placement.BuddyIdentityId;
+        }
+        else
+        {
+            // Compatibility-only fallback until every direct Scene-tagged scenario injects a split
+            // RunContext. Production Bootstrap supplies SceneProgress before the sandbox enters tree.
+            scene = LegacySceneMigrationPolicy.CreateDefaultScene(
+                BuddyIdentityId.LegacyPrimary,
+                new EnvironmentLayout([]),
+                new CanonicalRoomPosition(0.5f, 0.5f));
+        }
+
         var actor = new BuddyActorRuntime(
-            BuddyPlacementId.LegacyPrimary,
-            BuddyIdentityId.LegacyPrimary,
+            placementId,
+            buddyIdentityId,
             Buddy,
             Pipeline,
             CareStroke,
             ToolReactions,
             Reactions,
             VisualPresenter);
-        _sceneRuntime = new SceneRuntimeHost(compatibilityScene, [actor]);
+        _sceneRuntime = new SceneRuntimeHost(scene, [actor]);
     }
 
     private void CaptureBuddyTickSnapshot()
