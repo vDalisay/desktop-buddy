@@ -17,18 +17,35 @@ public readonly record struct LegacyNextFestMigrationProjection(
 public static class LegacyNextFestMigrationPolicy
 {
     /// <summary>
-    /// Projects one current schema-8-style one-Buddy aggregate into the new account/Buddy/Scene
-    /// ownership model. Reserved IDs make this retry deterministic after a partial/failed disk write.
-    /// Work progress remains account-global beside Player and is intentionally not copied here;
-    /// background image bytes are likewise handled by the later atomic file-migration coordinator.
+    /// Compatibility overload for callers that only have the legacy room layout. New migration code
+    /// should pass the complete <see cref="EnvironmentProgressSnapshot"/> so paid storage and its
+    /// revision are not dropped at the ownership boundary.
     /// </summary>
     public static LegacyNextFestMigrationProjection Project(
         in ProgressSnapshot legacyProgress,
         Guid? activeCharacterId,
         EnvironmentLayout legacyEnvironment,
+        CanonicalRoomPosition buddyPosition) =>
+        Project(
+            legacyProgress,
+            activeCharacterId,
+            new EnvironmentProgressSnapshot(0, legacyEnvironment, []),
+            buddyPosition);
+
+    /// <summary>
+    /// Projects one current schema-8-style one-Buddy aggregate into the new account/Buddy/Scene
+    /// ownership model. Reserved IDs make this retry deterministic after a partial/failed disk write.
+    /// Work progress remains account-global beside Player and is intentionally not copied here;
+    /// background image bytes are likewise handled by the atomic file-migration coordinator.
+    /// </summary>
+    public static LegacyNextFestMigrationProjection Project(
+        in ProgressSnapshot legacyProgress,
+        Guid? activeCharacterId,
+        EnvironmentProgressSnapshot legacyEnvironment,
         CanonicalRoomPosition buddyPosition)
     {
-        ArgumentNullException.ThrowIfNull(legacyEnvironment);
+        if (legacyEnvironment.Layout is null)
+            throw new ArgumentException("Legacy migration requires valid environment progress.", nameof(legacyEnvironment));
 
         LegacyProgressPartition partition =
             LegacyProgressPartitionPolicy.Split(legacyProgress, activeCharacterId);
