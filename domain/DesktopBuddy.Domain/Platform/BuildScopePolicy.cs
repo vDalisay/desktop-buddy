@@ -89,6 +89,14 @@ public readonly struct BuildScopePolicy
         Surface is BuildSurface.NextFestDemo or BuildSurface.FullRelease;
 
     /// <summary>
+    /// Steam achievement publication is a stricter capability than local achievement qualification.
+    /// The Demo AppID must never receive the full game's achievement definitions, so only a valid
+    /// Full Release surface may attempt SetAchievement/StoreStats. Malformed tags fail closed before
+    /// platform code is consulted.
+    /// </summary>
+    public bool PublishesSteamAchievements => Surface == BuildSurface.FullRelease;
+
+    /// <summary>
     /// Next Fest has the owner-locked ten-Scene product cap. Full Release has no artificial Scene
     /// count cap; null means practical storage/UI/safety policy rather than entitlement. A zero
     /// value means the active build surface does not include Scenes at all.
@@ -115,11 +123,9 @@ public readonly struct BuildScopePolicy
         bool nextFestDemo,
         bool fullRelease)
     {
-        // The separately reduced itch distribution is always the least-privileged winner.
         if (itchIo)
             return new BuildScopePolicy(BuildSurface.ItchIo);
 
-        // Contradictory Full/Demo tags are a packaging error. Never let that error widen content.
         if (fullRelease && (steamDemo || nextFestDemo))
         {
             return new BuildScopePolicy(
@@ -129,7 +135,6 @@ public readonly struct BuildScopePolicy
         if (fullRelease)
             return new BuildScopePolicy(BuildSurface.FullRelease);
 
-        // A stray next_fest_demo tag must not unlock event-only content by itself.
         if (nextFestDemo && !steamDemo)
             return new BuildScopePolicy(BuildSurface.UntaggedFallback);
 
