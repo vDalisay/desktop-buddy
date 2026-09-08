@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.Domain.Content;
+using DesktopBuddy.Domain.Interaction;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Tools;
 using Godot;
@@ -7,13 +9,17 @@ using Godot;
 namespace DesktopBuddy.Achievements;
 
 /// <summary>
-/// Semantic interaction-use observers for Variety Hour. This deliberately lives beside the main
-/// achievement adapter rather than inside tool implementations: tools expose what genuinely
-/// happened, while achievement policy decides which of those actions count as a launch interaction.
+/// Semantic interaction-use and physics-trick observers. These deliberately live beside the main
+/// achievement adapter rather than inside gameplay implementations: gameplay exposes what genuinely
+/// happened, while achievement policy decides which semantic edges satisfy achievement rules.
 /// Damage remains a separate signal so Variety Hour does not collapse into Try Everything Once.
 /// </summary>
 public partial class AchievementBootstrap
 {
+    private const float BankShotMinimumHorizontalSpeed = 8.0f;
+
+    private readonly Dictionary<int, float> _baseballPreviousVelocityX = [];
+    private readonly HashSet<int> _confirmedBaseballRicochets = [];
     private bool _usageObserversWired;
     private bool _swordWasWielded;
     private int _observedPunchCount;
@@ -31,6 +37,11 @@ public partial class AchievementBootstrap
         _sandbox.CursorTools.SwingReleased += OnUsageSwingReleased;
         _sandbox.Grenades.PinPulled += OnUsageGrenadePinPulled;
         _sandbox.FireSprayer.SprayingChanged += OnUsageSprayingChanged;
+
+        // Subscribe before AchievementBootstrap._Ready wires its ordinary impact handler. This
+        // gate removes the old near-wall candidate unless a real horizontal rebound was observed,
+        // so the existing accepted-hit path can remain the single qualification point.
+        _sandbox.Pipeline.ImpactAccepted += OnBankShotGateImpact;
 
         // Punch and pullback-launch components already expose monotonic telemetry but no event.
         // Observe their committed counters instead of changing the gameplay APIs solely for an
@@ -51,6 +62,8 @@ public partial class AchievementBootstrap
         ObserveCommittedPunches();
         ObserveCommittedLaunches();
         ObserveSwordWield();
+        ObserveBaseballRicochets();
+        EnforceAirBudContactFreeState();
     }
 
     private void OnUsageGunShotFired(GunProfile profile)
@@ -133,6 +146,88 @@ public partial class AchievementBootstrap
         _swordWasWielded = wielded;
     }
 
+    private void ObserveBaseballRicochets()
+    {
+        if (_coordinator.Store.IsQualified(AchievementIds.BankShot))
+            return;
+
+        Rect2 bounds = _sandbox.Boundaries.InnerBounds;
+        for (int slot = 0; slot < LooseObjectRegistry.Capacity; slot++)
+        {
+            LooseObjectBody? body = _sandbox.Objects.BodyAt(slot);
+            if (!GodotObject.IsInstanceValid(body) || body!.RuntimeId == 0 ||
+                !string.Equals(body.SemanticContentId, ContentIds.ToolBaseball, StringComparison.Ordinal) ||
+                !_sandbox.Objects.TryGetSnapshot(body.RuntimeId, out var snapshot) ||
+                snapshot.ThrowToken == 0)
+            {
+                continue;
+            }
+
+            int interactionId = body.InteractionId;
+            float currentVelocityX = body.LinearVelocity.X;
+            if (_baseballPreviousVelocityX.TryGetValue(interactionId, out float previousVelocityX))
+            {
+                bool nearLeftWall =
+                    body.GlobalPosition.X - body.Radius <=
+                    bounds.Position.X + BankShotWallTolerancePixels;
+                bool nearRightWall =
+                    body.GlobalPosition.X + body.Radius >=
+                    bounds.End.X - BankShotWallTolerancePixels;
+
+                bool reboundedFromLeft = nearLeftWall &&
+                    previousVelocityX < -BankShotMinimumHorizontalSpeed &&
+                    currentVelocityX > BankShotMinimumHorizontalSpeed;
+                bool reboundedFromRight = nearRightWall &&
+                    previousVelocityX > BankShotMinimumHorizontalSpeed &&
+                    currentVelocityX < -BankShotMinimumHorizontalSpeed;
+                if (reboundedFromLeft || reboundedFromRight)
+                    _confirmedBaseballRicochets.Add(interactionId);
+            }
+
+            _baseballPreviousVelocityX[interactionId] = currentVelocityX;
+        }
+
+        // Runtime capacity is 24, but interaction IDs are monotonic across respawns. Keep stale
+        // historical samples bounded without allocating on the normal physics path.
+        if (_baseballPreviousVelocityX.Count > LooseObjectRegistry.Capacity * 4)
+        {
+            _baseballPreviousVelocityX.Clear();
+            _confirmedBaseballRicochets.Clear();
+        }
+    }
+
+    private void OnBankShotGateImpact(AcceptedImpact impact)
+    {
+        if (!string.Equals(impact.ContentId, ContentIds.ToolBaseball, StringComparison.Ordinal))
+            return;
+
+        int interactionId = impact.InteractionId;
+        if (_confirmedBaseballRicochets.Remove(interactionId))
+            _baseballsThatTouchedWall.Add(interactionId);
+        else
+            _baseballsThatTouchedWall.Remove(interactionId);
+
+        _baseballPreviousVelocityX.Remove(interactionId);
+    }
+
+    private void EnforceAirBudContactFreeState()
+    {
+        if (_airborneSeconds <= 0.0 || _coordinator.Store.IsQualified(AchievementIds.AirBud))
+            return;
+
+        // The geometric check in the main adapter cheaply rejects ordinary grounded play. Only
+        // once that timer is actually accumulating do we pay for collision queries. Any external
+        // contact means Buddy is supported/touching something rather than freely airborne.
+        foreach (var part in _sandbox.Buddy.Rig.Parts)
+        {
+            if (part.GetCollidingBodies().Count == 0)
+                continue;
+
+            _airborneSeconds = 0.0;
+            return;
+        }
+    }
+
     private void UnwireUsageObservers()
     {
         TreeExiting -= UnwireUsageObservers;
@@ -150,7 +245,11 @@ public partial class AchievementBootstrap
             _sandbox.Grenades.PinPulled -= OnUsageGrenadePinPulled;
         if (GodotObject.IsInstanceValid(_sandbox.FireSprayer))
             _sandbox.FireSprayer.SprayingChanged -= OnUsageSprayingChanged;
+        if (GodotObject.IsInstanceValid(_sandbox.Pipeline))
+            _sandbox.Pipeline.ImpactAccepted -= OnBankShotGateImpact;
 
+        _baseballPreviousVelocityX.Clear();
+        _confirmedBaseballRicochets.Clear();
         _usageObserversWired = false;
     }
 }
