@@ -146,8 +146,10 @@ public partial class EnvironmentDecorator : CanvasLayer
     {
         if (IsOpen || _saving) return;
         EnvironmentProgressSnapshot snapshot = _persistence.Snapshot();
-        _session = new EnvironmentEditSession(snapshot.Layout, _persistence.BalanceMilliCredits,
-            EnvironmentDecorationRegistry.Domain, null, snapshot.OwnedUnplaced);
+        _session = new EnvironmentEditSession(
+            snapshot,
+            _persistence.BalanceMilliCredits,
+            EnvironmentDecorationRegistry.Domain);
         _placement.Configure(_session, _blocker, ToBounds(RoomRect()));
         _placement.SetProcessUnhandledInput(false);
         _pointerInputBefore = _pointer.IsProcessingInput();
