@@ -25,6 +25,7 @@ public partial class EnvironmentCustomizationBootstrap : Node
     private EnvironmentPaintToolIconBootstrap? _paintIconBootstrap;
     private EnvironmentDecorationLayer? _decorationLayer;
     private EnvironmentDecorator? _decorator;
+    private IEnvironmentProgressPersistence? _environmentPersistence;
     private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
     private bool _workCompanionSubscribed;
     internal EnvironmentPaintStore? PaintStore => _paintStore;
@@ -89,23 +90,50 @@ public partial class EnvironmentCustomizationBootstrap : Node
             "/root/Win98CommandBarBootstrap");
         if (!GodotObject.IsInstanceValid(commandBar))
             commandBar = FindFirst<Win98CommandBarBootstrap>(GetTree().Root);
-        EnvironmentProgressState? state = _sandbox?.Saves?.EnvironmentProgress;
-        if (!GodotObject.IsInstanceValid(_sandbox) || !GodotObject.IsInstanceValid(commandBar) || state is null) return;
+        if (!GodotObject.IsInstanceValid(_sandbox) || !GodotObject.IsInstanceValid(commandBar)) return;
 
-        Compose(state, _sandbox!.Saves, commandBar!);
+        EnvironmentProgressState state;
+        IEnvironmentProgressPersistence persistence;
+        if (_sandbox!.SceneProgress is { } sceneProgress)
+        {
+            EnvironmentProgressSnapshot snapshot = sceneProgress.ActiveEnvironmentProgress;
+            state = new EnvironmentProgressState(snapshot.Layout, snapshot.Revision, snapshot.OwnedUnplaced);
+            persistence = new SceneEnvironmentProgressPersistence(
+                sceneProgress,
+                sceneProgress.ActiveSceneId,
+                state);
+        }
+        else
+        {
+            EnvironmentProgressState? legacyState = _sandbox.Saves.EnvironmentProgress;
+            if (legacyState is null) return;
+            state = legacyState;
+            persistence = new LegacyEnvironmentProgressPersistence(_sandbox.Progress, legacyState, _sandbox.Saves);
+        }
+
+        Compose(state, persistence, commandBar!);
     }
 
     internal void ComposeForStartupTest(
         EnvironmentProgressState state,
         DesktopBuddy.Persistence.SaveCoordinator saves,
-        Win98CommandBarBootstrap commandBar) => Compose(state, saves, commandBar);
+        Win98CommandBarBootstrap commandBar)
+    {
+        if (!GodotObject.IsInstanceValid(_sandbox))
+            throw new InvalidOperationException("Startup-test environment composition requires a configured sandbox.");
+        Compose(
+            state,
+            new LegacyEnvironmentProgressPersistence(_sandbox!.Progress, state, saves),
+            commandBar);
+    }
 
     private void Compose(
         EnvironmentProgressState state,
-        DesktopBuddy.Persistence.SaveCoordinator saves,
+        IEnvironmentProgressPersistence persistence,
         Win98CommandBarBootstrap commandBar)
     {
         if (_registration is not null) return;
+        _environmentPersistence = persistence ?? throw new ArgumentNullException(nameof(persistence));
         _backgroundPresenter = new EnvironmentBackgroundPresenter { Name = nameof(EnvironmentBackgroundPresenter) };
         if (!GodotObject.IsInstanceValid(_sandbox))
             _sandbox = FindFirst<SandboxRoot>(GetTree().Root);
@@ -137,8 +165,8 @@ public partial class EnvironmentCustomizationBootstrap : Node
             GetTree().Root.AddChild(_decorationLayer);
             _presentationVisibility.Configure(_backgroundPresenter, _decorationLayer);
             _decorator = new EnvironmentDecorator { Name = nameof(EnvironmentDecorator) };
-            _decorator.Configure(_sandbox.Progress, _sandbox.Economy, _sandbox.Pointer, _sandbox.Buddy,
-                _sandbox.VisualPresenter, state, saves, _decorationLayer);
+            _decorator.Configure(_sandbox.Economy, _sandbox.Pointer, _sandbox.Buddy,
+                _sandbox.VisualPresenter, persistence, _decorationLayer);
             _decorator.ConfigurePreferences(_sandbox.Shell);
             GetTree().Root.AddChild(_decorator);
             RegisterDecorator(commandBar, _decorator);
@@ -179,8 +207,8 @@ public partial class EnvironmentCustomizationBootstrap : Node
 
     private void RegisterDecorator(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator)
     {
-        // The Demo ships without the Room Decorator (owner decision 2026-08-20); the workspace
-        // itself stays built and tested, it simply has no way in.
+        // The Initial Demo ships without the Room Decorator. Scene-enabled Next Fest can only be
+        // enabled after this composition path and its build-scope regression gates are green.
         if (!DemoScope.IncludesRoomDecorator)
             return;
 
@@ -221,8 +249,10 @@ public partial class EnvironmentCustomizationBootstrap : Node
         _paintIconBootstrap = null;
         _backgroundEditor = null;
         _backgroundPresenter = null;
+        _paintStore = null;
         _decorationLayer = null;
         _decorator = null;
+        _environmentPersistence = null;
     }
 
     internal void ApplyWorkCompanionVisibilityForTest(bool active) =>
