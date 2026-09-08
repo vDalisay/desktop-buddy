@@ -63,6 +63,14 @@ public static class DemoScope
         fullRelease: FullReleaseOverride ?? OS.HasFeature(BuildFeatureTags.FullRelease));
 
     /// <summary>
+    /// The already-resolved release policy for composition roots that need the complete capability
+    /// object rather than one derived boolean. Keeping this internal prevents downstream UI/gameplay
+    /// code from bypassing the focused scope properties while ensuring Bootstrap uses exactly the
+    /// same fail-closed tag precedence as every other release decision.
+    /// </summary>
+    internal static BuildScopePolicy ActiveBuildScope => BuildScope;
+
+    /// <summary>
     /// The itch build is intentionally the strictest public scope. If an export is accidentally
     /// tagged with wider release features too, the pure policy keeps itch authoritative so held-back
     /// features cannot leak into that distribution.
