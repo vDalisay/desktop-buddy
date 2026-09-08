@@ -99,6 +99,12 @@ public static class DemoScope
     public static bool IncludesMultiBuddy => BuildScope.IncludesScenes;
 
     /// <summary>
+    /// The 24-achievement system first ships in Next Fest. Next Fest qualifies locally under the
+    /// Demo AppID; only Full Release is allowed to publish those qualifications to Steam.
+    /// </summary>
+    public static bool IncludesAchievements => BuildScope.IncludesAchievements;
+
+    /// <summary>
     /// Ten for Next Fest, unlimited by product entitlement for Full Release, and zero for surfaces
     /// that do not ship Scenes. A null value means practical storage/UI/safety policy only.
     /// </summary>
