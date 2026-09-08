@@ -19,7 +19,14 @@ public sealed class SceneProgressCoordinatorTests
     {
         var files = new MemoryFiles();
         SceneProgressCoordinator coordinator = Coordinator(files);
+
+        // A fresh graph is not clean merely because semantic revisions match their baselines:
+        // there is no durable manifest yet. Commit that initial generation first.
+        Assert.True(coordinator.IsDirty);
+        await coordinator.FlushAsync(force: true);
         Assert.False(coordinator.IsDirty);
+        Assert.Equal(0, coordinator.LastCommittedRevision);
+        Assert.True(Store(files).HasCommittedGeneration);
         Assert.True(coordinator.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? buddy));
 
         coordinator.Player.Deposit(3_000);
@@ -29,12 +36,53 @@ public sealed class SceneProgressCoordinatorTests
         Assert.True(coordinator.IsDirty);
         await coordinator.FlushAsync();
         Assert.False(coordinator.IsDirty);
-        Assert.Equal(0, coordinator.LastCommittedRevision);
+        Assert.Equal(1, coordinator.LastCommittedRevision);
 
         SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
         Assert.Equal(5_000, loaded.Player.BalanceMilliCredits);
         Assert.Equal(125, loaded.Work.Lifetime.KeyboardPresses);
         Assert.Equal(25.0f, loaded.BuddyIdentities[0].Mood);
+    }
+
+    [Fact]
+    public async Task Fresh_generation_failed_commit_stays_dirty_and_retries()
+    {
+        var files = new MemoryFiles { FailNextDurableWrite = true };
+        SceneProgressCoordinator coordinator = Coordinator(files);
+
+        await Assert.ThrowsAsync<IOException>(() => coordinator.FlushAsync(force: true));
+
+        Assert.True(coordinator.IsDirty);
+        Assert.Equal(-1, coordinator.LastCommittedRevision);
+        Assert.NotNull(coordinator.LastFailure);
+        Assert.False(Store(files).HasCommittedGeneration);
+
+        await coordinator.FlushAsync(force: true);
+
+        Assert.False(coordinator.IsDirty);
+        Assert.Equal(0, coordinator.LastCommittedRevision);
+        Assert.Null(coordinator.LastFailure);
+        Assert.True(Store(files).HasCommittedGeneration);
+    }
+
+    [Fact]
+    public async Task Loaded_unchanged_generation_does_not_create_redundant_commit()
+    {
+        var files = new MemoryFiles();
+        SceneProgressCoordinator first = Coordinator(files);
+        await first.FlushAsync(force: true);
+        Assert.Equal(0, first.LastCommittedRevision);
+
+        SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
+        SceneProgressCoordinator restored = CoordinatorFromLoaded(files, loaded);
+        Assert.False(restored.IsDirty);
+
+        await restored.FlushAsync(force: true);
+
+        Assert.False(restored.IsDirty);
+        Assert.Equal(0, restored.LastCommittedRevision);
+        SceneProgressLoadResult stillSame = await Store(files).LoadCommittedAsync(CashPerPain);
+        Assert.Equal(0, stillSame.Revision);
     }
 
     [Fact]
@@ -100,6 +148,12 @@ public sealed class SceneProgressCoordinatorTests
 
     private static SceneProgressTransactionStore Store(MemoryFiles files) => new(SaveRoot, files);
 
+    private static BuildScopePolicy NextFestScope() => BuildScopePolicy.Resolve(
+        itchIo: false,
+        steamDemo: true,
+        nextFestDemo: true,
+        fullRelease: false);
+
     private static SceneProgressCoordinator Coordinator(MemoryFiles files)
     {
         var legacy = new BuddyProgressState(
@@ -117,13 +171,8 @@ public sealed class SceneProgressCoordinatorTests
             lifetime: new WorkCounterSnapshot(100, 50),
             firstEntryGlassesGranted: true,
             revision: 2);
-        BuildScopePolicy scope = BuildScopePolicy.Resolve(
-            itchIo: false,
-            steamDemo: true,
-            nextFestDemo: true,
-            fullRelease: false);
         return new SceneProgressCoordinator(
-            scope,
+            NextFestScope(),
             player,
             work,
             [buddy],
@@ -132,14 +181,35 @@ public sealed class SceneProgressCoordinatorTests
             Store(files));
     }
 
+    private static SceneProgressCoordinator CoordinatorFromLoaded(
+        MemoryFiles files,
+        SceneProgressLoadResult loaded) => new(
+            NextFestScope(),
+            loaded.Player,
+            loaded.Work,
+            loaded.BuddyIdentities,
+            loaded.Scenes,
+            SceneId.From(loaded.Index.ActiveSceneId),
+            Store(files),
+            loaded.Revision);
+
     private sealed class MemoryFiles : IAtomicSaveFileSystem
     {
         private readonly Dictionary<string, string> _files = new(StringComparer.Ordinal);
+        public bool FailNextDurableWrite { get; set; }
 
         public bool Exists(string path) => _files.ContainsKey(path);
         public string ReadAllText(string path) => _files[path];
         public void CreateDirectory(string path) { }
-        public void WriteDurable(string path, string contents) => _files[path] = contents;
+        public void WriteDurable(string path, string contents)
+        {
+            if (FailNextDurableWrite)
+            {
+                FailNextDurableWrite = false;
+                throw new IOException("Injected durable write failure.");
+            }
+            _files[path] = contents;
+        }
         public void Replace(string temporary, string primary, string backup)
         {
             _files[backup] = _files[primary];
