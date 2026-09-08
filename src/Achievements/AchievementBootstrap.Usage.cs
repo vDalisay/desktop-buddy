@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Content;
-using DesktopBuddy.Domain.Interaction;
+using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
 using DesktopBuddy.Tools;
 using Godot;
