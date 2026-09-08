@@ -13,6 +13,44 @@
   </PropertyGroup>
 
   <!--
+    Achievement content is a compile-time distribution capability, not a Godot runtime flag.
+
+      itch.io                              -> excluded
+      Initial Steam Demo                   -> excluded
+      Steam Next Fest Demo                 -> included (local qualification only)
+      Full Release                         -> included (publishes to the full-game AppID)
+
+    The distribution hardening branch owns the broader build-profile/manifest work. These property
+    names intentionally match that direction: Steam Demo is the family, Next Fest is the promoted
+    Demo variant. Developer/test builds keep achievements unless a scope is explicitly selected.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddyItchScope)' == 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyAchievementsScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ACHIEVEMENTS</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+    The low-scope builds retain only a tiny absent composition seam so shared Steam/Workshop
+    composition does not need a parallel source tree. The rule engine, publisher and Steam adapter
+    are physically absent from the game/domain assemblies and cannot be enabled by editing Godot
+    feature tags in an exported PCK.
+  -->
+  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' == 'true' ">
+    <Compile Remove="src/Achievements/AchievementBootstrap.Absent.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' != 'true' ">
+    <Compile Remove="src/Achievements/AchievementBootstrap.cs" />
+    <Compile Remove="src/Achievements/SteamAchievementPublisher.cs" />
+    <Compile Remove="src/Platform/Steam/GodotSteamAchievementRemote.cs" />
+  </ItemGroup>
+
+  <!--
     Godot's experimental static-LibGodot Web exporter publishes the game as a browser-wasm
     application. Keep the native/desktop project unchanged, but enable the fork's required
     Web AOT path whenever Godot targets Web.
@@ -59,7 +97,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="domain\DesktopBuddy.Domain\DesktopBuddy.Domain.csproj" />
+    <ProjectReference Include="domain\DesktopBuddy.Domain\DesktopBuddy.Domain.csproj"
+                      AdditionalProperties="DesktopBuddyAchievementsScope=$(DesktopBuddyAchievementsScope)" />
     <ProjectReference Include="shared\DesktopBuddy.Visuals\DesktopBuddy.Visuals.csproj" />
   </ItemGroup>
 
