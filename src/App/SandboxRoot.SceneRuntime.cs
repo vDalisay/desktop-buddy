@@ -71,7 +71,7 @@ public partial class SandboxRoot
     /// Routes the actor-local portion of the fixed tick. Shared tools, objects, grenades, fire,
     /// cameras and room services remain on SandboxRoot exactly where they are today.
     /// </summary>
-    private void TickBuddyActors(double delta, in GrabState grab, PuppetPartBody? grabbedBody)
+    private void TickBuddyActors(double delta, GrabState grab, PuppetPartBody? grabbedBody)
     {
         if (_sceneRuntime is null)
         {
