@@ -19,6 +19,7 @@ public sealed class SceneProgressBootstrapCoordinatorTests
     private static readonly string SaveRoot =
         OperatingSystem.IsWindows() ? @"C:\scene-bootstrap-test" : "/scene-bootstrap-test";
     private static readonly string ProgressPath = Path.Combine(SaveRoot, SteamCloudSavePolicy.ProgressFileName);
+    private static readonly string ManifestPath = Path.Combine(SaveRoot, SceneProgressTransactionStore.ManifestFileName);
 
     [Fact]
     public void Non_scene_build_scope_cannot_construct_scene_bootstrap()
@@ -89,6 +90,49 @@ public sealed class SceneProgressBootstrapCoordinatorTests
         Assert.Equal(12, loaded.Coordinator.Work.Lifetime.KeyboardPresses);
         Assert.Equal(migrated.Coordinator.LastCommittedRevision, loaded.Coordinator.LastCommittedRevision);
         Assert.Equal(migrated.Coordinator.ActiveSceneId, loaded.Coordinator.ActiveSceneId);
+    }
+
+    [Fact]
+    public async Task Committed_generation_bypasses_lazy_legacy_loader_before_progress_json_decode()
+    {
+        var files = new MemoryFiles();
+        await Bootstrap(files).LoadOrMigrateAsync(
+            Legacy(balance: 61_000, keyboardPresses: 21),
+            new CanonicalRoomPosition(0.5f, 0.5f));
+
+        int legacyLoads = 0;
+        SceneProgressBootstrapResult loaded = await Bootstrap(files).LoadOrMigrateAsync(
+            _ =>
+            {
+                legacyLoads++;
+                throw new InvalidOperationException("A committed Scene generation must not decode progress.json as legacy.");
+            },
+            new CanonicalRoomPosition(0.2f, 0.8f));
+
+        Assert.Equal(0, legacyLoads);
+        Assert.Equal(SceneProgressBootstrapSource.CommittedGeneration, loaded.Source);
+        Assert.Equal(61_000, loaded.Coordinator.Player.BalanceMilliCredits);
+        Assert.Equal(21, loaded.Coordinator.Work.Lifetime.KeyboardPresses);
+        Assert.False(loaded.CanonicalPromotionComplete);
+    }
+
+    [Fact]
+    public async Task Malformed_committed_manifest_fails_closed_without_legacy_fallback()
+    {
+        var files = new MemoryFiles();
+        files.WriteDurable(ManifestPath, "{ definitely-not-json");
+        int legacyLoads = 0;
+
+        await Assert.ThrowsAsync<InvalidDataException>(() => Bootstrap(files).LoadOrMigrateAsync(
+            _ =>
+            {
+                legacyLoads++;
+                return Task.FromResult(Legacy(balance: 999_000, keyboardPresses: 999));
+            },
+            new CanonicalRoomPosition(0.5f, 0.5f)));
+
+        Assert.Equal(0, legacyLoads);
+        Assert.Equal("{ definitely-not-json", files.ReadAllText(ManifestPath));
     }
 
     [Fact]
