@@ -123,7 +123,11 @@ public partial class CharacterSlotUiBootstrap : Node
         }
         if (_slots is null && GodotObject.IsInstanceValid(_sandbox) &&
             _sandbox!.Progress is not null && _sandbox.Economy is not null)
-            _slots = new CharacterSlotEntitlementState(_sandbox.Progress, _sandbox.Economy);
+        {
+            // Character slots are account-global. Scene-enabled builds must therefore bind to
+            // PlayerProgressState rather than the read-only legacy aggregate compatibility view.
+            _slots = new CharacterSlotEntitlementState(_sandbox.PlayerProgress, _sandbox.Economy);
+        }
     }
 
     private void EnsureControls(Control parent, Button newButton)
@@ -313,7 +317,7 @@ public partial class CharacterSlotUiBootstrap : Node
     {
         try
         {
-            await _sandbox!.Saves.FlushProgressAsync(force: true);
+            await _sandbox!.RunProgressPersistence.FlushAsync(force: true);
         }
         catch (Exception exception)
         {
