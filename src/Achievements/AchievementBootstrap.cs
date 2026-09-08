@@ -194,7 +194,9 @@ public partial class AchievementBootstrap : Node
 
     private void OnImpactAccepted(AcceptedImpact impact)
     {
-        _progress.RecordContentUse(impact.ContentId);
+        // ToolUses is written from semantic activation events in AchievementBootstrap.Usage.
+        // Damage observation owns only damage achievements/statistics, so a shot/swing that lands
+        // is not counted a second time merely because it also produced pain.
         _coordinator.RecordDamage(impact.ContentId, impact.Pain, impact.MilliCredits, impact.TimeSeconds);
         if (string.Equals(impact.ContentId, ContentIds.ToolBaseball, StringComparison.Ordinal) &&
             _baseballsThatTouchedWall.Remove(impact.InteractionId))
@@ -239,8 +241,9 @@ public partial class AchievementBootstrap : Node
 
     private void OnIgnited(Vector2 _point)
     {
+        // Sprayer usage is recorded when a real stream begins. Ignition is tracked separately for
+        // Fire Drill so one successful spray is not counted twice in ToolUses.
         _burnWasActive = true;
-        _progress.RecordContentUse(ContentIds.ToolFireSprayer);
     }
 
     private void OnCareItemTaken(LooseObjectBody item)
