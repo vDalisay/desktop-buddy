@@ -11,6 +11,9 @@
     <RootNamespace>DesktopBuddy.Domain.Tests</RootNamespace>
     <IsPackable>false</IsPackable>
     <IsTestProject>true</IsTestProject>
+    <!-- Tests exercise the achievement-enabled Next Fest/Full reset semantics by default. Low-scope
+         artifact verification builds DesktopBuddy.csproj directly with the capability disabled. -->
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ACHIEVEMENTS</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>
