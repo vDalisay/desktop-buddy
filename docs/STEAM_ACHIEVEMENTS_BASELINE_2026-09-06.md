@@ -1,6 +1,6 @@
 # Desktop Buddy — Steam Achievements Baseline
 
-Status: **Owner-approved baseline (2026-09-06)**
+Status: **Owner-approved baseline (2026-09-06), distribution scope amended 2026-09-08**
 
 This document is the authoritative launch achievement list for the current implementation. It
 supersedes the older ten-achievement list in FR-018.5–FR-018.14 where the two conflict.
@@ -10,11 +10,15 @@ supersedes the older ten-achievement list in FR-018.5–FR-018.14 where the two 
 - Full-game Steam AppID: `5114950`.
 - Steam Demo AppID: `5228990`.
 - Create the achievement definitions below in **the full game's Steamworks app only**.
-- The Steam Demo evaluates the same conditions and stores qualification in `progress.json`, but it
-  must never call Steam's achievement-unlock API.
-- When the full game runs with the shared/carried save, every locally-qualified achievement is
-  reconciled to Steam as desired state. Steam being unavailable must never block qualification,
-  gameplay, or saving.
+- **itch.io and the Initial Steam Demo do not ship the Desktop Buddy achievement implementation.**
+  Their game/domain assemblies must physically omit the catalog, qualification rules, counters,
+  reconciler, publisher, and Steam achievement adapter; this is compile-time distribution scope,
+  not a runtime UI flag.
+- The **Steam Next Fest Demo** is the first demo build that ships achievements. It evaluates the
+  conditions below and stores local qualification in `progress.json`, but it must never call
+  Steam's achievement-unlock API under Demo AppID `5228990`.
+- When the full game runs with the shared/carried Next Fest save, every locally-qualified
+  achievement is reconciled to Steam as desired state.
 - A newly changed desired set receives an immediate publish attempt. A failed unchanged batch backs
   off at 60s, 120s, 240s, then 300s. A successful batch becomes an in-process no-op until another
   achievement qualifies. This respects Steam's `StoreStats` rate-limit guidance while still
@@ -22,14 +26,38 @@ supersedes the older ten-achievement list in FR-018.5–FR-018.14 where the two 
 - If the GodotSteam addon and binding surface are valid and `steamInitEx` specifically reports
   `NoConnection` (status `2`) at startup, the shared Steam composition keeps the same bridge and
   Workshop transport alive and retries at 30s, 60s, 120s, 240s, then 300s. Recovery makes Workshop
-  and achievement reconciliation available in the same process without rebinding services. Generic
-  initialization failure, client-update-required, configuration, and capability failures are not
-  polled indefinitely.
-- `Reset Progress` keeps achievements that are already qualified, because Steam achievements cannot
-  be revoked and Demo-qualified awards still need to reconcile. Partial counters/working state
-  (for example 73/100 Boxing Glove hits) reset with ordinary progress.
+  and full-game achievement reconciliation available in the same process without rebinding
+  services. Generic initialization failure, client-update-required, configuration, and capability
+  failures are not polled indefinitely.
+- `Reset Progress` in an achievement-enabled build keeps achievements that are already qualified,
+  because Steam achievements cannot be revoked and Next-Fest-qualified awards still need to
+  reconcile. Partial counters/working state reset with ordinary progress.
 - Local achievement IDs and Steam API names are permanent persisted/platform identifiers. Do not
   rename or reuse them after release; add a new achievement instead.
+
+### Build-scope contract
+
+The achievement project seam intentionally matches the distribution planning/hardening work:
+
+| Build | MSBuild selection | Achievement implementation |
+|---|---|---|
+| itch.io | `DesktopBuddyItchScope=true` | **Excluded** |
+| Initial Steam Demo | `DesktopBuddySteamDemoScope=true`, `DesktopBuddyNextFestDemoScope=false` | **Excluded** |
+| Steam Next Fest Demo | `DesktopBuddySteamDemoScope=true`, `DesktopBuddyNextFestDemoScope=true` | **Included; local qualification only** |
+| Full Release | `DesktopBuddySteamDemoScope=false` | **Included; full Steam publishing** |
+
+`DesktopBuddyAchievementsScope` is the derived capability. Release tooling may set it explicitly,
+but normal profile selection should derive it from the properties above. Developer/test builds keep
+it enabled by default.
+
+Low-scope builds compile a tiny inert `AchievementBootstrap.Absent` composition seam only so shared
+Workshop composition does not need a second source tree. The actual achievement engine is absent.
+CI verifies the compiled DLLs do not contain stable implementation sentinels such as
+`ACH_FIRST_IMPRESSION`, `AchievementCoordinator`, `AchievementReconciler`,
+`SteamAchievementPublisher`, or `GodotSteamAchievementRemote`.
+
+The Initial and Next Fest demos are expected to remain the same Steam Demo AppID; changing a Godot
+feature tag in an Initial Demo artifact must therefore never be enough to materialize achievements.
 
 ## Baseline — 24 achievements
 
@@ -92,9 +120,16 @@ The implementation follows a local-first **Ports & Adapters / desired-state reco
 - `src/Sharing/WorkshopBootstrap.cs` owns the single live GodotSteam bridge and composes Workshop and
   achievements around it. Retryable Steam-client initialization is recovered in place with bounded
   backoff; no second Steam initialization object or service-locator lookup is introduced.
+- `DesktopBuddy.csproj` and `DesktopBuddy.Domain.csproj` own the compile-time inclusion boundary.
+  `devtools/verification/verify_achievement_scope.py` is the artifact-level negative/positive check.
 
 This separation is intentional: pure rules and reconciliation are covered by ordinary `dotnet test`;
 GodotSteam binding compatibility remains covered by the native-addon smoke scenario.
+
+The Initial Steam Demo still needs the same native GodotSteam addon for Workshop. That third-party
+addon inherently exposes Steamworks stats/achievement APIs; the distribution boundary guarantees
+that **Desktop Buddy's achievement catalog/rules/state/publisher/adapter are absent**, not that Valve
+or GodotSteam's general-purpose binary has been surgically rebuilt to remove those APIs.
 
 ## Steamworks setup
 
@@ -107,8 +142,8 @@ In Steamworks for AppID `5114950`:
    Character Arc, and Rube Goldberg Would Be Proud.
 4. Upload locked/unlocked artwork for every achievement before release.
 5. Publish the Steamworks changes.
-6. Do **not** duplicate these definitions under Demo AppID `5228990`; the Demo's job is local
-   qualification only.
+6. Do **not** duplicate these definitions under Demo AppID `5228990`; the Next Fest Demo's job is
+   local qualification only. The Initial Steam Demo contains no achievement implementation.
 
 ## Release verification
 
@@ -118,8 +153,10 @@ Before merge/release, verify all of the following:
 - `dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build`
   passes, including the 24-definition catalog, Work thresholds, cumulative/trick rules, reset
   semantics, Character Arc identity handling, and reconciliation idempotency/failure replay.
-- In a Steam Demo build, qualifying an achievement changes `progress.json` but does not create a
-  Steam achievement unlock for AppID `5228990`.
+- The four-profile `Achievement Build Scope` CI matrix passes: itch + Initial Demo exclude the
+  implementation; Next Fest + Full include it.
+- In a Steam Next Fest Demo build, qualifying an achievement changes `progress.json` but does not
+  create a Steam achievement unlock for AppID `5228990`.
 - Launching the full game with that carried qualification unlocks the matching achievement under
   AppID `5114950` after Steam becomes available.
 - Starting the full game while GodotSteam reports `NoConnection` still qualifies locally; if the
