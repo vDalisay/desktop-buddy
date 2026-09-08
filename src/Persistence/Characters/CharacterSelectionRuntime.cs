@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using DesktopBuddy.App;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
+using DesktopBuddy.Domain.Persistence;
 using Godot;
 
 namespace DesktopBuddy.Persistence.Characters;
@@ -15,6 +16,7 @@ public partial class CharacterSelectionRuntime : Node
     private SandboxRoot _sandbox = null!;
     private RunContext _context = null!;
     private CharacterSelectionCoordinator? _coordinator;
+    private SceneCharacterSelectionBinding? _sceneSelectionBinding;
     private RuntimePaintTextureBridge? _paintTextures;
     private CancellationTokenSource? _lifetime;
     private long _boundPaintSequence;
@@ -58,6 +60,8 @@ public partial class CharacterSelectionRuntime : Node
         _lifetime?.Cancel();
         _lifetime?.Dispose();
         _lifetime = null;
+        _sceneSelectionBinding?.Dispose();
+        _sceneSelectionBinding = null;
         _paintTextures?.Dispose();
         _paintTextures = null;
     }
@@ -75,12 +79,32 @@ public partial class CharacterSelectionRuntime : Node
 
         _lifetime = new CancellationTokenSource();
         _paintTextures = new RuntimePaintTextureBridge(_sandbox.VisualPresenter.RigView);
-        _coordinator = new CharacterSelectionCoordinator(
-            _context.Characters,
-            _context.CharacterSelection,
-            _sandbox.VisualPresenter.RigView,
-            _context.Saves,
-            BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
+
+        if (_context.SceneProgress is { } scenes)
+        {
+            // Production still owns one compatibility actor while multi-Buddy spawning is brought
+            // online. Its stable migrated identity is the authority for Character selection; the
+            // legacy SaveCoordinator is intentionally not involved after the Scene manifest exists.
+            _sceneSelectionBinding = new SceneCharacterSelectionBinding(
+                scenes,
+                BuddyIdentityId.LegacyPrimary,
+                _context.CharacterSelection);
+            _coordinator = new CharacterSelectionCoordinator(
+                _context.Characters,
+                _context.CharacterSelection,
+                _sandbox.VisualPresenter.RigView,
+                BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
+        }
+        else
+        {
+            _coordinator = new CharacterSelectionCoordinator(
+                _context.Characters,
+                _context.CharacterSelection,
+                _sandbox.VisualPresenter.RigView,
+                _context.Saves,
+                BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog);
+        }
+
         StartupResult = await _coordinator.LoadStartupAsync(_lifetime.Token);
     }
 }
