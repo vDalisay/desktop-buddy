@@ -97,6 +97,13 @@ public sealed class SceneProgressCoordinator
     {
         get
         {
+            // A fresh graph has no durable generation even when every semantic object's own
+            // revision happens to match the in-memory saved-revision baselines. Keep it dirty until
+            // the transaction store has produced the first manifest. Loaded/migrated coordinators
+            // pass their committed revision and remain clean when otherwise unchanged.
+            if (LastCommittedRevision < 0)
+                return true;
+
             if (Player.Revision != Interlocked.Read(ref _savedPlayerRevision) ||
                 Work.Revision != Interlocked.Read(ref _savedWorkRevision) ||
                 _sceneRevision != Interlocked.Read(ref _savedSceneRevision) ||
