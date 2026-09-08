@@ -11,6 +11,8 @@ import sys
 # mentioned by developer smoke-test assertion strings, otherwise a Debug profile can false-positive
 # even when the production type itself was removed from compilation.
 SENTINELS = (
+    "DesktopBuddy.Achievements",
+    "DesktopBuddy.Domain.Achievements",
     "ACH_FIRST_IMPRESSION",
     "AchievementCoordinator",
     "AchievementReconciler",
@@ -47,7 +49,7 @@ def main() -> int:
             for sentinel, paths in leaked.items():
                 print(f"  {sentinel}: {', '.join(paths)}", file=sys.stderr)
             return 1
-        print("achievement scope: excluded; no production implementation sentinels found")
+        print("achievement scope: excluded; no first-party achievement namespaces or implementation sentinels found")
         return 0
 
     absent = [sentinel for sentinel, paths in found.items() if not paths]
@@ -57,7 +59,7 @@ def main() -> int:
             print(f"  {sentinel}", file=sys.stderr)
         return 1
 
-    print("achievement scope: included; all production implementation sentinels found")
+    print("achievement scope: included; all first-party achievement namespaces and implementation sentinels found")
     return 0
 
 
