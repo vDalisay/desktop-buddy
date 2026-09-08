@@ -81,6 +81,14 @@ public readonly struct BuildScopePolicy
     public bool IncludesRoomDecorator => IncludesScenes;
 
     /// <summary>
+    /// The approved 24-achievement system first ships in Next Fest. Next Fest performs local
+    /// qualification only; Full Release may additionally reconcile qualified IDs to Steam. Initial
+    /// Demo, itch.io, untagged and malformed builds must not expose achievement behavior.
+    /// </summary>
+    public bool IncludesAchievements =>
+        Surface is BuildSurface.NextFestDemo or BuildSurface.FullRelease;
+
+    /// <summary>
     /// Next Fest has the owner-locked ten-Scene product cap. Full Release has no artificial Scene
     /// count cap; null means practical storage/UI/safety policy rather than entitlement. A zero
     /// value means the active build surface does not include Scenes at all.
