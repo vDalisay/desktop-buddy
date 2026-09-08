@@ -10,6 +10,11 @@ namespace DesktopBuddy.App;
 /// <summary>
 /// Dependencies with one lifetime per application run. The bootstrap composes
 /// this once, before the sandbox enters the tree, and the sandbox only routes it.
+///
+/// <see cref="SceneProgress"/> is intentionally optional during the staged migration. Initial Demo,
+/// itch.io and compatibility fixtures keep the legacy aggregate owner; Next Fest/Full Release can
+/// inject the split account/Buddy/Scene owner without forcing every legacy UI call site to change in
+/// the same commit.
 /// </summary>
 public sealed record RunContext(
     BuddyProgressState Progress,
@@ -22,4 +27,8 @@ public sealed record RunContext(
     CharacterSelectionState? CharacterSelection = null,
     CharacterStore? Characters = null,
     WorkProgressState? WorkProgress = null,
-    EnvironmentProgressState? EnvironmentProgress = null);
+    EnvironmentProgressState? EnvironmentProgress = null,
+    SceneProgressCoordinator? SceneProgress = null)
+{
+    public bool UsesSplitSceneProgress => SceneProgress is not null;
+}
