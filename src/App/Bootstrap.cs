@@ -59,9 +59,6 @@ public partial class Bootstrap : Node
             case RunnerMode.Scenario:
             case RunnerMode.Journey:
 #if DESKTOP_BUDDY_NO_DEV_TOOLS
-                // Shipping builds omit the entire developer scenario tree — every distribution,
-                // not just the browser one. A crafted argument must fall back to normal gameplay:
-                // the runner is a live unlock otherwise, because scenarios set DemoScope overrides.
                 Log.Warn(Category, "Scenario/journey runner is unavailable in this build; starting normal sandbox.");
                 await BootSandboxAsync();
 #else
@@ -171,9 +168,6 @@ public partial class Bootstrap : Node
 
             if (DemoScope.IncludesScenes)
             {
-                // Scene-enabled builds choose the persistence format before progress.json is decoded.
-                // A committed Scene manifest therefore remains authoritative even if the old
-                // aggregate path is corrupt or belongs to an incompatible schema.
                 Task<SceneBootCompatibility> sceneTask = LoadSceneProgressAsync(
                     baseStore,
                     saveFileSystem,
@@ -186,10 +180,6 @@ public partial class Bootstrap : Node
                 SceneBootCompatibility sceneBoot = await sceneTask;
                 sceneProgress = sceneBoot.SceneProgress;
                 progressLoad = sceneBoot.CompatibilityProgressLoad;
-
-                // From this point onward the Scene manifest is the semantic commit point. Legacy
-                // consumers may still use SaveCoordinator for local settings, but any accidental
-                // progress write fails closed instead of overwriting account-only progress.json.
                 runtimeStore = new LegacyProgressCompatibilityStore(
                     baseStore,
                     saveRoot,
@@ -228,9 +218,6 @@ public partial class Bootstrap : Node
             SaveLoadStatus.NewSave or SaveLoadStatus.DefaultsRecovered;
         ProgressSave? loadedProgress = progressLoad.Value;
 
-        // In Scene mode the helper already chose/committed the authoritative graph. Rehydrate this
-        // object only as a compatibility view for legacy consumers; never roll another fresh state
-        // here or traits/selection could diverge from the committed primary Buddy.
         BuddyProgressState progress = sceneProgress is not null
             ? ProgressSavePolicy.CreateState(
                 loadedProgress ?? throw new InvalidOperationException("Scene compatibility load returned no progress."),
@@ -260,9 +247,6 @@ public partial class Bootstrap : Node
             ? new EconomyService(sceneProgress.Player, CatalogueLoader.Catalogue)
             : new EconomyService(progress, CatalogueLoader.Catalogue);
 
-        // Scene builds retain this coordinator only for machine-local settings and compatibility
-        // APIs. Do not attach Character, Work or Environment semantic state to it: each has a
-        // Scene-owned persistence route and the compatibility store blocks aggregate writes anyway.
         SaveCoordinator saves = sceneProgress is not null
             ? new SaveCoordinator(progress, runtimeStore, progress.Revision)
             : new SaveCoordinator(
@@ -296,10 +280,6 @@ public partial class Bootstrap : Node
         }
         else if (sceneProgress is null && newSemanticState)
         {
-            // A first-run browser build must never gate its first rendered frame on durable
-            // filesystem synchronization. The state stays dirty and the normal autosave path
-            // persists it after gameplay is alive. This also protects experimental single-threaded
-            // Web runtimes from turning a save backend regression into a permanent grey boot page.
             Log.Info(Category, "Browser first-run save deferred until normal autosave; continuing boot.");
         }
 
@@ -319,13 +299,7 @@ public partial class Bootstrap : Node
         sandbox.Shell.ConfigureRuntime(settings, saves);
         sandbox.Configure(context);
 
-        // Feature autoloads may exist before the sandbox enters the tree. Give them the
-        // composition-root references directly so normal boot does not discover runtime services
-        // by recursively walking the scene tree or bypass the injected persistence policy.
 #if !DESKTOP_BUDDY_PUBLIC_WEB
-        // The reduced distribution ships no room workspace, and its autoload is stripped from
-        // project.godot to match, so there is nothing to configure. Its only other consumer is the
-        // Workshop composition below, which that distribution also omits.
         var environmentCustomization = GetNodeOrNull<DesktopBuddy.Environment.EnvironmentCustomizationBootstrap>(
             "/root/EnvironmentCustomizationBootstrap");
         environmentCustomization?.Configure(sandbox);
@@ -342,13 +316,21 @@ public partial class Bootstrap : Node
         characterRuntime.Configure(sandbox, context);
         sandbox.AddChild(characterRuntime);
 
-        // Let SandboxRoot initialize the real pointer and all tool controllers first. The
-        // bridge is added afterwards so its initial Work-mode application cannot be undone
-        // by LabPointerGrabComponent.Initialize during the parent's _Ready callback.
         AddChild(sandbox);
 
-        // Every distribution walks the player through what it actually ships: itch.io drops the
-        // Paint Room, Buddy Studio and Work Mode chapters rather than the whole walkthrough.
+        if (DemoScope.IncludesAchievements)
+        {
+            if (sceneProgress is null)
+                throw new InvalidOperationException("Achievement-enabled build must use Scene-owned progress.");
+
+            var achievements = new DesktopBuddy.Achievements.AchievementBootstrap
+            {
+                Name = nameof(DesktopBuddy.Achievements.AchievementBootstrap),
+            };
+            achievements.Configure(sandbox, context);
+            AddChild(achievements);
+        }
+
         TutorialStepIds.Active = DemoScope.TutorialSteps;
         if (TutorialStepIds.Active.Count < TutorialStepIds.Ordered.Count)
         {
@@ -361,7 +343,6 @@ public partial class Bootstrap : Node
 #if !DESKTOP_BUDDY_PUBLIC_WEB
         if (DemoScope.IncludesWorkshop)
         {
-            // Steam exports and editor runs compose Workshop; itch.io omits its services and menu command.
             var workshop = new WorkshopBootstrap { Name = nameof(WorkshopBootstrap) };
             workshop.Configure(characters, characterSelection, sandbox, environmentCustomization, commandRegistrar);
             AddChild(workshop);
