@@ -29,8 +29,19 @@ public partial class ToolSelectionPanel : PanelContainer
     public void Configure(
         BuddyProgressState progress,
         InteractionDamageComponent pipeline,
-        ToolCatalogue catalogue) =>
-        Configure(new PlayerRuntimeProgressBinding(progress), pipeline, catalogue);
+        ToolCatalogue catalogue)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        ArgumentNullException.ThrowIfNull(pipeline);
+        // Production composes the pipeline before this floating panel. Resolve its already-validated
+        // account binding so a Scene run cannot read the stale compatibility aggregate passed by the
+        // legacy CharacterEditorHost call site. Isolated UI tests that have not initialized the
+        // pipeline retain the exact Initial Demo behavior through the fallback.
+        PlayerRuntimeProgressBinding binding = pipeline.IsInitialized
+            ? pipeline.CreatePlayerProgressBinding()
+            : new PlayerRuntimeProgressBinding(progress);
+        Configure(binding, pipeline, catalogue);
+    }
 
     public void Configure(
         PlayerRuntimeProgressBinding progress,
