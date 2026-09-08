@@ -103,7 +103,7 @@ public partial class RoomInterestBootstrap : Node
         if (GodotObject.IsInstanceValid(_sandbox.Reactions))
             _sandbox.Reactions.PlayColourSmile();
         if (GodotObject.IsInstanceValid(_sandbox.Pipeline))
-            _sandbox.Pipeline.Progress.ApplyCareMood(1.0f);
+            _sandbox.Pipeline.ProgressBinding.ApplyCareMood(1.0f);
     }
 
     private static double NextConsiderationSeconds() =>
