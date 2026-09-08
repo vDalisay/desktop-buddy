@@ -27,7 +27,11 @@ public sealed class LegacyNextFestMigrationTests
             Extensions: null,
             FunInterest: null,
             Fullness: 40.0f);
-        var environment = new EnvironmentLayout();
+        var stored = new DecorationDefinitionId("decoration.lamp.legacy");
+        var environment = new EnvironmentProgressSnapshot(
+            Revision: 6,
+            Layout: new EnvironmentLayout(),
+            OwnedUnplaced: [stored, stored]);
         var anchor = new CanonicalRoomPosition(0.5f, 0.7f);
 
         LegacyNextFestMigrationProjection first = LegacyNextFestMigrationPolicy.Project(
@@ -65,12 +69,16 @@ public sealed class LegacyNextFestMigrationTests
         Assert.Equal(SceneId.LegacyHome, first.Scene.SceneId);
         Assert.Equal(first.Scene.SceneId, retry.Scene.SceneId);
         Assert.Equal(first.Scene.Name, retry.Scene.Name);
+        Assert.Equal(6, first.Scene.EnvironmentRevision);
+        Assert.Equal(new[] { stored, stored }, first.Scene.OwnedUnplaced);
+        Assert.Equal(first.Scene.EnvironmentRevision, retry.Scene.EnvironmentRevision);
+        Assert.Equal(first.Scene.OwnedUnplaced, retry.Scene.OwnedUnplaced);
         Assert.Equal(BuddyPlacementId.LegacyPrimary, first.Scene.BuddyPlacements[0].PlacementId);
         Assert.Equal(first.Scene.BuddyPlacements[0], retry.Scene.BuddyPlacements[0]);
     }
 
     [Fact]
-    public void Legacy_projection_preserves_global_and_buddy_ownership_boundaries()
+    public void Legacy_projection_preserves_global_buddy_and_scene_ownership_boundaries()
     {
         var progress = new ProgressSnapshot(
             Revision: 4,
@@ -85,11 +93,12 @@ public sealed class LegacyNextFestMigrationTests
             Extensions: null,
             FunInterest: null,
             Fullness: 65.0f);
+        var stored = new DecorationDefinitionId("decoration.table.legacy");
 
         LegacyNextFestMigrationProjection projection = LegacyNextFestMigrationPolicy.Project(
             progress,
             activeCharacterId: null,
-            new EnvironmentLayout(),
+            new EnvironmentProgressSnapshot(3, new EnvironmentLayout(), [stored]),
             new CanonicalRoomPosition(0.45f, 0.7f));
 
         Assert.Equal(77_000, projection.Player.BalanceMilliCredits);
@@ -101,6 +110,8 @@ public sealed class LegacyNextFestMigrationTests
         Assert.Equal(progress.HarmfulContentIds, projection.Buddy.HarmfulContentIds);
         Assert.Null(projection.Buddy.CharacterId);
 
+        Assert.Equal(3, projection.Scene.EnvironmentRevision);
+        Assert.Equal(new[] { stored }, projection.Scene.OwnedUnplaced);
         Assert.Single(projection.Scene.BuddyPlacements);
         Assert.Equal(projection.Buddy.BuddyIdentityId, projection.Scene.BuddyPlacements[0].BuddyIdentityId);
     }
