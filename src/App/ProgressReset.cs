@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+#if DESKTOP_BUDDY_ACHIEVEMENTS
 using DesktopBuddy.Domain.Achievements;
+#endif
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
@@ -36,10 +38,10 @@ public static class ProgressReset
 
     /// <summary>
     /// Resets a Scene-enabled run as one manifest generation. Already-qualified achievements survive
-    /// because Full Release must reconcile awards qualified under the Next Fest Demo and Steam awards
-    /// are not revocable through Reset Progress. Achievement counters/working state are deliberately
-    /// omitted from the fresh Player snapshot. Character documents are deleted only after the
-    /// manifest commit succeeds because filesystem deletion cannot be transactionally rolled back.
+    /// in achievement-enabled builds because Full Release must reconcile awards qualified under the
+    /// Next Fest Demo and Steam awards are not revocable through Reset Progress. Partial counters and
+    /// working values are omitted from the fresh Player snapshot. Character documents are deleted
+    /// only after the manifest commit succeeds because filesystem deletion cannot be rolled back.
     /// </summary>
     public static async Task<bool> ResetSceneAsync(
         SceneProgressCoordinator scenes,
@@ -50,8 +52,13 @@ public static class ProgressReset
         ArgumentNullException.ThrowIfNull(scenes);
         DeletedCharacterCount = 0;
 
+#if DESKTOP_BUDDY_ACHIEVEMENTS
         IReadOnlyDictionary<string, string> qualifiedAchievements =
             AchievementProgressStore.PreserveQualifiedAchievementValues(scenes.Player.Extensions);
+#else
+        IReadOnlyDictionary<string, string> qualifiedAchievements =
+            new Dictionary<string, string>(StringComparer.Ordinal);
+#endif
 
         BuddyProgressState freshLegacy = CreateNewProgress(scenes.Player.CashPerPain);
         LegacyNextFestMigrationProjection fresh = LegacyNextFestMigrationPolicy.Project(
@@ -149,6 +156,10 @@ public static class ProgressReset
             return false;
         }
 
+        // Only after the durable write has succeeded: a failed reset restores every snapshot,
+        // and there would be no restoring a character document that had already been deleted.
+        // A delegate rather than the store itself, so this file stays engine-free for the
+        // domain tests that compile it.
         if (deleteCharacters is not null)
             DeletedCharacterCount = await deleteCharacters(token).ConfigureAwait(false);
 
