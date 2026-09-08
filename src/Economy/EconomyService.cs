@@ -8,17 +8,19 @@ using DesktopBuddy.Domain.Persistence;
 namespace DesktopBuddy.Economy;
 
 /// <summary>
-/// The sole runtime mutator of currency and unlocks (ARCHITECTURE §11). Damage rewards and
-/// passive income both flow through here into the one per-run
-/// <see cref="BuddyProgressState"/>, so there is exactly one place that can change the
-/// balance and exactly one event the HUD subscribes to.
+/// The sole runtime mutator of currency and unlocks (ARCHITECTURE §11). During the staged
+/// multi-Buddy migration it can be backed either by the legacy one-Buddy aggregate or by the
+/// account-global <see cref="PlayerProgressState"/>. Damage against split state must additionally
+/// name the target <see cref="BuddyProgressCoordinator"/>, so emotional state can never leak from
+/// one Buddy into another while the wallet remains shared.
 ///
 /// Deliberately not a <c>Node</c>: it owns no scene lifetime and must outlive any node that
 /// uses it. The composition root creates it next to the progress state and injects both.
 /// </summary>
 public sealed class EconomyService
 {
-    private readonly BuddyProgressState _progress;
+    private readonly BuddyProgressState? _legacyProgress;
+    private readonly PlayerProgressState? _playerProgress;
     private readonly ToolCatalogue _catalogue;
 
     /// <param name="catalogue">
@@ -27,7 +29,17 @@ public sealed class EconomyService
     /// </param>
     public EconomyService(BuddyProgressState progress, ToolCatalogue catalogue)
     {
-        _progress = progress ?? throw new ArgumentNullException(nameof(progress));
+        _legacyProgress = progress ?? throw new ArgumentNullException(nameof(progress));
+        _catalogue = catalogue ?? throw new ArgumentNullException(nameof(catalogue));
+    }
+
+    /// <summary>
+    /// Account-global constructor used by the multi-Buddy/Scene runtime. No Buddy-owned semantic
+    /// state is accepted here: callers must supply the struck Buddy coordinator to damage methods.
+    /// </summary>
+    public EconomyService(PlayerProgressState progress, ToolCatalogue catalogue)
+    {
+        _playerProgress = progress ?? throw new ArgumentNullException(nameof(progress));
         _catalogue = catalogue ?? throw new ArgumentNullException(nameof(catalogue));
     }
 
@@ -37,15 +49,16 @@ public sealed class EconomyService
     /// <summary>Raised after any balance change, carrying the new milli-credit balance.</summary>
     public event Action<long>? BalanceChanged;
 
-    public long BalanceMilliCredits => _progress.BalanceMilliCredits;
+    public long BalanceMilliCredits =>
+        _playerProgress?.BalanceMilliCredits ?? RequireLegacyProgress().BalanceMilliCredits;
 
     /// <summary>Whole-credit balance for the HUD (floored, RAGDOLL §7.4).</summary>
-    public long BalanceCredits => _progress.BalanceCredits;
+    public long BalanceCredits =>
+        _playerProgress?.BalanceCredits ?? RequireLegacyProgress().BalanceCredits;
 
     /// <summary>
-    /// Applies one accepted damage event — payout, harmful memory, statistics — and returns
-    /// the milli-credits awarded. Care never routes here: care pays in mood, and its
-    /// economic effect arrives through mood-scaled passive income (FR-008.8, FR-012.6).
+    /// Applies one accepted damage event to the legacy aggregate — payout, harmful memory and
+    /// statistics together. Kept unchanged for the Initial Demo compatibility path.
     /// </summary>
     public long AcceptDamage(
         string contentId,
@@ -55,14 +68,46 @@ public sealed class EconomyService
         double now,
         ImpactMoodEffect moodEffect = default)
     {
-        long milli = _progress.AcceptDamage(
+        BuddyProgressState progress = RequireLegacyProgress();
+        long milli = progress.AcceptDamage(
             contentId, pain, region, consciousness, now, moodEffect);
         if (milli != 0)
+            BalanceChanged?.Invoke(progress.BalanceMilliCredits);
+        return milli;
+    }
+
+    /// <summary>
+    /// Applies one accepted damage event in split multi-Buddy state. The service verifies that the
+    /// coordinator belongs to this exact player account, then lets the coordinator mutate the one
+    /// shared reward/statistics ledger and only the named Buddy's emotional state.
+    /// </summary>
+    public long AcceptDamage(
+        BuddyProgressCoordinator target,
+        string contentId,
+        float pain,
+        PayoutRegion region,
+        DamageConsciousness consciousness,
+        double now,
+        ImpactMoodEffect moodEffect = default)
+    {
+        ArgumentNullException.ThrowIfNull(target);
+        PlayerProgressState player = RequirePlayerProgress();
+        if (!ReferenceEquals(target.Player, player))
         {
-            BalanceChanged?.Invoke(_progress.BalanceMilliCredits);
+            throw new InvalidOperationException(
+                "A split damage target must belong to the same PlayerProgressState as the economy service.");
         }
 
-        return milli;
+        SplitDamageProgressResult result = target.AcceptDamage(
+            contentId,
+            pain,
+            region,
+            consciousness,
+            now,
+            moodEffect);
+        if (result.MilliCredits != 0)
+            BalanceChanged?.Invoke(player.BalanceMilliCredits);
+        return result.MilliCredits;
     }
 
     /// <summary>
@@ -72,18 +117,21 @@ public sealed class EconomyService
     public void DepositPassive(long milliCredits)
     {
         if (milliCredits <= 0)
-        {
             return;
-        }
 
-        _progress.Deposit(milliCredits);
-        BalanceChanged?.Invoke(_progress.BalanceMilliCredits);
+        if (_playerProgress is not null)
+            _playerProgress.Deposit(milliCredits);
+        else
+            RequireLegacyProgress().Deposit(milliCredits);
+        BalanceChanged?.Invoke(BalanceMilliCredits);
     }
 
     /// <summary>Records a permanent unlock. Returns <c>false</c> when already unlocked.</summary>
-    public bool Unlock(string contentId) => _progress.Unlock(contentId);
+    public bool Unlock(string contentId) =>
+        _playerProgress?.Unlock(contentId) ?? RequireLegacyProgress().Unlock(contentId);
 
-    public bool IsUnlocked(string contentId) => _progress.IsToolUnlocked(contentId);
+    public bool IsUnlocked(string contentId) =>
+        _playerProgress?.IsUnlocked(contentId) ?? RequireLegacyProgress().IsToolUnlocked(contentId);
 
     /// <summary>
     /// Atomically buys one catalogue entry. The service — not the caller — resolves the
@@ -101,12 +149,11 @@ public sealed class EconomyService
     internal PurchaseResult PurchaseFrom(string contentId, ToolCatalogue authoritativeCatalogue)
     {
         ArgumentNullException.ThrowIfNull(authoritativeCatalogue);
-        PurchaseResult result = _progress.Purchase(contentId, authoritativeCatalogue);
+        PurchaseResult result = _playerProgress is not null
+            ? _playerProgress.Purchase(contentId, authoritativeCatalogue)
+            : RequireLegacyProgress().Purchase(contentId, authoritativeCatalogue);
         if (result.Succeeded)
-        {
             BalanceChanged?.Invoke(result.BalanceMilliCredits);
-        }
-
         return result;
     }
 
@@ -115,8 +162,25 @@ public sealed class EconomyService
     /// rewrites the balance in place rather than through a spend or a deposit; the HUD still
     /// has to hear about it.
     /// </summary>
-    public void NotifyBalanceChanged() => BalanceChanged?.Invoke(_progress.BalanceMilliCredits);
+    public void NotifyBalanceChanged() => BalanceChanged?.Invoke(BalanceMilliCredits);
 
     /// <summary>Returns a completed coalesced reward burst, or <c>null</c>.</summary>
-    public RewardFeedback? PollFeedback(double now) => _progress.PollRewardFeedback(now);
+    public RewardFeedback? PollFeedback(double now) =>
+        _playerProgress?.PollRewardFeedback(now) ?? RequireLegacyProgress().PollRewardFeedback(now);
+
+    /// <summary>Composition guard used while binding actor-local split progress.</summary>
+    internal bool IsBackedBy(PlayerProgressState progress) =>
+        _playerProgress is not null && ReferenceEquals(_playerProgress, progress);
+
+    /// <summary>Compatibility composition guard for the existing aggregate path.</summary>
+    internal bool IsBackedBy(BuddyProgressState progress) =>
+        _legacyProgress is not null && ReferenceEquals(_legacyProgress, progress);
+
+    private BuddyProgressState RequireLegacyProgress() =>
+        _legacyProgress ?? throw new InvalidOperationException(
+            "This EconomyService is backed by PlayerProgressState; use the split-state damage overload.");
+
+    private PlayerProgressState RequirePlayerProgress() =>
+        _playerProgress ?? throw new InvalidOperationException(
+            "This EconomyService is backed by the legacy BuddyProgressState.");
 }
