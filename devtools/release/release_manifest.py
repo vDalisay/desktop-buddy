@@ -11,8 +11,8 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+import re
 import sys
 from typing import Any
 
@@ -31,7 +31,11 @@ def sha256_file(path: Path) -> str:
 def normalized_files(root: Path, manifest_path: Path) -> list[dict[str, Any]]:
     files: list[dict[str, Any]] = []
     manifest_resolved = manifest_path.resolve()
-    for path in sorted((p for p in root.rglob("*") if p.is_file()), key=lambda p: p.as_posix()):
+    for path in sorted(root.rglob("*"), key=lambda p: p.as_posix()):
+        if path.is_symlink() or (hasattr(path, "is_junction") and path.is_junction()):
+            raise SystemExit(f"Links are forbidden in release payloads: {path}")
+        if not path.is_file():
+            continue
         if path.resolve() == manifest_resolved:
             continue
         relative = path.relative_to(root).as_posix()
@@ -98,13 +102,26 @@ def write_manifest(args: argparse.Namespace) -> int:
 def verify_manifest(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
     manifest_path = Path(args.manifest).resolve()
+    if not root.is_dir() or not manifest_path.is_relative_to(root):
+        raise SystemExit("Manifest must be inside an existing release root.")
     data = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if not isinstance(data, dict):
+        raise SystemExit("Manifest must be an object.")
     if data.get("schema") != SCHEMA:
         raise SystemExit(f"Unsupported manifest schema: {data.get('schema')!r}")
 
     expected_entries = data.get("files")
     if not isinstance(expected_entries, list):
         raise SystemExit("Manifest files entry is not a list.")
+    if not expected_entries:
+        raise SystemExit("Release payload must not be empty.")
+    identity = data.get("identity")
+    if not isinstance(identity, dict):
+        raise SystemExit("Manifest identity must be an object.")
+    for field in ("git_sha", "build_id", "distribution"):
+        expected_identity = getattr(args, "expect_" + field, None)
+        if expected_identity is not None and identity.get(field) != expected_identity:
+            raise SystemExit(f"Manifest identity mismatch: {field}")
 
     expected: dict[str, tuple[int, str]] = {}
     for entry in expected_entries:
@@ -113,10 +130,14 @@ def verify_manifest(args: argparse.Namespace) -> int:
         path = entry.get("path")
         size = entry.get("size")
         digest = entry.get("sha256")
-        if not isinstance(path, str) or not isinstance(size, int) or not isinstance(digest, str):
+        if not isinstance(path, str) or type(size) is not int or size < 0 or not isinstance(digest, str):
             raise SystemExit(f"Malformed manifest file entry: {entry!r}")
-        if path.startswith("/") or ".." in Path(path).parts or "\\" in path:
+        if (not path or path.startswith("/") or ".." in PurePosixPath(path).parts
+                or "\\" in path or ":" in path or PurePosixPath(path).as_posix() != path
+                or any(ord(char) < 32 for char in path)):
             raise SystemExit(f"Unsafe manifest path: {path!r}")
+        if path in expected or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise SystemExit(f"Duplicate path or invalid SHA-256: {path!r}")
         expected[path] = (size, digest)
 
     actual_entries = normalized_files(root, manifest_path)
@@ -167,6 +188,9 @@ def parser() -> argparse.ArgumentParser:
     verify = sub.add_parser("verify", help="Verify a release directory against its manifest")
     verify.add_argument("--root", required=True)
     verify.add_argument("--manifest", required=True)
+    verify.add_argument("--expect-git-sha")
+    verify.add_argument("--expect-build-id")
+    verify.add_argument("--expect-distribution")
     verify.set_defaults(func=verify_manifest)
     return p
 
