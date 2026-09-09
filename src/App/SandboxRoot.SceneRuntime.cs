@@ -100,9 +100,12 @@ public partial class SandboxRoot
 
     private BuddyActorRuntime BindAuthoredSceneActor(SceneBuddyProgressBinding binding)
     {
-        // Pipeline/Buddy external state was initialized earlier in SandboxRoot._Ready through
-        // RunContext.ActiveBuddyProgress, which resolves this same first ordered placement.
-        if (!ReferenceEquals(Pipeline.ProgressBinding.SplitProgress, binding.Progress.SplitProgress))
+        // RunContext.ActiveBuddyProgress and CreateActiveBindings each create a lightweight
+        // BuddyProgressCoordinator wrapper, so compare the authoritative backing Player/Buddy
+        // states rather than wrapper object identity.
+        BuddyRuntimeProgressBinding authored = Pipeline.ProgressBinding;
+        if (!ReferenceEquals(authored.PlayerProgress, binding.Progress.PlayerProgress) ||
+            !ReferenceEquals(authored.BuddyProgress, binding.Progress.BuddyProgress))
         {
             throw new InvalidOperationException(
                 "Authored Scene Buddy progress does not match the active Scene's first placement.");
