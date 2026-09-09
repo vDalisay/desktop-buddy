@@ -28,83 +28,14 @@ unzip -q "$TEMPLATE_ZIP" -d "$TEMPLATE_UNPACK"
 cp -a "$TEMPLATE_UNPACK/templates/." "$TEMPLATE_DIR/"
 test -f "$TEMPLATE_DIR/linux_debug.x86_64"
 
-# Let Godot finish its first scan/import against the checked-in export configuration first.
-# The editor can rewrite export_presets.cfg during this initialization. Temporary CI-only
-# presets therefore have to be appended after import, immediately before the export processes
-# that consume them.
+# Import first so the C# project and imported resources are ready before export. The two Linux
+# verification presets are checked-in repository configuration; CI must never patch export presets
+# at runtime because Godot validates/rematerializes that file during editor startup.
 xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
-# Keep verification presets out of the checked-in export configuration. They
-# intentionally retain tests/journeys because the parent process is a debug-only
-# journey orchestrator, while excluding generated artifact directories so an
-# export can never recursively package a previous export.
-cat >> export_presets.cfg <<'EOF'
-
-[preset.4]
-
-name="CI Linux Initial Demo Verification"
-platform="Linux/BSD"
-runnable=false
-advanced_options=false
-dedicated_server=false
-custom_features="steam,steam_demo"
-export_filter="all_resources"
-include_filter=""
-exclude_filter=".artifacts/*, build/*, docs/*, devtools/*, authoring/*, *.md"
-export_path=".artifacts/production-bootstrap/initial/DesktopBuddy.x86_64"
-patches=PackedStringArray()
-encryption_include_filters=""
-encryption_exclude_filters=""
-seed=0
-encrypt_pck=false
-encrypt_directory=false
-script_export_mode=2
-
-[preset.4.options]
-
-custom_template/debug=""
-custom_template/release=""
-binary_format/architecture="x86_64"
-binary_format/embed_pck=false
-debug/export_console_wrapper=1
-texture_format/s3tc_bptc=true
-texture_format/etc2_astc=false
-
-[preset.5]
-
-name="CI Linux Next Fest Verification"
-platform="Linux/BSD"
-runnable=false
-advanced_options=false
-dedicated_server=false
-custom_features="steam,steam_demo,next_fest_demo"
-export_filter="all_resources"
-include_filter=""
-exclude_filter=".artifacts/*, build/*, docs/*, devtools/*, authoring/*, *.md"
-export_path=".artifacts/production-bootstrap/next-fest/DesktopBuddy.x86_64"
-patches=PackedStringArray()
-encryption_include_filters=""
-encryption_exclude_filters=""
-seed=0
-encrypt_pck=false
-encrypt_directory=false
-script_export_mode=2
-
-[preset.5.options]
-
-custom_template/debug=""
-custom_template/release=""
-binary_format/architecture="x86_64"
-binary_format/embed_pck=false
-debug/export_console_wrapper=1
-texture_format/s3tc_bptc=true
-texture_format/etc2_astc=false
-EOF
-
-# Fail here with a small, actionable error instead of letting Godot fail later with a vague
-# "Invalid export preset name" if editor initialization or a future config change removed them.
 grep -Fq 'name="CI Linux Initial Demo Verification"' export_presets.cfg
 grep -Fq 'name="CI Linux Next Fest Verification"' export_presets.cfg
+grep -Fq 'platform="Linux"' export_presets.cfg
 
 export DesktopBuddySteamDemoScope=true
 export DesktopBuddyNextFestDemoScope=false
