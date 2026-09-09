@@ -22,9 +22,19 @@ directory (`hardening-retired-2026-09-09.bundle`) for recovery, without active b
 
 ## Remaining gates
 
-- NativeAOT compatibility is **unproven**. Run `34322499005` at `fca5d838` failed
-  during Windows export with an empty exit code while Godot was still starting.
-  Investigate process completion/exit-code handling before judging AOT compatibility.
+The ordered closeout checklist is now
+[`PHASE_0_CLOSEOUT_PLAN_2026-09-09.md`](PHASE_0_CLOSEOUT_PLAN_2026-09-09.md).
+It separates the managed Initial Demo RC from optional NativeAOT acceptance and
+records the confirmed overlapping-export failure in run `34323615195` at `5e56cdfd`.
+The source-controlled fixes in steps 1–3 are applied on the active branch: the AOT
+spike is manual-only, its exporter has one bounded process owner with regression
+coverage, and SteamPipe checks manifest distribution identity at the upload boundary.
+The managed candidate and external acceptance gates remain pending.
+
+- NativeAOT compatibility is **unproven**. Earlier runs failed during faulty Windows
+  export supervision. The retry has been removed; the next manual dispatch must run
+  the single exporter to completion and report its real exit code before any AOT
+  compatibility conclusion or setting change.
 - Require native PE/entry-point verification, exported PCK scope, payload audit,
   exact-export startup and manifest verification to pass on the final candidate.
 - Before production AOT enablement, complete gameplay, save/restart, Paint Room,

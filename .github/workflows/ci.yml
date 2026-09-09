@@ -68,8 +68,10 @@ jobs:
         with:
           global-json-file: global.json
 
-      - name: Release manifest regression tests
-        run: python3 -m unittest discover -s devtools/release -p 'test_*.py'
+      - name: Release tooling regression tests
+        run: |
+          python3 -m unittest discover -s devtools/release -p 'test_*.py'
+          python3 -m unittest devtools.verification.test_run_checked_process
 
       - name: Build solution
         run: dotnet build DesktopBuddy.sln -c Debug

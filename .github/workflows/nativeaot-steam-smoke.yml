@@ -1,21 +1,6 @@
 name: NativeAOT Steam Demo Spike
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - DesktopBuddy.csproj
-      - export_presets.cfg
-      - project.godot
-      - src/**
-      - data/**
-      - tools/install_godotsteam.ps1
-      - devtools/release/release_manifest.py
-      - devtools/verification/apply_steam_demo_scope.py
-      - devtools/verification/verify_steam_distribution_scope.py
-      - devtools/verification/prepare_nativeaot_spike.py
-      - devtools/verification/test_prepare_nativeaot_spike.py
-      - .github/workflows/nativeaot-steam-smoke.yml
   workflow_dispatch:
 
 permissions:
@@ -55,7 +40,8 @@ jobs:
           python -m unittest `
             devtools.verification.test_prepare_nativeaot_spike `
             devtools.verification.test_apply_steam_demo_scope `
-            devtools.verification.test_verify_steam_distribution_scope
+            devtools.verification.test_verify_steam_distribution_scope `
+            devtools.verification.test_run_checked_process
 
       - name: Verify Windows native toolchain
         shell: pwsh
@@ -173,21 +159,13 @@ jobs:
           Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $output -Force | Out-Null
 
-          # A fresh Windows Godot profile may exit once while generating editor/help caches before
-          # reaching the export command. Permit exactly one bootstrap retry, but never accept a
-          # failed final export or partial bytes as the candidate.
-          & $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" $exe
-          $firstExit = $LASTEXITCODE
-          if ($firstExit -ne 0) {
-            "First Godot export invocation returned $firstExit during fresh-profile initialization; retrying once."
-            Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
-            New-Item -ItemType Directory -Path $output -Force | Out-Null
-            & $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" $exe
-            $finalExit = $LASTEXITCODE
-          } else {
-            $finalExit = 0
-          }
-          if ($finalExit -ne 0) { throw "Godot NativeAOT export failed after bounded bootstrap retry with exit code $finalExit" }
+          $log = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\nativeaot-export.log"
+          python devtools/verification/run_checked_process.py `
+            --timeout 3600 `
+            --log $log `
+            -- $env:GODOT_BIN --headless --verbose --path . `
+            --export-release "Windows Steam Demo" $exe
+          if ($LASTEXITCODE -ne 0) { throw "Godot NativeAOT export failed with exit code $LASTEXITCODE; see $log" }
           if (-not (Test-Path $exe)) { throw "Exported executable is missing." }
           if (-not (Test-Path (Join-Path $output "DesktopBuddy.pck"))) { throw "Exported PCK is missing." }
 
