@@ -4,9 +4,11 @@ using System.Diagnostics;
 using System.IO;
 using System.Text.Json;
 using DesktopBuddy.App;
-using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Diagnostics;
+using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Scenes;
 using Godot;
 using FileAccess = Godot.FileAccess;
 
@@ -68,6 +70,44 @@ public static class ProductionBootstrapJourneyProbe
                 setup.TryGetProperty("expected_work_keyboard", out JsonElement keyboard) && keyboard.TryGetInt64(out long keyboardValue)
                     ? keyboardValue
                     : -1;
+            int expectedActorCount = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("expected_actor_count", out JsonElement actorCount) && actorCount.TryGetInt32(out int actorCountValue)
+                    ? actorCountValue
+                    : -1;
+
+            SceneRuntimeHost? runtime = sandbox.ActiveSceneRuntime;
+            bool actorCountMatches = expectedActorCount < 0 ||
+                (runtime is not null && runtime.Actors.Count == expectedActorCount);
+            bool actorBindingsMatch = runtime is not null;
+            bool actorsSharePlayer = runtime is not null && context.SceneProgress is not null;
+            bool actorBuddyStatesIndependent = runtime is not null;
+            bool actorPositionsDistinct = runtime is not null;
+
+            if (runtime is not null)
+            {
+                var seenBuddyStates = new HashSet<BuddyIdentityState>();
+                for (int index = 0; index < runtime.Actors.Count; index++)
+                {
+                    BuddyActorRuntime actor = runtime.Actors[index];
+                    SceneBuddyProgressBinding binding = runtime.ProgressFor(actor);
+                    actorBindingsMatch &=
+                        binding.Placement.PlacementId == actor.PlacementId &&
+                        binding.Placement.BuddyIdentityId == actor.BuddyIdentityId &&
+                        ReferenceEquals(binding.Progress.BuddyProgress, actor.Damage.ProgressBinding.BuddyProgress);
+                    actorsSharePlayer &=
+                        ReferenceEquals(binding.Progress.PlayerProgress, context.SceneProgress?.Player) &&
+                        ReferenceEquals(actor.Damage.ProgressBinding.PlayerProgress, context.SceneProgress?.Player);
+                    BuddyIdentityState? buddyState = actor.Damage.ProgressBinding.BuddyProgress;
+                    actorBuddyStatesIndependent &= buddyState is not null && seenBuddyStates.Add(buddyState);
+
+                    for (int other = 0; other < index; other++)
+                    {
+                        actorPositionsDistinct &=
+                            actor.Buddy.Rig.Torso.GlobalPosition.DistanceTo(
+                                runtime.Actors[other].Buddy.Rig.Torso.GlobalPosition) > 8.0f;
+                    }
+                }
+            }
 
             var state = new Dictionary<string, bool>(StringComparer.Ordinal)
             {
@@ -80,6 +120,11 @@ public static class ProductionBootstrapJourneyProbe
                 ["wallet_preserved"] = expectedWallet < 0 || context.PlayerProgress.BalanceMilliCredits == expectedWallet,
                 ["work_preserved"] = expectedKeyboard < 0 ||
                     (context.WorkProgress is not null && context.WorkProgress.Lifetime.KeyboardPresses == expectedKeyboard),
+                ["scene_actor_count_matches"] = actorCountMatches,
+                ["scene_actor_bindings_match"] = actorBindingsMatch,
+                ["scene_actors_share_player"] = actorsSharePlayer,
+                ["scene_actor_buddy_states_independent"] = actorBuddyStatesIndependent,
+                ["scene_actor_positions_distinct"] = actorPositionsDistinct,
             };
 
             if (phase.TryGetProperty("assertions", out JsonElement assertions) && assertions.ValueKind == JsonValueKind.Array)
