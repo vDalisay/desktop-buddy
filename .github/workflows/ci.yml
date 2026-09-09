@@ -89,6 +89,9 @@ jobs:
       - name: Headless editor import
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
+      - name: Paint Background semantic commit scenario
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=environment_background_commit_event --seed=1
+
       - name: Workshop emulator roundtrip scenario
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=workshop_emulator_roundtrip --seed=1
 

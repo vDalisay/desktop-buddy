@@ -64,6 +64,13 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
     private EnvironmentCanvas Canvas => _presenter.Canvas;
     internal bool PanelVisibleForTest => _panel.Visible;
 
+    /// <summary>
+    /// Raised only after a genuinely changed room canvas has been durably persisted. This is a
+    /// semantic editor commit, not a generic file-store notification: unchanged saves, Reset
+    /// Progress, and Workshop-applied room art therefore cannot impersonate Paint Background use.
+    /// </summary>
+    public event Action? BackgroundCommitted;
+
     /// <param name="economy">
     /// Optional: when the composition has an economy, a finished session pays for what was
     /// painted. Scenarios that compose the editor alone simply leave it out.
@@ -752,6 +759,7 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             SetStatus("Finish or cancel the Curved Line before saving and exiting.");
             return;
         }
+        bool changed = Canvas.IsDirty;
         _saving = true;
         SetStatus("Saving…");
         try
@@ -759,6 +767,8 @@ public partial class EnvironmentBackgroundEditor : CanvasLayer
             await _store.SaveAsync(Canvas.Pixels);
             Canvas.MarkSaved();
             _baseline = Canvas.ClonePixels();
+            if (changed)
+                BackgroundCommitted?.Invoke();
             Close();
         }
         catch (Exception exception)

@@ -11,9 +11,9 @@ namespace DesktopBuddy.Testing;
 
 /// <summary>
 /// Runs only in the CI lane that materializes the pinned GodotSteam addon. It proves the real
-/// GDExtension can be discovered by the project-owned bridge and that its Workshop capability
-/// surface still matches the adapter. An unauthenticated GitHub runner is allowed to fail Steam
-/// client initialization; missing/incompatible GodotSteam is not allowed.
+/// GDExtension can be discovered by the project-owned bridge and that its Workshop plus achievement
+/// capability surface still matches the adapters. An unauthenticated GitHub runner is allowed to
+/// fail Steam client initialization; missing/incompatible GodotSteam is not allowed.
 /// </summary>
 public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
 {
@@ -67,6 +67,36 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                     : "Pinned GodotSteam addon was materialized but no Steam API object is discoverable."));
             if (!addonPresent)
                 return Result(checks, $"seed={seed}");
+
+            bool achievementCapabilities = bridge.Call("has_achievement_capabilities").AsBool();
+            checks.Add(new StartupCheck(
+                "steam_achievement_godotsteam_422_capabilities_match",
+                achievementCapabilities,
+                achievementCapabilities
+                    ? "GodotSteam exposes setAchievement/storeStats through the project bridge; RequestCurrentStats is intentionally absent in Steamworks SDK 1.61+."
+                    : "Pinned GodotSteam is missing setAchievement or storeStats required by SteamAchievementPublisher."));
+
+            // Recovery classification is part of the anti-corruption boundary. Before an init
+            // attempt there is no failure to retry; the pure mapping below pins GodotSteam's
+            // SteamInitExResult contract independently of whichever failure this CI host produces.
+            bool retryInitiallyFalse = !bridge.Call("can_retry_initialization").AsBool();
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_retry_state_starts_false",
+                retryInitiallyFalse,
+                retryInitiallyFalse
+                    ? "No retry is armed before Steam initialization is attempted."
+                    : "Bridge incorrectly reports a retryable Steam failure before initialization."));
+
+            bool retryMapping =
+                !bridge.Call("_is_retryable_init_status", 1L).AsBool() &&
+                bridge.Call("_is_retryable_init_status", 2L).AsBool() &&
+                !bridge.Call("_is_retryable_init_status", 3L).AsBool();
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_retryable_init_status_mapping",
+                retryMapping,
+                retryMapping
+                    ? "Only SteamInitExResult NoConnection (2) is retryable; generic failure (1) and client update required (3) are permanent for this process."
+                    : "GodotSteam retry classification no longer matches the documented SteamInitExResult mapping."));
 
             // Discovery is intentionally a separate optional bridge because demos need an in-game
             // Workshop browser even though they have no Community Hub. Probe its exact 4.22 method
@@ -155,6 +185,20 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
                 capabilityCompatible,
                 initialized ? "Steam initialized on the runner." : $"Expected offline init result: {reason}"));
 
+            // This host may report NoConnection (retryable), generic init failure, or a missing
+            // Steam client module (permanent). The pure status check above owns that distinction;
+            // this live probe only verifies that valid-but-unavailable Steam falls back cleanly and
+            // that a binding failure never gets mislabeled as retryable.
+            bool liveFallbackClean = initialized
+                ? !transport.CanRetryInitialization
+                : !IsBindingFailure(reason) || !transport.CanRetryInitialization;
+            checks.Add(new StartupCheck(
+                "workshop_godotsteam_live_init_failure_falls_back_cleanly",
+                liveFallbackClean,
+                initialized
+                    ? $"initialized=true retryable={transport.CanRetryInitialization}"
+                    : $"initialized=false bindingFailure={IsBindingFailure(reason)} retryable={transport.CanRetryInitialization} reason={reason}"));
+
             if (initialized)
             {
                 bool identitiesKept =
@@ -203,6 +247,7 @@ public sealed class WorkshopGodotSteamAddonSmokeScenario : IScenario
             "GodotSteam is missing the",
             "returned an unexpected value",
             "bridge rejected the Workshop owner AppID",
+            "bridge rejected the runtime Workshop AppID",
         ];
         foreach (string marker in markers)
             if (reason.Contains(marker, StringComparison.OrdinalIgnoreCase))

@@ -46,6 +46,38 @@
   </PropertyGroup>
 
   <!--
+    Achievement content is a compile-time distribution capability, not a Godot runtime flag.
+
+      itch.io                              -> excluded
+      Initial Steam Demo                   -> excluded
+      Steam Next Fest Demo                 -> included (local qualification only)
+      Full Release                         -> included (publishes to the full-game AppID)
+
+    Developer/test builds keep achievements unless a distribution scope explicitly removes them.
+    The itch scope is evaluated above so both the real net10.0 export and explicit hardened-scope
+    validation fail closed before achievement source selection is evaluated.
+  -->
+  <PropertyGroup>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND ('$(DesktopBuddyItchScope)' == 'true' OR '$(TargetFramework)' == 'net10.0') ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddyAchievementsScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_ACHIEVEMENTS</DefineConstants>
+  </PropertyGroup>
+
+  <!--
+    Low-scope builds physically omit the first-party achievement runtime plus its Steam adapter.
+    Shared Workshop composition is compile-gated, so editing exported feature tags cannot restore
+    code that was never compiled into the distribution.
+  -->
+  <ItemGroup Condition=" '$(DesktopBuddyAchievementsScope)' != 'true' ">
+    <Compile Remove="src/Achievements/**/*.cs" />
+    <Compile Remove="src/Platform/Steam/GodotSteamAchievementRemote.cs" />
+  </ItemGroup>
+
+  <!--
     A build that goes to players. Godot's export-release path compiles ExportRelease, so every
     Steam Demo, Full Release and itch package is one; editor runs, `dotnet build` and the whole
     scenario/journey suite are not, and keep the developer tree.

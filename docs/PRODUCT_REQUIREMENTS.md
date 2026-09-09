@@ -293,20 +293,36 @@ The first delivery milestone is a physics laboratory that proves the complete bu
 
 **Linked stories:** US-09
 
-1. **FR-018.1:** IF Steam initialization is absent or fails THEN local play and local saves SHALL remain fully available.
+1. **FR-018.1:** IF Steam initialization is absent or fails THEN local play, local achievement qualification, and local saves SHALL remain fully available.
 2. **FR-018.2:** WHEN Steam Cloud is available THEN the game SHALL synchronize progression data and SHALL exclude machine-specific window and local settings data.
-3. **FR-018.3:** WHEN Steam is unavailable and a stat or achievement update is earned THEN the game SHALL queue that update locally; WHEN Steam reconnects THEN the game SHALL synchronize the queued update.
+3. **FR-018.3:** WHEN Steam is unavailable and a stat or achievement condition is met THEN the game SHALL persist the local desired state without blocking gameplay. IF the GodotSteam capability surface is valid but the Steam client/session cannot initialize THEN the application SHALL retry that shared Steam initialization in-process with bounded backoff; WHEN Steam becomes available in the same or a later session THEN the game SHALL idempotently reconcile the locally-qualified desired state.
 4. **FR-018.4:** WHILE a save is active, the game SHALL track total money earned; best earnings over `1`, `3`, and `10` second intervals; total running time; active-interaction time; hidden-passive time; total pain; knockouts; successful catches; highest and lowest mood; and per-tool uses and pain caused.
-5. **FR-018.5:** WHEN the player earns damage money for the first time THEN the game SHALL unlock **First Impression**.
-6. **FR-018.6:** WHEN the player causes the first knockout THEN the game SHALL unlock **Lights Out**.
-7. **FR-018.7:** WHEN the player buys the first tool or care item THEN the game SHALL unlock **Retail Therapy**.
-8. **FR-018.8:** WHEN the player unlocks the complete launch catalogue THEN the game SHALL unlock **Full Toybox**.
-9. **FR-018.9:** WHEN mood reaches `+100` THEN the game SHALL unlock **Best Friends**.
-10. **FR-018.10:** WHEN harmful history is cleared by the upward mood crossing at `60` THEN the game SHALL unlock **Forgiven**.
-11. **FR-018.11:** WHEN the successful-catch total reaches `25` THEN the game SHALL unlock **Nice Catch**.
-12. **FR-018.12:** WHEN the player has used every launch interaction THEN the game SHALL unlock **Variety Hour**.
-13. **FR-018.13:** WHEN a Repair Kit clears Burning THEN the game SHALL unlock **Fire Drill**.
-14. **FR-018.14:** WHEN total running time reaches `2` hours THEN the game SHALL unlock **Desktop Shift**.
+5. **FR-018.5:** WHEN the player earns damage money for the first time THEN the game SHALL qualify **First Impression**.
+6. **FR-018.6:** WHEN the player causes the first knockout THEN the game SHALL qualify **Lights Out**.
+7. **FR-018.7:** WHEN the player buys the first tool or care item THEN the game SHALL qualify **Retail Therapy**.
+8. **FR-018.8:** WHEN the player unlocks the complete launch catalogue THEN the game SHALL qualify **Full Toybox**.
+9. **FR-018.9:** WHEN mood reaches `+100` THEN the game SHALL qualify **Best Friends**.
+10. **FR-018.10:** WHEN harmful history is cleared by the upward mood crossing at `60` THEN the game SHALL qualify **Forgiven**.
+11. **FR-018.11:** WHEN the successful-catch total reaches `25` THEN the game SHALL qualify **Nice Catch**.
+12. **FR-018.12:** WHEN the player has used every authoritative launch interaction THEN the game SHALL qualify **Variety Hour**.
+13. **FR-018.13:** WHEN a Repair Kit clears Burning THEN the game SHALL qualify **Fire Drill**.
+14. **FR-018.14:** WHEN total running time reaches `2` hours THEN the game SHALL qualify **Desktop Shift**.
+15. **FR-018.15:** WHEN Buddy remains airborne for `30` continuous seconds in Play without an active player grab, excluding paused/editor/Work time, THEN the game SHALL qualify **Air Bud**.
+16. **FR-018.16:** WHEN the same thrown Baseball touches a side wall and then produces an accepted Buddy hit before that throw loses attribution THEN the game SHALL qualify **Bank Shot**.
+17. **FR-018.17:** WHEN one continuously active Buddy/character reaches mood `-100` and later reaches `+100` without another character becoming active between those endpoints THEN the game SHALL qualify **Character Arc**.
+18. **FR-018.18:** WHEN lifetime Work Mode actions reach `100` THEN the game SHALL qualify **Employee of the Day**.
+19. **FR-018.19:** WHEN lifetime Work Mode actions reach `1,000` THEN the game SHALL qualify **Employee of the Week**.
+20. **FR-018.20:** WHEN lifetime Work Mode actions reach `10,000` THEN the game SHALL qualify **Employee of the Month**.
+21. **FR-018.21:** WHEN lifetime Work Mode actions reach `100,000` THEN the game SHALL qualify **Employee of the Year**.
+22. **FR-018.22:** WHEN lifetime Work Mode actions reach `1,000,000` THEN the game SHALL qualify **Employee for Life**.
+23. **FR-018.23:** WHEN the same Buddy/character has been genuinely customized through Buddy Studio, Paint Buddy, Paint Background, and Environment Decorator THEN the game SHALL qualify **Make It Yours**. Paint Background credit SHALL come from a successful changed editor commit, not from pre-existing room art, Reset Progress, an unchanged save, or Workshop import.
+24. **FR-018.24:** WHEN accepted positive-pain Boxing Glove hits reach `100` THEN the game SHALL qualify **Punching Bag**.
+25. **FR-018.25:** WHEN headwear, a top, shoes, and glasses are equipped simultaneously THEN the game SHALL qualify **Fully Dressed**.
+26. **FR-018.26:** WHEN saved room decoration history includes at least one placed decoration from every authoritative `DecorationCategory` THEN the game SHALL qualify **Home Sweet Home**.
+27. **FR-018.27:** WHEN every damaging launch tool in the authoritative damaging-tool set has caused positive pain at least once THEN the game SHALL qualify **Try Everything Once**.
+28. **FR-018.28:** WHEN three distinct semantic damage-source IDs damage Buddy inside one rolling `5`-second window THEN the game SHALL qualify **Rube Goldberg Would Be Proud**.
+29. **FR-018.29:** WHEN any FR-018.5–FR-018.28 condition is satisfied in the Steam Demo THEN the Demo SHALL persist local qualification but SHALL NOT invoke Steam's achievement unlock API; WHEN the corresponding carried/shared progress is later loaded by the full game THEN the full game SHALL reconcile that qualification to the full-game Steam AppID.
+30. **FR-018.30:** WHEN Reset Progress succeeds THEN already-qualified achievement IDs SHALL remain qualified, because platform achievements cannot be revoked and Demo-qualified awards may still require full-game reconciliation; partial achievement counters and rule-specific working state SHALL reset with ordinary gameplay progress.
 
 ## 5. Non-Functional Requirements
 
@@ -413,7 +429,7 @@ does not replace the starting Normal Grab.
 | Loose-object cap | `24` | FR-014 |
 | Dirty autosave interval | `30 s` plus event saves | FR-015.6–FR-015.7 |
 | Presentation defaults | V-sync On; `2x` MSAA; Master/SFX `50%` | FR-017.6–FR-017.8 |
-| Achievement thresholds | `25` catches; `2 h` running time | FR-018.11, FR-018.14 |
+| Achievement thresholds | `25` catches; `2 h` running; `30 s` airborne; Work actions `100/1k/10k/100k/1m`; `100` glove hits; `3` damage sources in `5 s` | FR-018.11, FR-018.14–FR-018.15, FR-018.18–FR-018.22, FR-018.24, FR-018.28 |
 
 ## 7. Calibration Requirements and Unfixed Coefficients
 
@@ -434,7 +450,7 @@ The first Steam release includes:
 - Autonomous idle, approach, flee, walk, jump, catch, hold, inspect, consume, toss, unconscious, and self-recovery behavior.
 - Work/Play input modes, click passthrough, global recovery hotkey, tray controls, responsive HUD/panel, window persistence, zoom, and confirmed presentation settings.
 - The sixteen selectable launch interactions listed in FR-013.2, permanent shop ownership, unrestricted save-for-preference purchasing, one earnable currency, damage earnings, mood, care, passive income, and the 209-minute completionist target progression.
-- Versioned resilient local saving, Steam Cloud progression, Steam stats, and the ten launch achievements.
+- Versioned resilient local saving, Steam Cloud progression, Steam stats, and the 24 launch achievements defined by FR-018.5–FR-018.28, with Demo qualification/full-game reconciliation governed by FR-018.29.
 - Mouse and keyboard input, original nonverbal audio, non-graphic slapstick presentation, and the confirmed accessibility/performance options.
 
 ## 9. Explicitly Out of Scope
@@ -489,4 +505,4 @@ The first Steam release includes:
 5. **Persistence gate:** Automated fault tests pass for atomic replacement, rolling-backup recovery, corrupt-file quarantine, semantic/non-semantic field boundaries, event autosaves, safe standing resume, and no sleep/clock-gap catch-up.
 6. **Economy gate:** A documented casual-player benchmark demonstrates the FR-013.4 completionist targets through approximately `209` minutes, unrestricted save-for-preference strategies, and peak passive income at approximately `25%` of active attack earnings.
 7. **Performance gate:** Reference-hardware benchmarks report the NFR-002 foreground and hidden budgets with the fixed `120 Hz` simulation and `24` loose objects.
-8. **Steam gate:** Achievement/stat queueing, reconnection sync, progression-only Cloud behavior, and full local fallback pass with Steam available, offline, and initialization-failed.
+8. **Steam gate:** Local qualification/stat accrual, Demo qualification without Demo Steam unlocks, desired-state reconciliation, same-session retryable Steam initialization recovery, progression-only Cloud behavior, and full local fallback pass with Steam available, offline, and initialization-failed.

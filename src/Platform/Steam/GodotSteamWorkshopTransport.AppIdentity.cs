@@ -11,6 +11,10 @@ public partial class GodotSteamWorkshopTransport
     /// Initializes Steam under the running application. Consumption (subscriptions/downloads) is
     /// always scoped to that runtime AppID. A distinct Workshop owner is retained only as an
     /// explicitly allowed cross-app publish target for the Demo mirror.
+    ///
+    /// The intended cross-app target is captured before Steam client initialization so a retryable
+    /// startup failure can still be wrapped by the same Demo mirroring transport. The object graph
+    /// therefore remains stable while Steam recovers; no coordinator or UI service is rebound.
     /// </summary>
     public bool Initialize(Node bridge, uint runtimeAppId, uint workshopOwnerAppId)
     {
@@ -20,6 +24,7 @@ public partial class GodotSteamWorkshopTransport
             return false;
         }
 
+        ConfigureCrossAppPublishTarget(runtimeAppId, workshopOwnerAppId);
         if (!InitializeSteam(bridge, runtimeAppId))
             return false;
 
@@ -36,7 +41,6 @@ public partial class GodotSteamWorkshopTransport
         }
 
         _workshopOwnerAppId = runtimeAppId;
-        ConfigureCrossAppPublishTarget(runtimeAppId, workshopOwnerAppId);
         return true;
     }
 }

@@ -1,0 +1,65 @@
+name: Achievement Build Scope
+
+on:
+  push:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: achievement-scope-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - profile: itch
+            expected: excluded
+            msbuild: -p:DesktopBuddyItchScope=true
+          - profile: initial-steam-demo
+            expected: excluded
+            msbuild: -p:DesktopBuddySteamDemoScope=true -p:DesktopBuddyNextFestDemoScope=false
+          - profile: next-fest-demo
+            expected: included
+            msbuild: -p:DesktopBuddySteamDemoScope=true -p:DesktopBuddyNextFestDemoScope=true
+          - profile: full-release
+            expected: included
+            msbuild: -p:DesktopBuddySteamDemoScope=false -p:DesktopBuddyNextFestDemoScope=false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Compile scoped game project
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+          MSBUILD_SCOPE: ${{ matrix.msbuild }}
+        run: |
+          set -euo pipefail
+          mkdir -p ".artifacts/$PROFILE"
+          # shellcheck disable=SC2086
+          dotnet build DesktopBuddy.csproj -c Debug -o ".artifacts/$PROFILE" $MSBUILD_SCOPE
+
+      - name: Verify physical achievement scope
+        shell: bash
+        env:
+          PROFILE: ${{ matrix.profile }}
+          EXPECTED: ${{ matrix.expected }}
+        run: |
+          set -euo pipefail
+          python3 devtools/verification/verify_achievement_scope.py \
+            --expect "$EXPECTED" \
+            ".artifacts/$PROFILE/DesktopBuddy.dll" \
+            ".artifacts/$PROFILE/DesktopBuddy.Domain.dll"

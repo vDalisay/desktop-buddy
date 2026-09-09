@@ -1,7 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
+#if DESKTOP_BUDDY_ACHIEVEMENTS
+using DesktopBuddy.Domain.Achievements;
+#endif
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
@@ -15,8 +19,10 @@ namespace DesktopBuddy.App;
 /// <summary>
 /// "Reset Progress": everything the player has built goes back to a first run — the gameplay
 /// save, Work progression, the decorated room, and the characters they made (owner instruction
-/// 2026-08-21). Machine-local settings are the one thing kept, because they are preferences
-/// rather than progress.
+/// 2026-08-21). Machine-local settings are kept because they are preferences rather than progress.
+/// In achievement-enabled builds, already-earned qualification is retained because a local reset
+/// cannot revoke an award Steam may already have granted. Builds that do not ship achievements do
+/// not reference or preserve achievement-specific state.
 /// </summary>
 public static class ProgressReset
 {
@@ -54,8 +60,20 @@ public static class ProgressReset
         CharacterSelectionSnapshot? selectionBefore = characterSelection?.Snapshot();
         WorkProgressSnapshot? workBefore = workProgress?.Snapshot();
         EnvironmentProgressSnapshot? environmentBefore = environmentProgress?.Snapshot();
+#if DESKTOP_BUDDY_ACHIEVEMENTS
+        IReadOnlyDictionary<string, string> achievementValues =
+            AchievementProgressStore.PreserveQualifiedAchievementValues(before.Extensions);
+#else
+        IReadOnlyDictionary<string, string> achievementValues = new Dictionary<string, string>();
+#endif
         ProgressSnapshot fresh = CreateNewProgress(progress.CashPerPain).Snapshot();
-        progress.Adopt(fresh with { Revision = before.Revision + 1 });
+        progress.Adopt(fresh with
+        {
+            Revision = before.Revision + 1,
+            Extensions = achievementValues.Count == 0
+                ? null
+                : new ProgressExtensionData(Values: achievementValues),
+        });
         characterSelection?.SetActiveForExplicitTransaction(null);
         if (workProgress is not null && workBefore.HasValue)
         {

@@ -15,6 +15,7 @@ signal steam_overlay_toggled(active: bool)
 const EXPECTED_GODOTSTEAM := "4.22"
 const WORKSHOP_FILE_TYPE_COMMUNITY := 0
 const INVALID_UGC_UPDATE_HANDLE := -1
+const STEAM_INIT_NO_CONNECTION := 2
 
 const INTERNAL_ROOM_TAG := "DesktopBuddy.RoomPainting"
 const INTERNAL_BUDDY_TAG := "DesktopBuddy.BuddyCharacter"
@@ -27,6 +28,7 @@ var _initialized := false
 var _app_id := 0
 var _workshop_app_id := 0
 var _reason := "GodotSteam has not been initialized."
+var _retryable_init_failure := false
 
 var _required_methods := PackedStringArray([
     "steamInitEx",
@@ -62,6 +64,7 @@ func _ready() -> void:
 func initialize(app_id: int) -> Dictionary:
     if _initialized:
         return {"status": 0, "verbal": "Steam is already initialized.", "version": EXPECTED_GODOTSTEAM}
+    _retryable_init_failure = false
     if app_id <= 0:
         return _fail("No Steam AppID is configured.")
 
@@ -105,11 +108,16 @@ func initialize(app_id: int) -> Dictionary:
     var response: Dictionary = init_result
     var status := int(response.get("status", -1))
     if status != 0:
+        # GodotSteam's SteamInitExResult status 2 specifically means the client cannot be reached.
+        # That may recover while this process remains open. Generic failures and an out-of-date
+        # client are deliberately permanent for this run rather than being polled forever.
+        _retryable_init_failure = _is_retryable_init_status(status)
         return _fail(str(response.get("verbal", "Steam initialization failed.")), status)
 
     _app_id = app_id
     _workshop_app_id = app_id
     _initialized = true
+    _retryable_init_failure = false
     _reason = ""
     bridge_state_changed.emit(true, "")
     return {"status": 0, "verbal": str(response.get("verbal", "Steam initialized.")), "version": EXPECTED_GODOTSTEAM}
@@ -123,9 +131,36 @@ func configure_workshop_app_id(app_id: int) -> bool:
 func is_available() -> bool:
     return _initialized and _steam != null
 
+## True only when the addon/binding surface was valid but SteamInitEx reported no client
+## connection. Permanent capability/configuration/client-version failures must not be polled.
+func can_retry_initialization() -> bool:
+    return not _initialized and _retryable_init_failure and _steam != null
+
+## Kept as one tiny pure boundary rule so the native smoke can pin GodotSteam's documented
+## SteamInitExResult mapping without depending on which failure an unauthenticated CI runner emits.
+func _is_retryable_init_status(status: int) -> bool:
+    return status == STEAM_INIT_NO_CONNECTION
+
 ## Test/diagnostic capability probe that does not initialize Steam or require a logged-in client.
 func is_godotsteam_present() -> bool:
     return _find_steam() != null
+
+## Achievement/stat capability probe kept on this bridge so C# never reaches around the
+## anti-corruption boundary to GodotSteam's global/ClassDB object directly. Steamworks SDK 1.61
+## removed RequestCurrentStats; the client now synchronizes stats/achievements before game start.
+func has_achievement_capabilities() -> bool:
+    var steam := _steam if _steam != null else _find_steam()
+    return steam != null \
+        and steam.has_method("setAchievement") \
+        and steam.has_method("storeStats")
+
+func set_achievement(api_name: String) -> bool:
+    if api_name.is_empty():
+        return false
+    return _call_bool("setAchievement", [api_name])
+
+func store_stats() -> bool:
+    return _call_bool("storeStats", [])
 
 func unavailable_reason() -> String:
     return _reason
@@ -144,6 +179,7 @@ func shutdown() -> void:
     if _initialized and _steam != null and _steam.has_method("steamShutdown"):
         _steam.call("steamShutdown")
     _initialized = false
+    _retryable_init_failure = false
     _app_id = 0
     _workshop_app_id = 0
 
