@@ -50,6 +50,7 @@ public sealed partial class AchievementBootstrap
         _observedRopeAttachCount = _sandbox.Ropes.AttachCount;
         _swordWasWielded = _sandbox.CursorTools.IsWieldingPointFirst;
 
+        WireCustomizationObservers();
         TreeExiting += UnwireUsageObservers;
         _usageObserversWired = true;
     }
@@ -65,6 +66,7 @@ public sealed partial class AchievementBootstrap
         ObserveSwordWield();
         ObserveBaseballRicochets();
         ObserveAirborne(delta);
+        TickCustomizationObservers(delta);
 
         if (!_sandbox.FireSprayer.IsBurning)
             _burnWasActive = false;
@@ -285,6 +287,7 @@ public sealed partial class AchievementBootstrap
     private void UnwireUsageObservers()
     {
         TreeExiting -= UnwireUsageObservers;
+        UnwireCustomizationObservers();
         if (!_usageObserversWired || !GodotObject.IsInstanceValid(_sandbox))
         {
             _usageObserversWired = false;
