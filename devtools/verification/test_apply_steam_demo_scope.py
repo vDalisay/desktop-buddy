@@ -22,7 +22,7 @@ class SteamDemoScopeTests(unittest.TestCase):
             textwrap.dedent(
                 """\
                 <Project>
-                  <ItemGroup Condition=" '$(DesktopBuddySteamDemoScope)' == 'true' ">
+                  <ItemGroup Condition=" '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">
                     <Compile Remove="src/Environment/RoomDecorator.cs" />
                   </ItemGroup>
                 </Project>
@@ -119,6 +119,23 @@ class SteamDemoScopeTests(unittest.TestCase):
             checked = self._run(root, "--check")
             self.assertNotEqual(checked.returncode, 0)
             self.assertIn("compiled-out source survived", checked.stdout)
+
+    def test_broad_steam_demo_itemgroup_is_not_accepted_as_initial_scope(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            self._fixture(root)
+            csproj = root / "DesktopBuddy.csproj"
+            csproj.write_text(
+                csproj.read_text(encoding="utf-8").replace(
+                    "DesktopBuddyInitialSteamDemoScope",
+                    "DesktopBuddySteamDemoScope",
+                ),
+                encoding="utf-8",
+            )
+
+            applied = self._run(root)
+            self.assertNotEqual(applied.returncode, 0)
+            self.assertIn("missing DesktopBuddyInitialSteamDemoScope", applied.stdout)
 
 
 if __name__ == "__main__":

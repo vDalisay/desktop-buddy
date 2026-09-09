@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """Apply the physically reduced Initial Steam Demo scope to a disposable export checkout.
 
-The source of truth for compiled-out C# is the DesktopBuddySteamDemoScope ItemGroup in
+The source of truth for compiled-out C# is the DesktopBuddyInitialSteamDemoScope ItemGroup in
 DesktopBuddy.csproj. This script handles the Godot/resource half of the same boundary:
 
 * prune held-back Tops, Shoes and Accessories entries from the launch catalogue;
 * remove Room Decorator authored resources from the disposable checkout;
-* remove C# files that the Steam Demo compile scope excludes (plus their Godot UID sidecars);
+* remove C# files that the Initial Steam Demo compile scope excludes (plus Godot UID sidecars);
 * remove any autoload that points at a compiled-out script;
 * harden the Windows Steam Demo export filter against re-importing those paths.
 
 Runtime `steam_demo`/`full_release` feature tags remain defense-in-depth only. They are never used
-here to decide what implementation exists.
+here to decide what implementation exists. The Next Fest demo deliberately does not match this
+scope and therefore retains its broader vertical slice.
 """
 
 from __future__ import annotations
@@ -22,8 +23,8 @@ import pathlib
 import re
 from dataclasses import dataclass
 
-STEAM_DEMO_ITEMGROUP = re.compile(
-    r"<ItemGroup\s+Condition=\"\s*'\$\(DesktopBuddySteamDemoScope\)'\s*==\s*'true'\s*\">(.*?)</ItemGroup>",
+INITIAL_STEAM_DEMO_ITEMGROUP = re.compile(
+    r"<ItemGroup\s+Condition=\"\s*'\$\(DesktopBuddyInitialSteamDemoScope\)'\s*==\s*'true'\s*\">(.*?)</ItemGroup>",
     re.DOTALL,
 )
 COMPILE_REMOVE = re.compile(r"<Compile\s+Remove=\"([^\"]+)\"\s*/>")
@@ -56,15 +57,15 @@ def _write(path: pathlib.Path, text: str) -> None:
 
 def compile_patterns(csproj: pathlib.Path) -> tuple[str, ...]:
     text = _read(csproj)
-    group = STEAM_DEMO_ITEMGROUP.search(text)
+    group = INITIAL_STEAM_DEMO_ITEMGROUP.search(text)
     if group is None:
         raise SystemExit(
-            f"{csproj}: missing DesktopBuddySteamDemoScope == 'true' ItemGroup; "
+            f"{csproj}: missing DesktopBuddyInitialSteamDemoScope == 'true' ItemGroup; "
             "the csproj compile list is the source of truth"
         )
     values = tuple(dict.fromkeys(value.replace("\\", "/") for value in COMPILE_REMOVE.findall(group.group(1))))
     if not values:
-        raise SystemExit(f"{csproj}: Steam Demo compile scope contains no Compile Remove entries")
+        raise SystemExit(f"{csproj}: Initial Steam Demo compile scope contains no Compile Remove entries")
     return values
 
 
