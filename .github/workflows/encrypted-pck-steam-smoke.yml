@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       retain_candidate:
-        description: Retain the exact candidate for owner testing (private repositories only)
+        description: Retain the exact candidate as a public artifact for owner testing
         required: true
         default: false
         type: boolean
@@ -215,13 +215,8 @@ jobs:
           "CANDIDATE_MANIFEST_SHA256=$((Get-FileHash (Join-Path $root 'release-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant())" |
             Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Refuse public candidate retention
-        if: ${{ inputs.retain_candidate && github.event.repository.visibility != 'private' }}
-        shell: pwsh
-        run: throw "Candidate retention is allowed only after the repository is private."
-
-      - name: Retain private candidate for owner testing
-        if: ${{ inputs.retain_candidate && github.event.repository.visibility == 'private' }}
+      - name: Retain candidate for owner testing
+        if: ${{ inputs.retain_candidate }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hardened-steam-demo-${{ github.sha }}
@@ -239,5 +234,5 @@ jobs:
           "- Template SHA-256: ``$env:CUSTOM_TEMPLATE_SHA256``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Ephemeral key ID: ``$env:PCK_KEY_ID``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Candidate manifest SHA-256: ``$env:CANDIDATE_MANIFEST_SHA256``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
-          "- Candidate retained: ``${{ inputs.retain_candidate && github.event.repository.visibility == 'private' }}``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Candidate retained as a public artifact: ``${{ inputs.retain_candidate }}``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Key, custom template, and logs were not uploaded as artifacts." | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
