@@ -65,5 +65,8 @@ jobs:
       - name: Import project with native GodotSteam addon present
         run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
 
+      - name: Verify pre-initialization Steam restart capability
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --script res://devtools/verification/godotsteam_launch_guard_probe.gd
+
       - name: Verify GodotSteam 4.22 capability surface and offline fallback
         run: xvfb-run -a "$GODOT_BIN" --headless --path . -- --scenario=workshop_godotsteam_addon_smoke --seed=1

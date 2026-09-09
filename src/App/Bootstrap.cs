@@ -15,6 +15,7 @@ using DesktopBuddy.Persistence;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Platform;
 #if !DESKTOP_BUDDY_PUBLIC_WEB
+using DesktopBuddy.Platform.Steam;
 using DesktopBuddy.Sharing;
 #endif
 #if !DESKTOP_BUDDY_NO_DEV_TOOLS
@@ -51,6 +52,25 @@ public partial class Bootstrap : Node
 
         bool headless = DisplayServer.GetName() == "headless";
         Log.Info(Category, $"Boot mode={args.Mode} automation={args.AutomationEnabled} headless={headless} debug={BuildInfo.IsDebugBuild}");
+
+#if !DESKTOP_BUDDY_PUBLIC_WEB
+        // Valve recommends RestartAppIfNecessary immediately before Steam initialization. Desktop
+        // Buddy evaluates it even earlier, before sandbox/persistence composition, but only when
+        // the Windows Steam client is already running. Steam-closed launches remain offline-first.
+        SteamLaunchGuardResult steamLaunch = SteamLaunchGuard.Evaluate();
+        if (steamLaunch.Warning && !string.IsNullOrWhiteSpace(steamLaunch.Detail))
+            Log.Warn(Category, steamLaunch.Detail);
+        if (steamLaunch.RestartRequested)
+        {
+            Log.Info(
+                Category,
+                string.IsNullOrWhiteSpace(steamLaunch.Detail)
+                    ? "Steam requested relaunch through the configured AppID; exiting this direct-launch process."
+                    : steamLaunch.Detail);
+            QuitSafely(0);
+            return;
+        }
+#endif
 
         ComposeAutomation(args);
 
