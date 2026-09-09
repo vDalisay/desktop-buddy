@@ -152,7 +152,9 @@ public partial class Bootstrap : Node
             ? new GodotBrowserAtomicSaveFileSystem()
             : new AtomicSaveFileSystem();
         var baseStore = new JsonProgressStore(progressPath, settingsPath, saveFileSystem);
-        IProgressStore runtimeStore = baseStore;
+        IProgressStore runtimeStore = DemoScope.IncludesScenes
+            ? baseStore
+            : new LegacyProgressCompatibilityStore(baseStore, saveRoot, saveFileSystem);
 
         Log.Info(
             Category,
@@ -188,7 +190,7 @@ public partial class Bootstrap : Node
             else
             {
                 Task<LoadResult<ProgressSave>> progressTask =
-                    baseStore.LoadProgressAsync(CancellationToken.None);
+                    runtimeStore.LoadProgressAsync(CancellationToken.None);
                 await Task.WhenAll(progressTask, settingsTask);
                 progressLoad = await progressTask;
             }
