@@ -59,6 +59,35 @@ public sealed class RunnerArgumentsTests
     }
 
     [Fact]
+    public void Parse_BootstrapJourney_StaysNormalAndDoesNotEnableAutomation()
+    {
+        RunnerArguments result = RunnerArguments.Parse(new[]
+        {
+            "--bootstrap-journey=production_bootstrap_persistence",
+            "--bootstrap-phase=2",
+            @"--bootstrap-save-root=C:\fixtures\bootstrap",
+            "--artifacts=artifacts",
+        });
+
+        Assert.Equal(RunnerMode.Normal, result.Mode);
+        Assert.Equal("production_bootstrap_persistence", result.BootstrapJourneyId);
+        Assert.Equal(2, result.BootstrapJourneyPhase);
+        Assert.Equal(@"C:\fixtures\bootstrap", result.BootstrapSaveRoot);
+        Assert.Equal("artifacts", result.ArtifactsDir);
+        Assert.False(result.AutomationEnabled);
+    }
+
+    [Fact]
+    public void Parse_BootstrapJourneyCannotCombineWithRunnerMode()
+    {
+        Assert.Throws<ArgumentException>(() => RunnerArguments.Parse(new[]
+        {
+            "--journey=boot_smoke",
+            "--bootstrap-journey=production_bootstrap_persistence",
+        }));
+    }
+
+    [Fact]
     public void Parse_AutomationFlagAlone_IsNormalModeButAutomationEnabled()
     {
         RunnerArguments result = RunnerArguments.Parse(new[] { "--automation" });
@@ -100,6 +129,8 @@ public sealed class RunnerArgumentsTests
     [InlineData("--seed=")]
     [InlineData("--journey-phase=-1")]
     [InlineData("--journey-phase=nope")]
+    [InlineData("--bootstrap-phase=-1")]
+    [InlineData("--bootstrap-phase=nope")]
     public void Parse_InvalidSeed_Throws(string arg)
     {
         Assert.Throws<ArgumentException>(() => RunnerArguments.Parse(new[] { arg }));
@@ -108,6 +139,8 @@ public sealed class RunnerArgumentsTests
     [Theory]
     [InlineData("--scenario=")]
     [InlineData("--journey=")]
+    [InlineData("--bootstrap-journey=")]
+    [InlineData("--bootstrap-save-root=")]
     [InlineData("--artifacts=")]
     public void Parse_EmptyRequiredValue_Throws(string arg)
     {
