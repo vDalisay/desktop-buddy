@@ -1,11 +1,6 @@
 name: CI Supply Chain
 
 on:
-  push:
-    paths:
-      - .github/workflows/**
-      - devtools/verification/verify_ci_supply_chain.py
-      - devtools/verification/test_verify_ci_supply_chain.py
   pull_request:
     branches: [main]
     paths:

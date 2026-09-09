@@ -1,14 +1,6 @@
 name: Steam distribution scope validation
 
 on:
-  push:
-    paths:
-      - DesktopBuddy.csproj
-      - src/**
-      - data/**
-      - devtools/verification/**
-      - .github/workflows/steam-pipe.yml
-      - .github/workflows/steam-distribution-scope.yml
   pull_request:
     branches: [main]
     paths:
@@ -169,9 +161,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ASSEMBLY="$(find "$GITHUB_WORKSPACE/.godot/mono/temp/bin/ExportRelease" -type f -name 'DesktopBuddy.dll' -print -quit)"
-          test -n "$ASSEMBLY"
+          OUTPUT="$RUNNER_TEMP/steam-demo-scope-export"
+          mapfile -t ASSEMBLIES < <(find "$OUTPUT" -type f -name 'DesktopBuddy.dll' -print)
+          if [ "${#ASSEMBLIES[@]}" -ne 1 ]; then
+            echo "Expected exactly one shipped DesktopBuddy.dll, found ${#ASSEMBLIES[@]}." >&2
+            exit 1
+          fi
           python3 devtools/verification/verify_steam_distribution_scope.py \
             --target demo \
-            --assembly "$ASSEMBLY" \
-            --pck "$RUNNER_TEMP/steam-demo-scope-export/DesktopBuddy.pck"
+            --assembly "${ASSEMBLIES[0]}" \
+            --pck "$OUTPUT/DesktopBuddy.pck"

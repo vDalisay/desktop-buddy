@@ -42,6 +42,7 @@ jobs:
             devtools.verification.test_apply_steam_demo_scope `
             devtools.verification.test_verify_steam_distribution_scope `
             devtools.verification.test_run_checked_process
+          ./devtools/release/test_verify_authenticode.ps1
 
       - name: Verify Windows native toolchain
         shell: pwsh
@@ -216,7 +217,8 @@ jobs:
         shell: pwsh
         run: |
           $output = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo"
-          $forbidden = Get-ChildItem $output -Recurse -File -Include *.pdb,*.cs,*.csproj,*.sln,steam_appid.txt
+          Get-ChildItem $output -Recurse -File -Filter *.pdb | Remove-Item -Force
+          $forbidden = Get-ChildItem $output -Recurse -File -Include *.pdb,*.map,*.mdb,*.cs,*.fs,*.vb,*.csproj,*.fsproj,*.vbproj,*.sln,*.slnx,*.props,*.targets,*.ps1,*.bat,steam_appid.txt
           if ($forbidden) {
             $names = ($forbidden | ForEach-Object FullName) -join "`n"
             throw "Forbidden release files:`n$names"

@@ -36,10 +36,14 @@ spike is manual-only, its exporter has one bounded process owner with regression
 coverage, and SteamPipe checks manifest distribution identity at the upload boundary.
 The managed candidate and external acceptance gates remain pending.
 
-- NativeAOT compatibility is **unproven**. Earlier runs failed during faulty Windows
-  export supervision. The retry has been removed; the next manual dispatch must run
-  the single exporter to completion and report its real exit code before any AOT
-  compatibility conclusion or setting change.
+Continuation evidence on 2026-09-09:
+
+- Managed Demo preflight run `34359734784` passed on `2f6d14d9` with runtime AppID `5228990`, physical Demo scope, native dependency, PCK, and 192-file manifest verification. Its ephemeral payload was not retained and is not a Windows candidate.
+- NativeAOT run `34360174738` used the corrected single process owner. Export, native x86_64 PE, `godotsharp_game_main_init`, and Demo PCK scope passed. Payload audit then correctly rejected `DesktopBuddy.Domain.pdb` and `DesktopBuddy.Visuals.pdb`; the workflow now strips export PDBs before applying the expanded forbidden-file audit. A rerun and exact-export acceptance remain required.
+- The manual encrypted/embedded-PCK workflow now builds a keyed template from pinned Godot `14d19694e0c88a3f9e82d899a0400f27a24c176e`, uses only an ephemeral masked key, verifies the embedded encrypted pack and shipped managed assembly, and retains no public binary/key artifact. It does not enable production encryption.
+- H8's re-upload runbook and private evidence checklist are tracked under `docs/release/`.
+
+- NativeAOT compilation/export compatibility is now proven only through the PE/PCK gates above. Packaging rerun, startup, manifest, functional, persistence, and performance acceptance remain unproven; production AOT stays disabled.
 - Require native PE/entry-point verification, exported PCK scope, payload audit,
   exact-export startup and manifest verification to pass on the final candidate.
 - Before production AOT enablement, complete gameplay, save/restart, Paint Room,

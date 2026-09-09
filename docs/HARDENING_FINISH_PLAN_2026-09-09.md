@@ -115,3 +115,10 @@ For every completed step record: source SHA, workflow/build ID, payload manifest
 platform/tool identity, exact test/result and evidence location. Fixes create a new
 candidate; rerun affected acceptance plus required final-source CI. Never call old
 branch CI, a source-only check or an unavailable external gate a final release pass.
+
+## Continuation record — 2026-09-09
+
+- `2f6d14d9`, SteamPipe run `34359734784`, `target=demo`, `upload=false`: passed. Runtime AppID `5228990`, physical Demo scope, PCK, required native files, and a 192-file release manifest passed. The runner-local payload was not retained, so this is preflight evidence only.
+- `2f6d14d9`, NativeAOT run `34360174738`: the supervised export, native x86_64 PE, `godotsharp_game_main_init`, and Demo PCK scope passed. Audit rejected two project-reference PDBs before startup/manifest. The workflow now strips PDBs as the managed pipeline does and applies the expanded source/project/debug/map/dev-AppID rejection list; rerun required.
+- Source continuation adds shipped-assembly verification, quick-only push enforcement, focused H3 helper/embedded-pack tests, a manual pinned keyed-template compatibility workflow, and the H8 runbook/evidence checklist. Production PCK encryption, AOT, signing, upload, and promotion remain unchanged.
+- Pending owner gates are unchanged: signing identity/access, release approvers and allowed branches, public-source policy, repository/environment protection, retained-candidate authorization, and live Windows/Steam/itch acceptance.

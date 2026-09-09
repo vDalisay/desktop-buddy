@@ -1,0 +1,179 @@
+name: Encrypted Embedded PCK Steam Demo Spike
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: encrypted-pck-steam-demo-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  GODOT_SOURCE_SHA: 14d19694e0c88a3f9e82d899a0400f27a24c176e
+  GODOT_WIN64_SHA256: e10a41f33392f86e93557610611ead8722142913f9e0fab6a8148d1aa5b64c78
+  SCONS_VERSION: 4.10.1
+  SCONS_WHEEL_SHA256: bd9d1c52f908d874eba92a8c0c0a8dcf2ed9f3b88ab956d0fce1da479c4e7126
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  compatibility:
+    runs-on: windows-2022
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: Run H3 helper and verifier tests
+        shell: pwsh
+        run: |
+          python -m unittest `
+            devtools.verification.test_prepare_encrypted_pck_spike `
+            devtools.verification.test_verify_encrypted_embedded_pck `
+            devtools.verification.test_apply_steam_demo_scope `
+            devtools.verification.test_verify_steam_distribution_scope `
+            devtools.verification.test_run_checked_process
+          ./devtools/release/test_verify_authenticode.ps1
+
+      - name: Create ephemeral encryption identity
+        shell: pwsh
+        run: |
+          $bytes = New-Object byte[] 32
+          [Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+          $key = [Convert]::ToHexString($bytes).ToLowerInvariant()
+          Write-Output "::add-mask::$key"
+          $keyId = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($key))).ToLowerInvariant()
+          "GODOT_SCRIPT_ENCRYPTION_KEY=$key" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "PCK_KEY_ID=$keyId" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install hash-pinned SCons
+        shell: pwsh
+        run: |
+          $requirement = Join-Path $env:RUNNER_TEMP "scons-requirement.txt"
+          "SCons==$env:SCONS_VERSION --hash=sha256:$env:SCONS_WHEEL_SHA256" | Set-Content $requirement
+          python -m pip install --require-hashes --only-binary=:all: -r $requirement
+          scons --version
+
+      - name: Check out pinned Godot source outside the project
+        shell: pwsh
+        run: |
+          $source = Join-Path $env:RUNNER_TEMP "godot-source"
+          git clone --filter=blob:none --no-checkout https://github.com/godotengine/godot.git $source
+          git -C $source checkout --detach $env:GODOT_SOURCE_SHA
+          git -C $source submodule update --init --recursive --depth 1
+          if ((git -C $source rev-parse HEAD) -ne $env:GODOT_SOURCE_SHA) { throw "Godot source identity mismatch." }
+          "GODOT_SOURCE=$source" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build keyed Godot 4.6.1 .NET Windows template
+        shell: pwsh
+        run: |
+          $source = $env:GODOT_SOURCE
+          $log = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\encrypted-pck-template-build.log"
+          $runner = Join-Path $env:GITHUB_WORKSPACE "devtools\verification\run_checked_process.py"
+          New-Item -ItemType Directory -Path (Split-Path $log) -Force | Out-Null
+          Push-Location $source
+          try {
+            python $runner `
+              --timeout 5400 --log $log -- `
+              scons platform=windows target=template_release arch=x86_64 `
+              module_mono_enabled=yes d3d12=no production=yes lto=none debug_symbols=no
+            if ($LASTEXITCODE -ne 0) { throw "Keyed template build failed with exit code $LASTEXITCODE; see $log" }
+          }
+          finally { Pop-Location }
+
+          $template = Get-ChildItem "$source\bin" -File -Filter "godot.windows.template_release.x86_64*.mono.exe" |
+            Where-Object Name -NotMatch '\.console\.exe$' | Select-Object -First 1
+          if (-not $template) { throw "Keyed Godot .NET Windows release template was not produced." }
+          "CUSTOM_TEMPLATE=$($template.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "CUSTOM_TEMPLATE_SHA256=$((Get-FileHash $template.FullName -Algorithm SHA256).Hash.ToLowerInvariant())" |
+            Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download pinned Godot .NET editor
+        shell: pwsh
+        run: |
+          $name = "Godot_v${env:GODOT_VERSION}_mono_win64"
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Invoke-WebRequest "https://github.com/godotengine/godot-builds/releases/download/${env:GODOT_VERSION}/$name.zip" -OutFile $zip
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:GODOT_WIN64_SHA256) { throw "Godot editor checksum mismatch: $actual" }
+          $dest = Join-Path $env:RUNNER_TEMP "godot-editor"
+          Expand-Archive $zip $dest -Force
+          $editor = Get-ChildItem $dest -Recurse -File -Filter "Godot*_mono_win64.exe" | Select-Object -First 1
+          if (-not $editor) { throw "Pinned Godot .NET editor was not found." }
+          "GODOT_BIN=$($editor.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare physically reduced Demo checkout
+        shell: pwsh
+        env:
+          DEMO_APP_ID: ${{ vars.STEAM_DEMO_APP_ID }}
+        run: |
+          if ($env:DEMO_APP_ID -notmatch '^[1-9][0-9]*$') { throw "STEAM_DEMO_APP_ID is missing or invalid." }
+          "DesktopBuddySteamDemoScope=true" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          python devtools/verification/apply_steam_demo_scope.py . --report build/release-evidence/encrypted-pck-demo-scope.json
+          python devtools/verification/apply_steam_demo_scope.py . --check
+          $project = Get-Content project.godot -Raw
+          $project = [regex]::Replace($project, '(?m)^initialization/app_data/app_id=\d+\s*$', "initialization/app_data/app_id=$env:DEMO_APP_ID", 1)
+          Set-Content project.godot $project -NoNewline
+          python devtools/verification/prepare_encrypted_pck_spike.py . --custom-template $env:CUSTOM_TEMPLATE
+          python devtools/verification/prepare_encrypted_pck_spike.py . --custom-template $env:CUSTOM_TEMPLATE --check
+          dotnet build DesktopBuddy.csproj -c Debug -p:DesktopBuddySteamDemoScope=true
+          ./tools/install_godotsteam.ps1 -Force
+          & $env:GODOT_BIN --headless --verbose --path . --import
+          if ($LASTEXITCODE -ne 0) { throw "Godot import failed." }
+
+      - name: Export encrypted embedded-PCK Demo
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:GITHUB_WORKSPACE "build\encrypted-pck-steam-demo"
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+          $exe = Join-Path $output "DesktopBuddy.exe"
+          $log = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\encrypted-pck-export.log"
+          python devtools/verification/run_checked_process.py --timeout 3600 --log $log -- `
+            $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" $exe
+          if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { throw "Encrypted export failed; see $log" }
+
+      - name: Verify exact protected payload
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:GITHUB_WORKSPACE "build\encrypted-pck-steam-demo"
+          $exe = Join-Path $root "DesktopBuddy.exe"
+          python devtools/verification/verify_encrypted_embedded_pck.py $exe
+          $assemblies = @(Get-ChildItem $root -Recurse -File -Filter DesktopBuddy.dll)
+          if ($assemblies.Count -ne 1) { throw "Expected one shipped DesktopBuddy.dll, found $($assemblies.Count)." }
+          python devtools/verification/verify_steam_distribution_scope.py --target demo --assembly $assemblies[0].FullName
+          Get-ChildItem $root -Recurse -File -Filter *.pdb | Remove-Item -Force
+          $forbidden = Get-ChildItem $root -Recurse -File -Include *.pdb,*.map,*.mdb,*.cs,*.fs,*.vb,*.csproj,*.fsproj,*.vbproj,*.sln,*.slnx,*.props,*.targets,*.ps1,*.bat,steam_appid.txt
+          if ($forbidden) { throw "Protected export contains forbidden loose files: $($forbidden.FullName -join ', ')" }
+
+      - name: Startup smoke exact encrypted export
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE "build\encrypted-pck-steam-demo\DesktopBuddy.exe"
+          $process = Start-Process $exe -ArgumentList "--headless" -PassThru
+          Start-Sleep -Seconds 15
+          $process.Refresh()
+          if ($process.HasExited) {
+            throw "Encrypted export exited during startup smoke with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+          "Encrypted export remained alive through startup smoke; interactive acceptance remains required."
+
+      - name: Record non-secret evidence
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          "### Encrypted embedded-PCK Steam Demo spike" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Commit: ``$env:GITHUB_SHA``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Godot source: ``$env:GODOT_SOURCE_SHA``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Template SHA-256: ``$env:CUSTOM_TEMPLATE_SHA256``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Ephemeral key ID: ``$env:PCK_KEY_ID``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Key, template, logs, and exported bytes were not uploaded as artifacts." | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

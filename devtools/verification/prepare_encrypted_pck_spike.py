@@ -37,6 +37,8 @@ def _replace_or_insert(section: str, key: str, value: str) -> str:
 
 
 def _split_preset(text: str) -> tuple[str, str, str, str]:
+    if text.count(PRESET_HEADER) != 1 or text.count(OPTIONS_HEADER) != 1:
+        raise ValueError("Expected exactly one Windows Steam Demo preset.0/options section.")
     preset_start = text.find(PRESET_HEADER)
     options_start = text.find(OPTIONS_HEADER)
     if preset_start < 0 or options_start < 0 or options_start <= preset_start:
@@ -83,6 +85,17 @@ def verify(text: str, custom_template: str) -> list[str]:
 
     if EXPECTED_NAME not in preset or EXPECTED_PLATFORM not in preset:
         errors.append("preset.0 is not the expected Windows Steam Demo preset.")
+
+    for section, key in (
+        (preset, "encryption_include_filters"),
+        (preset, "encryption_exclude_filters"),
+        (preset, "encrypt_pck"),
+        (preset, "encrypt_directory"),
+        (options, "custom_template/release"),
+        (options, "binary_format/embed_pck"),
+    ):
+        if len(re.findall(rf"(?m)^{re.escape(key)}=.*$", section)) != 1:
+            errors.append(f"Expected exactly one {key!r} entry.")
 
     required = [
         (preset, 'encryption_include_filters="*"', "all packed resources are selected for encryption"),

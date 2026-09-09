@@ -125,7 +125,7 @@ The workflow will:
 4. stamp the target runtime App ID into the disposable CI checkout;
 5. export the correct Windows Godot preset;
 6. remove PDB files;
-7. reject accidental `steam_appid.txt` or source/project leakage;
+7. inspect the shipped managed assembly and PCK, then reject accidental `steam_appid.txt`, source/project, debug, or map leakage;
 8. verify that a Windows Steam/GodotSteam DLL is present; and
 9. generate and verify a provenance manifest for the complete payload; and
 10. record the manifest hash in the workflow summary.
@@ -155,6 +155,8 @@ After `STEAM_DEMO_APP_ID` and `STEAM_DEMO_WINDOWS_DEPOT_ID` are configured, use 
 The workflow chooses the `Windows Steam Demo` Godot preset and stamps the demo runtime App ID into the disposable export, while the source-controlled Workshop owner remains the base game (`5114950`).
 
 Use `upload=false` first as the managed export preflight. It validates the assembly, PCK, physical Demo scope, required native libraries, forbidden-file policy and provenance manifest, but its runner-local payload cannot be downloaded or used for Windows acceptance.
+
+The manual **Encrypted Embedded PCK Steam Demo Spike** is the contained H3 compatibility gate. It builds a Godot 4.6.1 .NET Windows template from pinned source with a run-local AES key, applies the disposable encrypted/embedded preset, verifies the final executable footer/header and shipped managed assembly, rejects plaintext resource sentinels and loose fallback packs, and performs startup smoke. It retains only non-secret source/tool/template/key identities in the summary; the key, custom template, logs, and candidate bytes are not uploaded. A green spike does not enable production encryption: interactive Paint, Studio, Work, Workshop, save, and Windows acceptance are still required on retained exact bytes before owner approval changes the Demo or Full presets.
 
 For an exact retained candidate, use one of these existing paths:
 

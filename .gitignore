@@ -8,6 +8,10 @@ obj/
 *.user
 *.suo
 
+# Python verification caches
+__pycache__/
+*.pyc
+
 # Godot .NET mono artifacts / crash dumps
 .mono/
 mono_crash.*.json

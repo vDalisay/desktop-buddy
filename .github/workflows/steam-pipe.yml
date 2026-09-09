@@ -252,14 +252,16 @@ jobs:
           TARGET: ${{ inputs.target }}
         run: |
           set -euo pipefail
-          # Godot can invoke MSBuild again during import/export. Verify the final managed output too;
-          # the DesktopBuddySteamDemoScope environment property must have propagated to that child.
-          ASSEMBLY="$(find "$GITHUB_WORKSPACE/.godot/mono/temp/bin/ExportRelease" -type f -name 'DesktopBuddy.dll' -print -quit)"
-          test -n "$ASSEMBLY"
+          OUTPUT="$GITHUB_WORKSPACE/build/steam-content"
+          mapfile -t ASSEMBLIES < <(find "$OUTPUT" -type f -name 'DesktopBuddy.dll' -print)
+          if [ "${#ASSEMBLIES[@]}" -ne 1 ]; then
+            echo "Expected exactly one shipped DesktopBuddy.dll, found ${#ASSEMBLIES[@]}." >&2
+            exit 1
+          fi
           python3 devtools/verification/verify_steam_distribution_scope.py \
             --target "$TARGET" \
-            --assembly "$ASSEMBLY" \
-            --pck "$GITHUB_WORKSPACE/build/steam-content/DesktopBuddy.pck"
+            --assembly "${ASSEMBLIES[0]}" \
+            --pck "$OUTPUT/DesktopBuddy.pck"
 
       - name: Audit release payload
         shell: bash
@@ -281,8 +283,13 @@ jobs:
             fi
           done
 
-          if find "$OUTPUT" -type f \( -iname '*.cs' -o -iname '*.csproj' -o -iname '*.sln' \) -print -quit | grep -q .; then
-            echo "Source/project files unexpectedly leaked into the release payload." >&2
+          if find "$OUTPUT" -type f \( \
+              -iname '*.pdb' -o -iname '*.map' -o -iname '*.mdb' -o \
+              -iname '*.cs' -o -iname '*.fs' -o -iname '*.vb' -o \
+              -iname '*.csproj' -o -iname '*.fsproj' -o -iname '*.vbproj' -o \
+              -iname '*.sln' -o -iname '*.slnx' -o -iname '*.props' -o -iname '*.targets' -o \
+              -iname '*.ps1' -o -iname '*.bat' \) -print -quit | grep -q .; then
+            echo "Source, project, debug, or map files unexpectedly leaked into the release payload." >&2
             exit 1
           fi
 
