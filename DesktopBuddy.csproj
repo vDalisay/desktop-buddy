@@ -46,6 +46,26 @@
   </PropertyGroup>
 
   <!--
+    Initial Steam Demo physical scope. This is an MSBuild property, not a Godot custom feature tag:
+    the Steam release workflow injects it into the disposable build environment, and Godot's child
+    MSBuild process inherits it. Runtime steam_demo/full_release tags remain defense-in-depth only.
+    Define this before achievement scope evaluation so Initial Steam Demo cannot compile the
+    full-release achievement runtime by accident.
+  -->
+  <PropertyGroup>
+    <DesktopBuddySteamDemoScope Condition=" '$(DesktopBuddySteamDemoScope)' == '' ">false</DesktopBuddySteamDemoScope>
+  </PropertyGroup>
+
+  <PropertyGroup Condition=" '$(DesktopBuddySteamDemoScope)' == 'true' ">
+    <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_STEAM_DEMO</DefineConstants>
+  </PropertyGroup>
+
+  <Target Name="ValidateDesktopBuddyDistributionScope" BeforeTargets="CoreCompile">
+    <Error Condition=" '$(DesktopBuddyItchScope)' == 'true' AND '$(DesktopBuddySteamDemoScope)' == 'true' "
+           Text="Distribution scope rejected: itch and Steam Demo physical scopes cannot be enabled together." />
+  </Target>
+
+  <!--
     Achievement content is a compile-time distribution capability, not a Godot runtime flag.
 
       itch.io                              -> excluded
@@ -98,6 +118,24 @@
 
   <ItemGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' ">
     <Compile Remove="src/Testing/**/*.cs" />
+  </ItemGroup>
+
+  <!--
+    Initial Steam Demo retains Paint Background, Work Mode, Workshop and the shared character
+    schema/renderer, but Room Decorator is a Next Fest feature. Remove the implementation itself
+    rather than trusting the mutable steam_demo/full_release feature list in the PCK.
+  -->
+  <ItemGroup Condition=" '$(DesktopBuddySteamDemoScope)' == 'true' ">
+    <Compile Remove="src/Environment/DecorationLightProfileResource.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorationCatalogueResource.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorationLayer.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorationPresenter.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorationRegistry.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorationResource.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorationVisualFactory.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorator.Preferences.cs" />
+    <Compile Remove="src/Environment/EnvironmentDecorator.cs" />
+    <Compile Remove="src/Environment/EnvironmentPlacementController.cs" />
   </ItemGroup>
 
   <PropertyGroup Condition=" '$(DesktopBuddyItchScope)' == 'true' ">

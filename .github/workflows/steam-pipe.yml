@@ -31,7 +31,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: steampipe-${{ github.ref }}-${{ inputs.target }}
+  group: steampipe-${{ inputs.target }}
   cancel-in-progress: false
 
 env:
@@ -45,18 +45,15 @@ jobs:
   build:
     name: Export ${{ inputs.target }} Windows build
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    outputs:
-      app_id: ${{ steps.target.outputs.app_id }}
-      depot_id: ${{ steps.target.outputs.depot_id }}
-      preset: ${{ steps.target.outputs.preset }}
-      artifact_name: ${{ steps.target.outputs.artifact_name }}
-      build_description: ${{ steps.target.outputs.build_description }}
+    timeout-minutes: 75
+    environment: steam-release
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up .NET (pinned by global.json)
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
 
@@ -77,8 +74,8 @@ jobs:
             app_id="${FULL_APP_ID:-$DESKTOP_BUDDY_BASE_APP_ID}"
             depot_id="$FULL_DEPOT_ID"
             preset="Windows Full Release"
-            artifact_name="DesktopBuddy-Steam-Full-Windows"
-          else
+            physical_demo_scope="false"
+          elif [ "$TARGET" = "demo" ]; then
             if [ -z "$DEMO_APP_ID" ]; then
               echo "STEAM_DEMO_APP_ID is not configured." >&2
               echo "Create the associated Steam demo App ID first, then add it as a GitHub Actions repository variable." >&2
@@ -87,7 +84,14 @@ jobs:
             app_id="$DEMO_APP_ID"
             depot_id="$DEMO_DEPOT_ID"
             preset="Windows Steam Demo"
-            artifact_name="DesktopBuddy-Steam-Demo-Windows"
+            physical_demo_scope="true"
+          else
+            echo "Invalid Steam target." >&2; exit 1
+          fi
+
+          [[ "$app_id" =~ ^[1-9][0-9]*$ ]] || { echo "Invalid App ID." >&2; exit 1; }
+          if [ -n "$depot_id" ] && ! [[ "$depot_id" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Invalid Depot ID." >&2; exit 1
           fi
 
           description="$REQUESTED_DESCRIPTION"
@@ -100,20 +104,55 @@ jobs:
           echo "app_id=$app_id" >> "$GITHUB_OUTPUT"
           echo "depot_id=$depot_id" >> "$GITHUB_OUTPUT"
           echo "preset=$preset" >> "$GITHUB_OUTPUT"
-          echo "artifact_name=$artifact_name" >> "$GITHUB_OUTPUT"
+          echo "physical_demo_scope=$physical_demo_scope" >> "$GITHUB_OUTPUT"
           echo "build_description=$description" >> "$GITHUB_OUTPUT"
 
           echo "Steam target: $TARGET"
           echo "Runtime App ID: $app_id"
           echo "Godot export preset: $preset"
+          echo "Physical Initial Demo scope: $physical_demo_scope"
           if [ -n "$depot_id" ]; then
             echo "Windows Depot ID: $depot_id"
           else
             echo "Windows Depot ID is not configured; build-only mode still works."
           fi
 
-      - name: Build managed solution
-        run: dotnet build DesktopBuddy.sln -c Release
+      - name: Apply physical Initial Steam Demo scope
+        if: ${{ inputs.target == 'demo' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "DesktopBuddySteamDemoScope=true" >> "$GITHUB_ENV"
+          mkdir -p build/release-evidence
+          python3 devtools/verification/apply_steam_demo_scope.py . \
+            --report build/release-evidence/steam-demo-scope.json
+          python3 devtools/verification/apply_steam_demo_scope.py . --check
+          sha256sum build/release-evidence/steam-demo-scope.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configure full release physical scope
+        if: ${{ inputs.target == 'full' }}
+        shell: bash
+        run: echo "DesktopBuddySteamDemoScope=false" >> "$GITHUB_ENV"
+
+      - name: Build shipping managed solution
+        shell: bash
+        run: |
+          set -euo pipefail
+          dotnet build DesktopBuddy.sln -c ExportRelease \
+            -p:DesktopBuddySteamDemoScope="$DesktopBuddySteamDemoScope"
+
+      - name: Verify managed distribution scope before packaging
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          ASSEMBLY="$(find "$GITHUB_WORKSPACE/.godot/mono/temp/bin/ExportRelease" -type f -name 'DesktopBuddy.dll' -print -quit)"
+          test -n "$ASSEMBLY"
+          test -s "$ASSEMBLY"
+          echo "DESKTOP_BUDDY_MANAGED_ASSEMBLY=$ASSEMBLY" >> "$GITHUB_ENV"
+          python3 devtools/verification/verify_steam_distribution_scope.py \
+            --target "$TARGET" --assembly "$ASSEMBLY"
 
       - name: Materialize verified GodotSteam 4.22 addon
         shell: pwsh
@@ -130,6 +169,7 @@ jobs:
           TEMPLATE_URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${TEMPLATE_NAME}"
 
           curl -fL --retry 3 -o "$RUNNER_TEMP/godot.zip" "$GODOT_URL"
+          echo "3708d74f19a66b7139f6ba0055ccab0bbc2ed771c3752426fe59046c1b086a17  $RUNNER_TEMP/godot.zip" | sha256sum --check --strict
           unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
 
           GODOT_BIN="$(find "$RUNNER_TEMP/godot/$GODOT_NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
@@ -141,6 +181,7 @@ jobs:
           echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
 
           curl -fL --retry 3 -o "$RUNNER_TEMP/$TEMPLATE_NAME" "$TEMPLATE_URL"
+          echo "5792661ed089550357e0e10954af695846be0a32ed7494fa40a0009e3b5a3ea9  $RUNNER_TEMP/$TEMPLATE_NAME" | sha256sum --check --strict
           rm -rf "$RUNNER_TEMP/godot-templates"
           mkdir -p "$RUNNER_TEMP/godot-templates"
           unzip -q "$RUNNER_TEMP/$TEMPLATE_NAME" -d "$RUNNER_TEMP/godot-templates"
@@ -202,6 +243,21 @@ jobs:
           test -s "$OUTPUT/DesktopBuddy.exe"
           test -s "$OUTPUT/DesktopBuddy.pck"
 
+      - name: Verify final Steam distribution scope
+        shell: bash
+        env:
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          # Godot can invoke MSBuild again during import/export. Verify the final managed output too;
+          # the DesktopBuddySteamDemoScope environment property must have propagated to that child.
+          ASSEMBLY="$(find "$GITHUB_WORKSPACE/.godot/mono/temp/bin/ExportRelease" -type f -name 'DesktopBuddy.dll' -print -quit)"
+          test -n "$ASSEMBLY"
+          python3 devtools/verification/verify_steam_distribution_scope.py \
+            --target "$TARGET" \
+            --assembly "$ASSEMBLY" \
+            --pck "$GITHUB_WORKSPACE/build/steam-content/DesktopBuddy.pck"
+
       - name: Audit release payload
         shell: bash
         run: |
@@ -215,10 +271,12 @@ jobs:
             exit 1
           fi
 
-          if ! find "$OUTPUT" -type f \( -iname 'steam_api64.dll' -o -iname '*godotsteam*.dll' \) -print -quit | grep -q .; then
-            echo "The exported Steam build does not contain a Windows Steam/GodotSteam runtime DLL." >&2
-            exit 1
-          fi
+          for pattern in 'steam_api64.dll' '*godotsteam*.dll'; do
+            if ! find "$OUTPUT" -type f -iname "$pattern" -print -quit | grep -q .; then
+              echo "Missing required Windows runtime: $pattern" >&2
+              exit 1
+            fi
+          done
 
           if find "$OUTPUT" -type f \( -iname '*.cs' -o -iname '*.csproj' -o -iname '*.sln' \) -print -quit | grep -q .; then
             echo "Source/project files unexpectedly leaked into the release payload." >&2
@@ -228,28 +286,29 @@ jobs:
           echo "Release payload:"
           find "$OUTPUT" -maxdepth 2 -type f -printf '%P\n' | sort
 
-      - name: Upload Windows build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.target.outputs.artifact_name }}
-          path: build/steam-content/
-          if-no-files-found: error
-          retention-days: 14
-          overwrite: true
-
-  upload:
-    name: Upload ${{ inputs.target }} build to SteamPipe
-    if: ${{ inputs.upload }}
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: steam-release
-    steps:
-      - name: Validate SteamPipe configuration
+      - name: Generate release manifest
         shell: bash
         env:
-          APP_ID: ${{ needs.build.outputs.app_id }}
-          DEPOT_ID: ${{ needs.build.outputs.depot_id }}
+          TARGET: ${{ inputs.target }}
+          APP_ID: ${{ steps.target.outputs.app_id }}
+        run: |
+          set -euo pipefail
+          python3 devtools/release/release_manifest.py generate \
+            --root build/steam-content --output build/steam-content/release-manifest.json \
+            --distribution "steam-$TARGET" --version "${GITHUB_SHA::12}" \
+            --git-sha "$GITHUB_SHA" --build-id "$GITHUB_RUN_ID" \
+            --godot-version "$GODOT_VERSION" --steam-app-id "$APP_ID"
+          python3 devtools/release/release_manifest.py verify \
+            --root build/steam-content --manifest build/steam-content/release-manifest.json
+          sha256sum build/steam-content/release-manifest.json >> "$GITHUB_STEP_SUMMARY"
+          echo 'Depot payload stays on this runner; no public binary artifact is retained.' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate SteamPipe configuration
+        if: ${{ inputs.upload }}
+        shell: bash
+        env:
+          APP_ID: ${{ steps.target.outputs.app_id }}
+          DEPOT_ID: ${{ steps.target.outputs.depot_id }}
           RELEASE_BRANCH: ${{ inputs.release_branch }}
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
           STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
@@ -270,13 +329,8 @@ jobs:
             exit 1
           fi
 
-      - name: Download exported Windows payload
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.build.outputs.artifact_name }}
-          path: build/steam-content
-
       - name: Install Valve SteamCMD
+        if: ${{ inputs.upload }}
         shell: bash
         run: |
           set -euo pipefail
@@ -300,6 +354,7 @@ jobs:
           echo "STEAMCMD_DIR=$STEAMCMD_DIR" >> "$GITHUB_ENV"
 
       - name: Restore Steam Guard session
+        if: ${{ inputs.upload }}
         shell: bash
         env:
           STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
@@ -329,6 +384,7 @@ jobs:
           echo "Steam Guard session restored to SteamCMD client-state locations."
 
       - name: Verify cached Steam login
+        if: ${{ inputs.upload }}
         shell: bash
         env:
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
@@ -340,12 +396,13 @@ jobs:
           )
 
       - name: Generate SteamPipe app build script
+        if: ${{ inputs.upload }}
         id: steampipe
         shell: bash
         env:
-          APP_ID: ${{ needs.build.outputs.app_id }}
-          DEPOT_ID: ${{ needs.build.outputs.depot_id }}
-          BUILD_DESCRIPTION: ${{ needs.build.outputs.build_description }}
+          APP_ID: ${{ steps.target.outputs.app_id }}
+          DEPOT_ID: ${{ steps.target.outputs.depot_id }}
+          BUILD_DESCRIPTION: ${{ steps.target.outputs.build_description }}
           RELEASE_BRANCH: ${{ inputs.release_branch }}
         run: |
           set -euo pipefail
@@ -404,12 +461,16 @@ jobs:
           fi
 
       - name: Upload build with SteamPipe
+        if: ${{ inputs.upload }}
         shell: bash
         env:
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
           STEAMPIPE_SCRIPT: ${{ steps.steampipe.outputs.script }}
         run: |
           set -euo pipefail
+          python3 devtools/release/release_manifest.py verify \
+            --root build/steam-content --manifest build/steam-content/release-manifest.json \
+            --expect-git-sha "$GITHUB_SHA" --expect-build-id "$GITHUB_RUN_ID"
           (
             cd "$STEAMCMD_DIR"
             ./steamcmd.sh \
@@ -417,3 +478,12 @@ jobs:
               +run_app_build "$STEAMPIPE_SCRIPT" \
               +quit
           )
+
+      - name: Remove cached Steam credentials
+        if: ${{ always() && inputs.upload }}
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/steam-config.vdf"
+          for steam_root in "$HOME/Steam" "$HOME/.local/share/Steam" "$HOME/.steam/steam" "$RUNNER_TEMP/steamcmd"; do
+            rm -f "$steam_root/config/config.vdf"
+          done

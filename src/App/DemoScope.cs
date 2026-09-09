@@ -12,9 +12,9 @@ namespace DesktopBuddy.App;
 /// opts into a smaller <c>itch_io</c> surface. A build that forgets its feature tag therefore
 /// ships too little rather than shipping something unfinished.
 ///
-/// <para>Deliberately not authored data. Hiding these entries in the <c>.tres</c> files would
-/// hide them from the full release too, and the point is one codebase that produces every
-/// distribution build (owner decision 2026-08-20).</para>
+/// <para>Runtime gates remain defense-in-depth. Shipping Steam Demo also has a compile-time scope
+/// that physically removes held-back implementation/resources, so editing feature tags cannot
+/// recreate withheld content.</para>
 /// </summary>
 public static class DemoScope
 {
@@ -25,46 +25,48 @@ public static class DemoScope
         "cosmetic.shoes.soft_steps",
     ];
 
+#if !DESKTOP_BUDDY_NO_DEV_TOOLS
     /// <summary>
-    /// Set by scenarios that must exercise full-release content in a Demo-scoped build; hiding
-    /// a feature must never quietly stop testing it. Null means "ask the build".
+    /// Scenario-only seam that exercises full-release content in a Demo-scoped developer build.
+    /// It is not compiled into anything shipped to players.
     /// </summary>
     internal static bool? FullReleaseOverride { get; set; }
 
-    /// <summary>Scenario seam for the itch.io distribution scope. Null means "ask the build".</summary>
+    /// <summary>Scenario-only seam for the itch.io distribution scope.</summary>
     internal static bool? ItchIoOverride { get; set; }
+#endif
 
     /// <summary>
     /// Local preview seam: a desktop run started with <c>--itch</c> adopts the reduced scope, so
     /// the itch surface can be inspected without a Web export and the pinned fork it needs.
     ///
     /// <para>Deliberately one-way. This can only turn the reduction <em>on</em>; there is no flag
-    /// that turns it off, so no command line can widen what a shipped build offers. Read once —
-    /// autoloads consult <see cref="IsItchIo"/> during their own <c>_Ready</c>, which runs before
-    /// the main scene, so this cannot depend on anything that boots.</para>
+    /// that turns it off, so no command line can widen what a shipped build offers.</para>
     /// </summary>
     private static readonly bool ItchIoRequestedLocally =
         Array.IndexOf(OS.GetCmdlineUserArgs(), "--itch") >= 0;
 
-    /// <summary>
-    /// The itch build is intentionally the strictest public scope. If an export is accidentally
-    /// tagged with both <c>itch_io</c> and <c>full_release</c>, itch wins so held-back features
-    /// cannot leak into that distribution.
-    /// </summary>
+#if DESKTOP_BUDDY_NO_DEV_TOOLS
+    public static bool IsItchIo => ItchIoRequestedLocally || OS.HasFeature("itch_io");
+#else
     public static bool IsItchIo =>
         ItchIoOverride ?? (ItchIoRequestedLocally || OS.HasFeature("itch_io"));
+#endif
 
+#if DESKTOP_BUDDY_STEAM_DEMO
+    // Fail closed in the physically reduced Demo. A modified .pck/custom feature list cannot turn
+    // this binary into a Full Release because the decision is baked into managed code.
+    public static bool IsFullRelease => false;
+#elif DESKTOP_BUDDY_NO_DEV_TOOLS
+    public static bool IsFullRelease => !IsItchIo && OS.HasFeature("full_release");
+#else
     public static bool IsFullRelease =>
         !IsItchIo && (FullReleaseOverride ?? OS.HasFeature("full_release"));
+#endif
 
     /// <summary>
     /// Workshop ships only in Steam exports; editor runs keep it for development and verification.
-    ///
-    /// <para>itch.io is excluded here rather than only by the <c>DESKTOP_BUDDY_PUBLIC_WEB</c>
-    /// compile guard around the composition. That guard covers the Web export alone, so an editor
-    /// run — and any future native itch build — still composed Workshop and showed its command
-    /// (owner report 2026-09-07). The scope answers it now, and the compile guard stays as the
-    /// second layer that keeps the code out of the public browser assembly entirely.</para>
+    /// The Initial Steam Demo intentionally keeps both supported Workshop package types.
     /// </summary>
     public static bool IncludesWorkshop =>
         !IsItchIo && (OS.HasFeature("editor") || OS.HasFeature("steam"));
@@ -76,9 +78,8 @@ public static class DemoScope
 
     /// <summary>
     /// False for Buddy Studio categories this build holds back. Accessories is on the list
-    /// alongside Tops and Shoes (owner instruction 2026-08-21): the torso accents exist in the
-    /// catalogue and render, but the Demo's Studio never offers the category, so nothing in it
-    /// can be bought, equipped or randomised into.
+    /// alongside Tops and Shoes: shared character schema/rendering stays, but Initial Demo does
+    /// not expose or ship its held-back catalogue entries.
     /// </summary>
     public static bool Includes(CharacterFeatureSlot slot) =>
         IsFullRelease ||
@@ -97,7 +98,7 @@ public static class DemoScope
     /// <summary>
     /// The first-session walkthrough this build teaches. Every distribution gets one; itch.io gets
     /// the shorter sequence, because its chapters on Work Mode, Paint Room and Buddy Studio would
-    /// point at features that distribution does not ship (owner request 2026-09-07).
+    /// point at features that distribution does not ship.
     /// </summary>
     public static IReadOnlyList<string> TutorialSteps =>
         IsItchIo ? TutorialStepIds.ItchIo : TutorialStepIds.Ordered;
@@ -106,14 +107,8 @@ public static class DemoScope
     public static bool IncludesRoomDecorator => IsFullRelease && !IsItchIo;
 
     /// <summary>
-    /// Whether this build ships Gore Mode at all — the Settings toggle, the bleeding, and the
-    /// blood the Sword and the guns draw. The Steam builds ship it and the itch.io build does
-    /// not (owner instruction 2026-08-24), which is the same shape as Work Mode, Paint Room
-    /// and Buddy Studio above rather than a mechanism of its own.
-    ///
-    /// <para>This is asked in addition to the player's setting, never instead of it, and it is
-    /// asked again at the composition root rather than trusted from the Settings row — so a
-    /// hand-edited <c>settings.json</c> carried onto the itch build stays inert.</para>
+    /// Whether this build ships Gore Mode at all. Steam builds ship it and itch.io does not.
+    /// This is asked in addition to the player's setting and again at composition roots.
     /// </summary>
     public static bool IncludesGore => !IsItchIo;
 }
