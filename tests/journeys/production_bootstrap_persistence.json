@@ -84,6 +84,8 @@
         { "predicate": "scene_actors_share_player", "equals": true },
         { "predicate": "scene_actor_buddy_states_independent", "equals": true },
         { "predicate": "scene_actor_positions_distinct", "equals": true },
+        { "predicate": "scene_first_actor_not_legacy_primary", "equals": true },
+        { "predicate": "character_selection_matches_first_actor", "equals": true },
         { "predicate": "wallet_preserved", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
