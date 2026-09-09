@@ -133,6 +133,14 @@ jobs:
           New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
           Copy-Item $assembly.FullName (Join-Path $controlDir "DesktopBuddy.dll") -Force
 
+      - name: Build reduced managed editor assembly for import
+        shell: pwsh
+        run: |
+          dotnet build DesktopBuddy.csproj -c Debug -p:DesktopBuddySteamDemoScope=true
+          if ($LASTEXITCODE -ne 0) { throw "Reduced managed editor build failed." }
+          $editorAssembly = Get-ChildItem .godot\mono\temp\bin\Debug -Recurse -File -Filter DesktopBuddy.dll | Select-Object -First 1
+          if (-not $editorAssembly) { throw "Could not locate reduced Debug editor assembly." }
+
       - name: Resolve and stamp Steam Demo App ID
         shell: pwsh
         env:
