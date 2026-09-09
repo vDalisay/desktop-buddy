@@ -285,7 +285,10 @@ public partial class LifecycleCoordinator : Node
         _economy.DepositPassive(milliCredits);
         bool hidden = AccruesAsHidden;
         bool active = !hidden && _activeInteraction();
-        _progress.DrainHunger(elapsed, ClassifyHunger(hidden, active));
+        bool workMode = _isWorkMode?.Invoke() ?? false;
+        HungerActivity hungerActivity = HungerActivityPolicy.Classify(hidden, workMode, active);
+        _progress.DrainHunger(elapsed, hungerActivity);
+        ApplyAdditionalActiveBuddyLifecycle(elapsed, hungerActivity, workMode);
         _progress.AccrueTime(
             elapsed,
             active ? elapsed : 0.0,
