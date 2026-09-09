@@ -1,6 +1,6 @@
 # Private release-evidence checklist
 
-Keep secrets, certificates, Steam credentials/config, signing keys, binaries, and retained candidates outside public repository artifacts. The tracked record may contain only non-secret identities and hashes.
+Keep secrets, certificates, Steam credentials/config, signing keys, and private evidence outside public repository artifacts. By owner decision on 2026-09-09, a manually requested hardened candidate may be retained for seven days as a public Actions artifact; the owner accepts that anyone may download or redistribute it. The tracked record may contain only non-secret identities and hashes.
 
 - [ ] Distribution, version, final Git SHA, workflow/run ID, and Steam/itch Build ID recorded.
 - [ ] Runtime AppID and Workshop-owner AppID recorded from the exact candidate.
