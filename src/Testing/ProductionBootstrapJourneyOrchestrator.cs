@@ -34,6 +34,8 @@ public partial class ProductionBootstrapJourneyOrchestrator : Node
     public const string JourneyId = "production_bootstrap_persistence";
     private const double FixtureCashPerPain = 0.01;
     private const int ChildTimeoutSeconds = 90;
+    private static readonly BuddyIdentityId SecondFixtureBuddyId = BuddyIdentityId.From(
+        Guid.Parse("781d1668-ef7f-4ea5-bd0a-a0aa20260909"));
 
     private RunnerArguments _args = new();
 
@@ -254,10 +256,34 @@ public partial class ProductionBootstrapJourneyOrchestrator : Node
             FixtureCashPerPain,
             new SceneProgressTransactionStore(root, files),
             new NextFestMigrationStore(progressPath, files));
-        await bootstrap.LoadOrMigrateAsync(
+        SceneProgressBootstrapResult boot = await bootstrap.LoadOrMigrateAsync(
             LegacyFixture(),
-            new CanonicalRoomPosition(0.5f, 0.5f),
+            new CanonicalRoomPosition(0.35f, 0.5f),
             token: CancellationToken.None);
+
+        SceneProgressCoordinator coordinator = boot.Coordinator;
+        if (!coordinator.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? primary) || primary is null)
+            throw new InvalidDataException("Migrated fixture did not contain its first Buddy identity.");
+
+        BuddyIdentitySnapshot secondSnapshot = primary.Snapshot() with
+        {
+            BuddyIdentityId = SecondFixtureBuddyId,
+            Revision = 0,
+            CharacterId = null,
+            Mood = -35.0f,
+            Fullness = 25.0f,
+            HarmfulContentIds = Array.Empty<string>(),
+        };
+        if (!coordinator.RegisterBuddyIdentity(new BuddyIdentityState(secondSnapshot)))
+            throw new InvalidOperationException("Could not register second production-bootstrap fixture Buddy.");
+        SceneLibraryResult added = coordinator.AddBuddyToScene(
+            coordinator.ActiveSceneId,
+            SecondFixtureBuddyId,
+            new CanonicalRoomPosition(0.70f, 0.5f));
+        if (!added.Succeeded)
+            throw new InvalidOperationException($"Could not add second fixture Buddy to active Scene: {added.Status}.");
+
+        await coordinator.FlushAsync(force: true, CancellationToken.None);
     }
 
     private static ProgressSave LegacyFixture() => new()
