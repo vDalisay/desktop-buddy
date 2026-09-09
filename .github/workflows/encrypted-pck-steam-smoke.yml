@@ -60,6 +60,7 @@ jobs:
           Write-Output "::add-mask::$key"
           $keyId = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($key))).ToLowerInvariant()
           "GODOT_SCRIPT_ENCRYPTION_KEY=$key" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "SCRIPT_AES256_ENCRYPTION_KEY=$key" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
           "PCK_KEY_ID=$keyId" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Install hash-pinned SCons
@@ -190,14 +191,11 @@ jobs:
         shell: pwsh
         run: |
           $exe = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-demo\DesktopBuddy.exe"
-          $process = Start-Process $exe -ArgumentList "--headless" -PassThru
-          Start-Sleep -Seconds 15
-          $process.Refresh()
-          if ($process.HasExited) {
-            throw "Encrypted export exited during startup smoke with code $($process.ExitCode)."
-          }
-          Stop-Process -Id $process.Id -Force
-          "Encrypted export remained alive through startup smoke; interactive acceptance remains required."
+          $log = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\hardened-startup.log"
+          python devtools/verification/run_checked_process.py --timeout 60 --log $log -- `
+            $exe --headless --quit-after 120
+          if ($LASTEXITCODE -ne 0) { throw "Hardened export could not load and run its embedded project; see $log" }
+          "Hardened export loaded its embedded project and exited cleanly after 120 frames."
 
       - name: Generate and verify candidate manifest
         shell: pwsh

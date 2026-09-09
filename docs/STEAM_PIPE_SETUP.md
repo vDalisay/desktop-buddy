@@ -160,6 +160,8 @@ The manual **Encrypted Embedded PCK Steam Demo Spike** is the contained H3 compa
 
 After the 2026-09-09 owner hardening decision, this workflow composes NativeAOT with encrypted/embedded PCK and is named **Hardened NativeAOT + Encrypted PCK Steam Demo** in Actions. Its default `retain_candidate=false` is the compatibility run. The owner may manually dispatch it with `retain_candidate=true` to retain the exact manifest-verified candidate as a seven-day Actions artifact for testing. On the owner's explicitly chosen public-repository path, that artifact is publicly downloadable; the owner accepts that distribution risk in exchange for public-repository Actions billing. The ephemeral encryption key, keyed custom template, and build logs are never artifacts.
 
+Run `34395965535` is rejected evidence: it encrypted the embedded pack, but supplied only the exporter key variable and built the custom template without `SCRIPT_AES256_ENCRYPTION_KEY`. Its process-alive smoke mistook Godot's error dialog for a successful boot. The workflow now supplies the same masked key to both compiler and exporter and requires the exact executable to load the project and exit cleanly after 120 headless frames. Never distribute or test the artifact from that rejected run.
+
 For an exact retained candidate, use one of these existing paths:
 
 - with release authorization, rerun the same commit with `target=demo`, `upload=true` and an empty `release_branch`; Steam retains the depot build without changing a live branch;
