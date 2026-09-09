@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Domain.Achievements;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
