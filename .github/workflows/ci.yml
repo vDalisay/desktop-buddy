@@ -225,6 +225,43 @@ jobs:
       - name: M3 full tool feel journey
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --journey=m3_tool_feel --seed=1
 
+  # Exact build-tag production Bootstrap persistence gate from the 2026-09-09 audit.
+  # This deliberately stays off push; the quick job remains the branch feedback path.
+  tagged-production-bootstrap:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    env:
+      GODOT_TEMPLATE_VERSION: 4.6.1.stable.mono
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET (pinned by global.json)
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Download pinned Godot (.NET/mono, Linux)
+        run: |
+          set -euo pipefail
+          NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
+          curl -fL --retry 3 -o godot.zip "$URL"
+          unzip -q godot.zip
+          GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+      - name: Run tagged Initial/Next Fest production Bootstrap persistence journey
+        run: bash devtools/verification/run_tagged_production_bootstrap_persistence.sh
+
+      - name: Show tagged journey verdicts and logs on failure
+        if: failure()
+        run: |
+          find .artifacts/production-bootstrap -maxdepth 5 -type f \
+            \( -name '*.json' -o -name '*.log' \) -print \
+            -exec sh -c 'echo "--- $1"; tail -n 160 "$1"' _ {} \; || true
+
   full-soak:
     # Thirty simulated minutes; the scenario itself documents this as nightly/manual.
     if: github.event_name == 'workflow_dispatch'
