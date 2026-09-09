@@ -92,12 +92,12 @@ public sealed partial class AchievementBootstrap
             _scenes.Player.RecordContentUse(ContentIds.ToolFireSprayer);
     }
 
-    private void OnCareMoodChanged(DesktopBuddy.Domain.Interaction.CareKind kind, int _delta)
+    private void OnCareMoodChanged(DesktopBuddy.Domain.Mood.CareKind kind, int _delta)
     {
         string? contentId = kind switch
         {
-            DesktopBuddy.Domain.Interaction.CareKind.Pet => ContentIds.ToolPet,
-            DesktopBuddy.Domain.Interaction.CareKind.Tickle => ContentIds.ToolTickle,
+            DesktopBuddy.Domain.Mood.CareKind.Pet => ContentIds.ToolPet,
+            DesktopBuddy.Domain.Mood.CareKind.Tickle => ContentIds.ToolTickle,
             _ => null,
         };
         if (contentId is not null)
