@@ -1,6 +1,6 @@
 {
   "id": "production_bootstrap_persistence",
-  "description": "Tagged production-Bootstrap persistence gate for Initial Demo refusal and Next Fest migration/recovery.",
+  "description": "Tagged production-Bootstrap persistence and active Scene roster gate for Initial Demo refusal and Next Fest migration/recovery.",
   "milestone": 6,
   "phases": [
     {
@@ -10,7 +10,8 @@
       "setup": {
         "precondition": "legacy",
         "expected_wallet_milli": 123000,
-        "expected_work_keyboard": 77
+        "expected_work_keyboard": 77,
+        "expected_actor_count": 1
       },
       "assertions": [
         { "predicate": "sandbox_composed", "equals": true },
@@ -18,7 +19,10 @@
         { "predicate": "split_scene_progress", "equals": true },
         { "predicate": "scene_manifest_exists", "equals": true },
         { "predicate": "wallet_preserved", "equals": true },
-        { "predicate": "work_preserved", "equals": true }
+        { "predicate": "work_preserved", "equals": true },
+        { "predicate": "scene_actor_count_matches", "equals": true },
+        { "predicate": "scene_actor_bindings_match", "equals": true },
+        { "predicate": "scene_actors_share_player", "equals": true }
       ]
     },
     {
@@ -28,7 +32,8 @@
       "setup": {
         "precondition": "preserve",
         "expected_wallet_milli": 123000,
-        "expected_work_keyboard": 77
+        "expected_work_keyboard": 77,
+        "expected_actor_count": 1
       },
       "assertions": [
         { "predicate": "sandbox_composed", "equals": true },
@@ -36,7 +41,8 @@
         { "predicate": "split_scene_progress", "equals": true },
         { "predicate": "scene_manifest_exists", "equals": true },
         { "predicate": "wallet_preserved", "equals": true },
-        { "predicate": "work_preserved", "equals": true }
+        { "predicate": "work_preserved", "equals": true },
+        { "predicate": "scene_actor_count_matches", "equals": true }
       ]
     },
     {
@@ -46,13 +52,38 @@
       "setup": {
         "precondition": "incomplete_promotion",
         "expected_wallet_milli": 123000,
-        "expected_work_keyboard": 77
+        "expected_work_keyboard": 77,
+        "expected_actor_count": 1
       },
       "assertions": [
         { "predicate": "sandbox_composed", "equals": true },
         { "predicate": "tag_next_fest", "equals": true },
         { "predicate": "split_scene_progress", "equals": true },
         { "predicate": "scene_manifest_exists", "equals": true },
+        { "predicate": "wallet_preserved", "equals": true },
+        { "predicate": "work_preserved", "equals": true },
+        { "predicate": "scene_actor_count_matches", "equals": true }
+      ]
+    },
+    {
+      "id": "next_fest_two_buddy_roster",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "scene_upgraded",
+        "expected_wallet_milli": 123000,
+        "expected_work_keyboard": 77,
+        "expected_actor_count": 2
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_actor_count_matches", "equals": true },
+        { "predicate": "scene_actor_bindings_match", "equals": true },
+        { "predicate": "scene_actors_share_player", "equals": true },
+        { "predicate": "scene_actor_buddy_states_independent", "equals": true },
+        { "predicate": "scene_actor_positions_distinct", "equals": true },
         { "predicate": "wallet_preserved", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
