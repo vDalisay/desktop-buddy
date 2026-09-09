@@ -6,9 +6,9 @@ Keep secrets, certificates, Steam credentials/config, signing keys, binaries, an
 - [ ] Runtime AppID and Workshop-owner AppID recorded from the exact candidate.
 - [ ] Pinned Godot/editor/template/addon/SteamCMD-or-Butler identities recorded.
 - [ ] Complete payload manifest and its SHA-256 recorded; tested bytes match promoted bytes.
-- [ ] Authenticode verification records valid chain, approved subject/thumbprint, and timestamp for every shipped PE.
+- [x] Authenticode intentionally not required by owner decision dated 2026-09-09; unsigned-build tradeoff accepted.
 - [ ] Source/project/debug/map/development-AppID files absent; expected native runtimes present.
 - [ ] Required hosted CI and exact-candidate Windows, persistence, Paint, Studio, Work, Steam/Workshop/Cloud, DPI, performance, and soak results linked.
 - [ ] Hardware/account/configuration gaps listed as pending, never passed.
-- [ ] Owner approver, allowed branch, environment protection, and public-source policy decisions recorded.
+- [x] Owner declined release-environment protection on 2026-09-09 and plans to make the repository private; manual dispatch and private credentials/candidates remain required.
 - [ ] Upload/promotion/release approval and post-release sanity result recorded separately.

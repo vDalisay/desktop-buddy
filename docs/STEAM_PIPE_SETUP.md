@@ -158,6 +158,8 @@ Use `upload=false` first as the managed export preflight. It validates the assem
 
 The manual **Encrypted Embedded PCK Steam Demo Spike** is the contained H3 compatibility gate. It builds a Godot 4.6.1 .NET Windows template from pinned source with a run-local AES key, applies the disposable encrypted/embedded preset, verifies the final executable footer/header and shipped managed assembly, rejects plaintext resource sentinels and loose fallback packs, and performs startup smoke. It retains only non-secret source/tool/template/key identities in the summary; the key, custom template, logs, and candidate bytes are not uploaded. A green spike does not enable production encryption: interactive Paint, Studio, Work, Workshop, save, and Windows acceptance are still required on retained exact bytes before owner approval changes the Demo or Full presets.
 
+After the 2026-09-09 owner hardening decision, this workflow composes NativeAOT with encrypted/embedded PCK and is named **Hardened NativeAOT + Encrypted PCK Steam Demo** in Actions. Its default `retain_candidate=false` is the public-safe compatibility run. After the repository is private, dispatch the same commit with `retain_candidate=true`; the workflow retains the exact manifest-verified candidate as a private seven-day Actions artifact for owner testing. It fails rather than retaining candidate bytes from a public repository. The ephemeral encryption key, keyed custom template, and build logs are never artifacts.
+
 For an exact retained candidate, use one of these existing paths:
 
 - with release authorization, rerun the same commit with `target=demo`, `upload=true` and an empty `release_branch`; Steam retains the depot build without changing a live branch;

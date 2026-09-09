@@ -1,6 +1,10 @@
 # Signing and release-policy owner gate
 
-No production signing or repository-policy mutation is authorized yet. Before H5 can be wired into SteamPipe, the owner must record:
+Owner decision, 2026-09-09: **do not purchase or require production code signing.** The owner accepts the resulting Windows reputation/SmartScreen tradeoff. Authenticode remains a verifier capability, not a release gate. Revisit only if platform policy or user trust requirements change.
+
+The owner also declined GitHub release-environment protection and plans to make the repository private. The pipeline must still keep credentials and candidate bytes private and require manual dispatch for releases.
+
+Superseded planning checklist (retained for provenance):
 
 - signing provider and account (Azure Artifact Signing or approved OV certificate), access method, and release operator;
 - approved Authenticode subject and certificate thumbprint, RFC 3161 timestamp service, renewal/rotation owner, and private evidence location;
