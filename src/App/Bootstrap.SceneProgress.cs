@@ -88,20 +88,32 @@ public partial class Bootstrap
             environmentAssets.CommitLegacyAssetsAsync,
             token).ConfigureAwait(false);
 
-        if (!result.Coordinator.TryGetBuddy(
-                BuddyIdentityId.LegacyPrimary,
-                out BuddyIdentityState? primaryBuddy) ||
-            primaryBuddy is null)
+        // Some staged legacy consumers still need one aggregate Buddy projection while the real
+        // Scene graph is authoritative. Resolve that temporary projection from durable Scene order,
+        // not from LegacyPrimary: the reserved ID belongs only to one-time Initial->Next Fest
+        // migration and must not become a permanent production roster requirement.
+        SceneDocument activeScene = result.Coordinator.ActiveScene;
+        if (activeScene.BuddyPlacements.Count == 0)
         {
             throw new InvalidDataException(
-                "The current single-actor runtime requires the migrated primary Buddy identity.");
+                "The current singular compatibility projection requires at least one Buddy placement in the active Scene.");
+        }
+
+        BuddyIdentityId compatibilityBuddyId = activeScene.BuddyPlacements[0].BuddyIdentityId;
+        if (!result.Coordinator.TryGetBuddy(
+                compatibilityBuddyId,
+                out BuddyIdentityState? compatibilityBuddy) ||
+            compatibilityBuddy is null)
+        {
+            throw new InvalidDataException(
+                $"Active Scene references missing compatibility Buddy identity {compatibilityBuddyId}.");
         }
 
         LegacyProgressAggregateSnapshot compatibility =
             LegacyProgressPartitionPolicy.RecombineForLegacy(
                 new LegacyProgressPartition(
                     result.Coordinator.Player.Snapshot(),
-                    primaryBuddy.Snapshot()));
+                    compatibilityBuddy.Snapshot()));
         ProgressSave compatibilitySave = ProgressSave.FromSnapshot(
             compatibility.Progress,
             compatibility.ActiveCharacterId,
