@@ -289,7 +289,7 @@ public partial class ProductionBootstrapJourneyOrchestrator : Node
         var start = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
-            WorkingDirectory = Path.GetDirectoryName(executable) ?? Environment.CurrentDirectory,
+            WorkingDirectory = Path.GetDirectoryName(executable) ?? System.Environment.CurrentDirectory,
         };
 
         if (DisplayServer.GetName() == "headless")
