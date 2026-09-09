@@ -169,12 +169,26 @@ jobs:
         shell: pwsh
         run: |
           $output = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo"
+          $exe = Join-Path $output "DesktopBuddy.exe"
           Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $output -Force | Out-Null
-          & $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" (Join-Path $output "DesktopBuddy.exe")
-          $exportExit = $LASTEXITCODE
-          if ($exportExit -ne 0) { throw "Godot NativeAOT export failed with exit code $exportExit" }
-          if (-not (Test-Path (Join-Path $output "DesktopBuddy.exe"))) { throw "Exported executable is missing." }
+
+          # A fresh Windows Godot profile may exit once while generating editor/help caches before
+          # reaching the export command. Permit exactly one bootstrap retry, but never accept a
+          # failed final export or partial bytes as the candidate.
+          & $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" $exe
+          $firstExit = $LASTEXITCODE
+          if ($firstExit -ne 0) {
+            "First Godot export invocation returned $firstExit during fresh-profile initialization; retrying once."
+            Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Path $output -Force | Out-Null
+            & $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" $exe
+            $finalExit = $LASTEXITCODE
+          } else {
+            $finalExit = 0
+          }
+          if ($finalExit -ne 0) { throw "Godot NativeAOT export failed after bounded bootstrap retry with exit code $finalExit" }
+          if (-not (Test-Path $exe)) { throw "Exported executable is missing." }
           if (-not (Test-Path (Join-Path $output "DesktopBuddy.pck"))) { throw "Exported PCK is missing." }
 
       - name: Prove project library is native x86_64 with the Godot AOT entry point
