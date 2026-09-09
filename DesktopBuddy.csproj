@@ -46,23 +46,24 @@
   </PropertyGroup>
 
   <!--
-    Initial Steam Demo physical scope. This is an MSBuild property, not a Godot custom feature tag:
-    the Steam release workflow injects it into the disposable build environment, and Godot's child
-    MSBuild process inherits it. Runtime steam_demo/full_release tags remain defense-in-depth only.
-    Define this before achievement scope evaluation so Initial Steam Demo cannot compile the
-    full-release achievement runtime by accident.
+    Steam Demo is shared terminology for two different distributions. The Initial Steam Demo is
+    physically reduced; the later Next Fest Demo intentionally retains the broader vertical slice.
+    Derive one canonical Initial scope so a Next Fest build can set SteamDemoScope=true without
+    accidentally losing Room Decorator or other Next Fest-only content.
   -->
   <PropertyGroup>
     <DesktopBuddySteamDemoScope Condition=" '$(DesktopBuddySteamDemoScope)' == '' ">false</DesktopBuddySteamDemoScope>
+    <DesktopBuddyInitialSteamDemoScope Condition=" '$(DesktopBuddyInitialSteamDemoScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">true</DesktopBuddyInitialSteamDemoScope>
+    <DesktopBuddyInitialSteamDemoScope Condition=" '$(DesktopBuddyInitialSteamDemoScope)' == '' ">false</DesktopBuddyInitialSteamDemoScope>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(DesktopBuddySteamDemoScope)' == 'true' ">
+  <PropertyGroup Condition=" '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">
     <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_STEAM_DEMO</DefineConstants>
   </PropertyGroup>
 
   <Target Name="ValidateDesktopBuddyDistributionScope" BeforeTargets="CoreCompile">
     <Error Condition=" '$(DesktopBuddyItchScope)' == 'true' AND '$(DesktopBuddySteamDemoScope)' == 'true' "
-           Text="Distribution scope rejected: itch and Steam Demo physical scopes cannot be enabled together." />
+           Text="Distribution scope rejected: itch and Steam Demo scopes cannot be enabled together." />
   </Target>
 
   <!--
@@ -79,7 +80,7 @@
   -->
   <PropertyGroup>
     <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND ('$(DesktopBuddyItchScope)' == 'true' OR '$(TargetFramework)' == 'net10.0') ">false</DesktopBuddyAchievementsScope>
-    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddySteamDemoScope)' == 'true' AND '$(DesktopBuddyNextFestDemoScope)' != 'true' ">false</DesktopBuddyAchievementsScope>
+    <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' AND '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">false</DesktopBuddyAchievementsScope>
     <DesktopBuddyAchievementsScope Condition=" '$(DesktopBuddyAchievementsScope)' == '' ">true</DesktopBuddyAchievementsScope>
   </PropertyGroup>
 
@@ -112,11 +113,16 @@
     <DesktopBuddyShippingBuild Condition=" '$(DesktopBuddyShippingBuild)' == '' ">false</DesktopBuddyShippingBuild>
   </PropertyGroup>
 
-  <PropertyGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' ">
+  <!--
+    Explicit Initial Demo validation must exercise the same no-dev-tools surface even when a matrix
+    compiles it in Debug. This prevents test/scenario code from keeping references to implementation
+    types that are intentionally absent from the player binary.
+  -->
+  <PropertyGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' OR '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">
     <DefineConstants>$(DefineConstants);DESKTOP_BUDDY_NO_DEV_TOOLS</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' ">
+  <ItemGroup Condition=" '$(DesktopBuddyShippingBuild)' == 'true' OR '$(DesktopBuddyItchScope)' == 'true' OR '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">
     <Compile Remove="src/Testing/**/*.cs" />
   </ItemGroup>
 
@@ -125,7 +131,7 @@
     schema/renderer, but Room Decorator is a Next Fest feature. Remove the implementation itself
     rather than trusting the mutable steam_demo/full_release feature list in the PCK.
   -->
-  <ItemGroup Condition=" '$(DesktopBuddySteamDemoScope)' == 'true' ">
+  <ItemGroup Condition=" '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">
     <Compile Remove="src/Environment/DecorationLightProfileResource.cs" />
     <Compile Remove="src/Environment/EnvironmentDecorationCatalogueResource.cs" />
     <Compile Remove="src/Environment/EnvironmentDecorationLayer.cs" />
