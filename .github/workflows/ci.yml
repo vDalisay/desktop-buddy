@@ -226,9 +226,9 @@ jobs:
         run: xvfb-run -a "$GODOT_BIN" --headless --fixed-fps 120 --path . -- --journey=m3_tool_feel --seed=1
 
   # Exact build-tag production Bootstrap persistence gate from the 2026-09-09 audit.
-  # This deliberately stays off push; the quick job remains the branch feedback path.
+  # Ordinary pushes stay quick-only; an explicit [tagged-bootstrap] marker opts this gate in.
   tagged-production-bootstrap:
-    if: github.event_name != 'push'
+    if: github.event_name != 'push' || contains(github.event.head_commit.message, '[tagged-bootstrap]')
     runs-on: ubuntu-latest
     env:
       GODOT_TEMPLATE_VERSION: 4.6.1.stable.mono
