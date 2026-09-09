@@ -304,6 +304,19 @@ public partial class ProductionBootstrapJourneyOrchestrator : Node
         if (!readdedPrimary.Succeeded)
             throw new InvalidOperationException($"Could not restore migrated fixture Buddy: {readdedPrimary.Status}.");
 
+        // Keep a second persisted Scene inactive at boot. It contains only the migrated identity, so
+        // switching to it proves the authored compatibility actor can change persistent identity,
+        // while the two secondary-actor nodes from the outgoing Scene are really torn down.
+        SceneLibraryResult targetCreated = coordinator.CreateScene("Switch Target");
+        if (!targetCreated.Succeeded || targetCreated.Scene is null)
+            throw new InvalidOperationException($"Could not create switch-target fixture Scene: {targetCreated.Status}.");
+        SceneLibraryResult targetBuddy = coordinator.AddBuddyToScene(
+            targetCreated.Scene.SceneId,
+            BuddyIdentityId.LegacyPrimary,
+            new CanonicalRoomPosition(0.55f, 0.5f));
+        if (!targetBuddy.Succeeded)
+            throw new InvalidOperationException($"Could not add target fixture Buddy: {targetBuddy.Status}.");
+
         await coordinator.FlushAsync(force: true, CancellationToken.None);
     }
 
