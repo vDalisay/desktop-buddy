@@ -133,7 +133,7 @@ jobs:
           New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
           Copy-Item $assembly.FullName (Join-Path $controlDir "DesktopBuddy.dll") -Force
 
-      - name: Build reduced managed editor assembly for import
+      - name: Build reduced managed editor assembly for export tooling
         shell: pwsh
         run: |
           dotnet build DesktopBuddy.csproj -c Debug -p:DesktopBuddySteamDemoScope=true
@@ -158,13 +158,7 @@ jobs:
           Set-Content -Path $path -Value $updated -NoNewline
           "STEAM_APP_ID=$appId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Import reduced managed project with native Steam addon
-        shell: pwsh
-        run: |
-          & $env:GODOT_BIN --headless --verbose --path . --import
-          if ($LASTEXITCODE -ne 0) { throw "Godot managed import failed with exit code $LASTEXITCODE" }
-
-      - name: Prepare disposable NativeAOT project after import
+      - name: Prepare disposable NativeAOT project
         shell: pwsh
         run: |
           python devtools/verification/prepare_nativeaot_spike.py .
@@ -178,7 +172,8 @@ jobs:
           Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           & $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" (Join-Path $output "DesktopBuddy.exe")
-          if ($LASTEXITCODE -ne 0) { throw "Godot NativeAOT export failed with exit code $LASTEXITCODE" }
+          $exportExit = $LASTEXITCODE
+          if ($exportExit -ne 0) { throw "Godot NativeAOT export failed with exit code $exportExit" }
           if (-not (Test-Path (Join-Path $output "DesktopBuddy.exe"))) { throw "Exported executable is missing." }
           if (-not (Test-Path (Join-Path $output "DesktopBuddy.pck"))) { throw "Exported PCK is missing." }
 
