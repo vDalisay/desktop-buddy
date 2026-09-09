@@ -31,7 +31,7 @@ public static class SteamLaunchGuard
         // The public web build also physically removes src/Platform/Steam, so this call site is
         // compiled out there in addition to this runtime guard.
         if (BuildInfo.IsDebugBuild ||
-            DesktopBuddy.Platform.OperatingSystem.IsBrowser() ||
+            System.OperatingSystem.IsBrowser() ||
             !OS.HasFeature("steam"))
         {
             return default;
