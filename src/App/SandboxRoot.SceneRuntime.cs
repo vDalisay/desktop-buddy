@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
@@ -11,6 +13,7 @@ using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Scenes;
 using DesktopBuddy.Tools;
 using Godot;
@@ -22,6 +25,7 @@ public partial class SandboxRoot
     private const string SceneBuddyPackedScenePath = "res://scenes/buddy/puppet.tscn";
 
     private readonly List<Node> _sceneSpawnedActorNodes = [];
+    private readonly List<SceneBuddyAppearanceRuntime> _sceneSpawnedAppearanceRuntimes = [];
     private SceneRuntimeHost? _sceneRuntime;
 
     /// <summary>
@@ -201,19 +205,32 @@ public partial class SandboxRoot
         TrackSpawnedSceneActorNode(reaction);
         reaction.Initialize();
 
-        // The secondary actor owns a real 3D rig presenter. The authored first actor keeps the
-        // richer singular expression/face chain until those components are extracted into the
-        // actor bundle in a later packet; basic body presentation is already independent here.
+        // The secondary actor owns a real 3D rig presenter. Its Character and Buddy-paint projection
+        // is independent too: SceneBuddyAppearanceRuntime reads this binding's BuddyIdentityState
+        // rather than the one compatibility CharacterSelectionState used by the authored actor.
         var visual = new BuddyVisualPresenter
         {
             Name = $"SceneVisual_{suffix}",
             Buddy = buddy,
             Profile = VisualPresenter.Profile,
-            Visible = VisualPresenter.Visible,
+            Visible = Mode == PresentationMode.Mii3D,
         };
         AddChild(visual);
         TrackSpawnedSceneActorNode(visual);
         visual.Initialize();
+        ApplySceneActorPresentationMode(buddy, visual, Mode == PresentationMode.Mii3D);
+
+        if (_runContext?.Characters is { } characters && binding.Progress.BuddyProgress is { } buddyProgress)
+        {
+            var appearance = new SceneBuddyAppearanceRuntime
+            {
+                Name = $"SceneAppearance_{suffix}",
+            };
+            appearance.Configure(characters, buddyProgress, visual);
+            AddChild(appearance);
+            TrackSpawnedSceneActorNode(appearance);
+            _sceneSpawnedAppearanceRuntimes.Add(appearance);
+        }
 
         return new BuddyActorRuntime(
             binding.Placement.PlacementId,
@@ -227,6 +244,21 @@ public partial class SandboxRoot
     }
 
     private void TrackSpawnedSceneActorNode(Node node) => _sceneSpawnedActorNodes.Add(node);
+
+    /// <summary>
+    /// Scene switching awaits every secondary Character/paint projection before activation. Initial
+    /// boot uses each runtime's deferred load so the normal synchronous SandboxRoot composition is
+    /// unchanged.
+    /// </summary>
+    private async Task EnsureSecondarySceneAppearancesLoadedAsync(CancellationToken token)
+    {
+        for (int index = 0; index < _sceneSpawnedAppearanceRuntimes.Count; index++)
+        {
+            SceneBuddyAppearanceRuntime appearance = _sceneSpawnedAppearanceRuntimes[index];
+            if (GodotObject.IsInstanceValid(appearance))
+                await appearance.EnsureLoadedAsync(token);
+        }
+    }
 
     private void ApplyScenePlacement(
         BuddyRoot buddy,
@@ -285,6 +317,48 @@ public partial class SandboxRoot
             _sceneRuntime.CaptureTickSnapshots();
         else
             VisualPresenter.CaptureTickSnapshot();
+    }
+
+    /// <summary>
+    /// Keeps secondary physical circles and 3D rigs on the same presentation mode as the authored
+    /// compatibility actor. Without this, a secondary Buddy would render both its puppet bodies and
+    /// Mii3D projection after the normal startup mode switch.
+    /// </summary>
+    private void ApplyPresentationModeToSceneActors(bool show3D)
+    {
+        if (_sceneRuntime is null)
+            return;
+        for (int index = 1; index < _sceneRuntime.Actors.Count; index++)
+        {
+            BuddyActorRuntime actor = _sceneRuntime.Actors[index];
+            ApplySceneActorPresentationMode(actor.Buddy, actor.VisualPresenter, show3D);
+        }
+    }
+
+    private static void ApplySceneActorPresentationMode(
+        BuddyRoot buddy,
+        BuddyVisualPresenter visual,
+        bool show3D)
+    {
+        foreach (PuppetPartBody part in buddy.Rig.Parts)
+            part.Visible = !show3D;
+        visual.Visible = show3D;
+    }
+
+    /// <summary>
+    /// Exposes the active roster's focused persistence bindings to lifecycle without handing it
+    /// SceneProgressCoordinator or live nodes. The returned order is the same stable Scene order
+    /// used for fixed-tick actor routing.
+    /// </summary>
+    private IReadOnlyList<BuddyRuntimeProgressBinding> ActiveSceneBuddyProgressBindings()
+    {
+        if (_sceneRuntime is null || !_sceneRuntime.UsesSplitProgress)
+            return [ProgressBinding];
+
+        var bindings = new BuddyRuntimeProgressBinding[_sceneRuntime.Actors.Count];
+        for (int index = 0; index < _sceneRuntime.Actors.Count; index++)
+            bindings[index] = _sceneRuntime.ProgressFor(_sceneRuntime.Actors[index]);
+        return bindings;
     }
 
     /// <summary>
