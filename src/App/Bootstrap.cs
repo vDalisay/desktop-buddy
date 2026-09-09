@@ -399,7 +399,12 @@ public partial class Bootstrap : Node
 #if !DESKTOP_BUDDY_NO_DEV_TOOLS
         if (!string.IsNullOrWhiteSpace(args.BootstrapJourneyId))
         {
-            bool passed = ProductionBootstrapJourneyProbe.Run(args, sandbox, context, saveRoot);
+            // CharacterSelectionRuntime and secondary Scene appearance owners intentionally finish
+            // their startup projection through deferred callbacks after SandboxRoot composition.
+            // The tagged production probe must observe the same ready-to-play boundary a user sees,
+            // not the middle of Bootstrap's synchronous AddChild stack.
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            bool passed = await ProductionBootstrapJourneyProbe.RunAsync(args, sandbox, context, saveRoot);
             QuitSafely(passed ? 0 : 1);
             return;
         }
