@@ -42,7 +42,7 @@ public partial class SandboxRoot
     /// Performs the owner-locked Scene switch transaction from the master release plan. The outgoing
     /// Scene is persisted before any live actor is removed. Only after that commit do we tear down
     /// secondary actors/transients, change the active environment, rebind the authored compatibility
-    /// actor, instantiate the target roster, apply the roster-head Character and finally persist the
+    /// actor, instantiate the target roster, apply every Buddy appearance and finally persist the
     /// new active Scene. A failed post-teardown step reconstructs the outgoing Scene before returning.
     /// </summary>
     public async Task<SceneRuntimeSwitchResult> SwitchSceneAsync(
@@ -138,6 +138,7 @@ public partial class SandboxRoot
             await characterRuntime.RebindSceneCompatibilityActorAsync(
                 targetBindings.OrderedBindings[0],
                 token);
+            await EnsureSecondarySceneAppearancesLoadedAsync(token);
             transaction.CompleteStep(SceneSwitchStep.ApplyAppearanceAndPaint);
 
             ResetPresentationInterpolation();
@@ -238,14 +239,18 @@ public partial class SandboxRoot
             node.QueueFree();
         }
         _sceneSpawnedActorNodes.Clear();
+        _sceneSpawnedAppearanceRuntimes.Clear();
     }
 
     private void ComposeSceneRuntimeAfterSwitch(SceneProgressBindingRegistry bindings)
     {
         if (bindings.Count == 0)
             throw new InvalidOperationException("Target Scene has no Buddy roster to compose.");
-        if (_sceneRuntime is not null || _sceneSpawnedActorNodes.Count != 0)
+        if (_sceneRuntime is not null || _sceneSpawnedActorNodes.Count != 0 ||
+            _sceneSpawnedAppearanceRuntimes.Count != 0)
+        {
             throw new InvalidOperationException("Another Scene runtime is still live during target composition.");
+        }
 
         var actors = new List<BuddyActorRuntime>(bindings.Count)
         {
@@ -306,6 +311,7 @@ public partial class SandboxRoot
             await characterRuntime.RebindSceneCompatibilityActorAsync(
                 outgoingBindings.OrderedBindings[0],
                 CancellationToken.None);
+            await EnsureSecondarySceneAppearancesLoadedAsync(CancellationToken.None);
             ResetPresentationInterpolation();
             await scenes.FlushAsync(force: true, CancellationToken.None);
         }
