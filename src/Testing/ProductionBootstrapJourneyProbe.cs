@@ -79,24 +79,26 @@ public static class ProductionBootstrapJourneyProbe
             SceneRuntimeHost? runtime = sandbox.ActiveSceneRuntime;
             bool actorCountMatches = expectedActorCount < 0 ||
                 (runtime is not null && runtime.Actors.Count == expectedActorCount);
-            bool actorBindingsMatch = runtime is not null;
+            bool actorBindingsMatch = runtime is not null && runtime.ProgressBindings is not null;
             bool actorsSharePlayer = runtime is not null && context.SceneProgress is not null;
             bool actorBuddyStatesIndependent = runtime is not null;
             bool actorPositionsDistinct = runtime is not null;
 
-            if (runtime is not null)
+            if (runtime is not null && runtime.ProgressBindings is { } progressBindings)
             {
                 var seenBuddyStates = new HashSet<BuddyIdentityState>();
                 for (int index = 0; index < runtime.Actors.Count; index++)
                 {
                     BuddyActorRuntime actor = runtime.Actors[index];
-                    SceneBuddyProgressBinding binding = runtime.ProgressFor(actor);
+                    BuddyRuntimeProgressBinding runtimeBinding = runtime.ProgressFor(actor);
+                    SceneBuddyProgressBinding sceneBinding = progressBindings.ForPlacement(actor.PlacementId);
                     actorBindingsMatch &=
-                        binding.Placement.PlacementId == actor.PlacementId &&
-                        binding.Placement.BuddyIdentityId == actor.BuddyIdentityId &&
-                        ReferenceEquals(binding.Progress.BuddyProgress, actor.Damage.ProgressBinding.BuddyProgress);
+                        sceneBinding.Placement.PlacementId == actor.PlacementId &&
+                        sceneBinding.Placement.BuddyIdentityId == actor.BuddyIdentityId &&
+                        ReferenceEquals(sceneBinding.Progress.BuddyProgress, runtimeBinding.BuddyProgress) &&
+                        ReferenceEquals(runtimeBinding.BuddyProgress, actor.Damage.ProgressBinding.BuddyProgress);
                     actorsSharePlayer &=
-                        ReferenceEquals(binding.Progress.PlayerProgress, context.SceneProgress?.Player) &&
+                        ReferenceEquals(runtimeBinding.PlayerProgress, context.SceneProgress?.Player) &&
                         ReferenceEquals(actor.Damage.ProgressBinding.PlayerProgress, context.SceneProgress?.Player);
                     BuddyIdentityState? buddyState = actor.Damage.ProgressBinding.BuddyProgress;
                     actorBuddyStatesIndependent &= buddyState is not null && seenBuddyStates.Add(buddyState);
