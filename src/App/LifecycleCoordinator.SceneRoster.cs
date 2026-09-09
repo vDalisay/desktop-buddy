@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using DesktopBuddy.Domain.Mood;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Scenes;
 
 namespace DesktopBuddy.App;
 
@@ -26,7 +27,11 @@ public partial class LifecycleCoordinator
         // Work Mode deliberately focuses one selected compatibility Buddy and suspends normal Play
         // simulation for the rest of the active Scene. Until Work gains an explicit actor selector,
         // the configured roster-head binding is that focused Buddy and secondary lifecycle freezes.
-        if (workMode || _activeBuddyProgressProvider is null)
+        if (workMode)
+            return;
+
+        EnsureSceneRosterProvider();
+        if (_activeBuddyProgressProvider is null)
             return;
 
         IReadOnlyList<BuddyRuntimeProgressBinding> bindings = _activeBuddyProgressProvider();
@@ -48,5 +53,32 @@ public partial class LifecycleCoordinator
             binding.RechargeFun(elapsed);
             binding.DrainHunger(elapsed, hungerActivity);
         }
+    }
+
+    /// <summary>
+    /// Normal production composition creates Lifecycle after SandboxRoot's SceneRuntimeHost, so the
+    /// lifecycle can discover its parent once and install a provider whose result follows whatever
+    /// live Scene host replaces it later. This avoids a service-locator dependency on persistence:
+    /// the coordinator sees only actor-local progress bindings already exposed by the runtime host.
+    /// </summary>
+    private void EnsureSceneRosterProvider()
+    {
+        if (_activeBuddyProgressProvider is not null || GetParent() is not SandboxRoot sandbox ||
+            sandbox.ActiveSceneRuntime is not { UsesSplitProgress: true })
+        {
+            return;
+        }
+
+        _activeBuddyProgressProvider = () =>
+        {
+            SceneRuntimeHost? runtime = sandbox.ActiveSceneRuntime;
+            if (runtime is null || !runtime.UsesSplitProgress)
+                return [_progress];
+
+            var bindings = new BuddyRuntimeProgressBinding[runtime.Actors.Count];
+            for (int index = 0; index < runtime.Actors.Count; index++)
+                bindings[index] = runtime.ProgressFor(runtime.Actors[index]);
+            return bindings;
+        };
     }
 }
