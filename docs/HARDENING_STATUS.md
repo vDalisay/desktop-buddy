@@ -1,7 +1,8 @@
 # Distribution hardening — active handoff
 
 Updated: 2026-09-09. The sole active hardening branch is
-`feature/nativeaot-steam-demo-spike`, tracked by PR #60. `main` is the accepted
+`feature/nativeaot-steam-demo-spike`. PR #60 is merged; continue new hardening
+on this same branch. `main` is the accepted
 production baseline. Continue remaining hardening here; do not revive the retired
 integration branches. This status does not supersede product scope or release gates.
 
@@ -51,5 +52,26 @@ manifest validation. These tests now also run in PR/manual `CI / build-test`, no
 the push quick job. Existing scenario/journey checks remain intact. Asset Forge
 has no push trigger; Phase A remains manual. Ordinary CI uses GitHub-hosted Linux.
 
-Track current check results in PR #60. A green ordinary CI run alone does not close
+PR #60 records the previous merged baseline; track subsequent checks on the same hardening branch. A green ordinary CI run alone does not close
 the NativeAOT or external release gates above.
+
+## Owner branch organization — 2026-09-09 reconsolidation
+
+Keep exactly these two active work streams; do not create per-step, fix, spike,
+or integration branches for either stream:
+
+- Hardening: `feature/nativeaot-steam-demo-spike` (H0, H3, NativeAOT and release pipeline hardening).
+- Master release plan: `feature/master-release-plan-2026-09-08` (existing PR #61).
+
+The hardening branch now contains current main plus the latest H3 helper from
+`feature/h3-encrypted-embedded-steam-pck`. The merge tree was verified identical
+to that H3 tip before this documentation update. The older
+`feature/steam-encrypted-pck-spike` helper is superseded by H3's revised version.
+PRs #62–65 were already merged; their side branches and the redundant
+`fix/nerf-pistol-active-profile-flake` branch are retired. The already-integrated
+`integration/itch-hardening-validated`, `integration/itch-hardening-2026-09-08`,
+and `plan/three-build-release-scope` refs are retired too.
+
+Every pre-cleanup ref is recoverable from the verified local bundle
+`.git/hardening-consolidation-2026-09-09.bundle`. Historical unrelated branches
+are outside this cleanup. This organization changes no feature or release gates.
