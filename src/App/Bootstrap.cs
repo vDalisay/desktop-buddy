@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Automation;
@@ -60,14 +61,14 @@ public partial class Bootstrap : Node
             case RunnerMode.Journey:
 #if DESKTOP_BUDDY_NO_DEV_TOOLS
                 Log.Warn(Category, "Scenario/journey runner is unavailable in this build; starting normal sandbox.");
-                await BootSandboxAsync();
+                await BootSandboxAsync(args);
 #else
                 BootTestRunner(args);
 #endif
                 break;
 
             default:
-                await BootSandboxAsync();
+                await BootSandboxAsync(args);
                 break;
         }
     }
@@ -105,7 +106,7 @@ public partial class Bootstrap : Node
         AddChild(driver);
     }
 
-    private async Task BootSandboxAsync()
+    private async Task BootSandboxAsync(RunnerArguments args)
     {
         GameResource[] resources;
         try
@@ -145,9 +146,16 @@ public partial class Bootstrap : Node
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
         bool browser = OperatingSystem.IsBrowser();
         string saveRoot = ProjectSettings.GlobalizePath("user://");
-        string progressPath = ProjectSettings.GlobalizePath("user://progress.json");
-        string settingsPath = ProjectSettings.GlobalizePath("user://settings.json");
-        string characterRoot = ProjectSettings.GlobalizePath("user://characters");
+#if !DESKTOP_BUDDY_NO_DEV_TOOLS
+        if (!string.IsNullOrWhiteSpace(args.BootstrapSaveRoot))
+        {
+            saveRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args.BootstrapSaveRoot));
+            Directory.CreateDirectory(saveRoot);
+        }
+#endif
+        string progressPath = Path.Combine(saveRoot, SteamCloudSavePolicy.ProgressFileName);
+        string settingsPath = Path.Combine(saveRoot, SteamCloudSavePolicy.SettingsFileName);
+        string characterRoot = Path.Combine(saveRoot, "characters");
         IAtomicSaveFileSystem saveFileSystem = browser
             ? new GodotBrowserAtomicSaveFileSystem()
             : new AtomicSaveFileSystem();
@@ -374,6 +382,14 @@ public partial class Bootstrap : Node
         sandbox.AddChild(inputBridge);
 
         Log.Info(Category, "Sandbox boot completed and gameplay scene is attached.");
+#if !DESKTOP_BUDDY_NO_DEV_TOOLS
+        if (!string.IsNullOrWhiteSpace(args.BootstrapJourneyId))
+        {
+            bool passed = ProductionBootstrapJourneyProbe.Run(args, sandbox, context, saveRoot);
+            QuitSafely(passed ? 0 : 1);
+            return;
+        }
+#endif
         if (browser)
             GD.Print("DESKTOP_BUDDY_WEB_READY");
     }
