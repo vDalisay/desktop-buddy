@@ -36,6 +36,8 @@ public partial class ProductionBootstrapJourneyOrchestrator : Node
     private const int ChildTimeoutSeconds = 90;
     private static readonly BuddyIdentityId SecondFixtureBuddyId = BuddyIdentityId.From(
         Guid.Parse("781d1668-ef7f-4ea5-bd0a-a0aa20260909"));
+    private static readonly Guid InactiveLegacyCharacterId =
+        Guid.Parse("9b36ef94-67e3-4cb9-a75f-202609090001");
 
     private RunnerArguments _args = new();
 
@@ -265,6 +267,10 @@ public partial class ProductionBootstrapJourneyOrchestrator : Node
         if (!coordinator.TryGetBuddy(BuddyIdentityId.LegacyPrimary, out BuddyIdentityState? primary) || primary is null)
             throw new InvalidDataException("Migrated fixture did not contain its first Buddy identity.");
 
+        // Give the migrated Buddy a Character different from the compatibility selection expected
+        // for the roster head. If production ever goes back to binding CharacterSelectionRuntime by
+        // LegacyPrimary instead of Scene order, the child boot fails before the probe can pass.
+        primary.SetCharacter(InactiveLegacyCharacterId);
         BuddyIdentitySnapshot secondSnapshot = primary.Snapshot() with
         {
             BuddyIdentityId = SecondFixtureBuddyId,
@@ -276,12 +282,27 @@ public partial class ProductionBootstrapJourneyOrchestrator : Node
         };
         if (!coordinator.RegisterBuddyIdentity(new BuddyIdentityState(secondSnapshot)))
             throw new InvalidOperationException("Could not register second production-bootstrap fixture Buddy.");
+
+        // Add the new identity, remove the migrated placement, then add the migrated identity back.
+        // Scene document order is now [new Buddy, migrated Buddy], proving runtime identity does not
+        // inherit the migration ID's historical first-actor status.
         SceneLibraryResult added = coordinator.AddBuddyToScene(
             coordinator.ActiveSceneId,
             SecondFixtureBuddyId,
             new CanonicalRoomPosition(0.70f, 0.5f));
         if (!added.Succeeded)
             throw new InvalidOperationException($"Could not add second fixture Buddy to active Scene: {added.Status}.");
+        SceneLibraryResult removedPrimary = coordinator.RemoveBuddyFromScene(
+            coordinator.ActiveSceneId,
+            BuddyIdentityId.LegacyPrimary);
+        if (!removedPrimary.Succeeded)
+            throw new InvalidOperationException($"Could not reorder migrated fixture Buddy: {removedPrimary.Status}.");
+        SceneLibraryResult readdedPrimary = coordinator.AddBuddyToScene(
+            coordinator.ActiveSceneId,
+            BuddyIdentityId.LegacyPrimary,
+            new CanonicalRoomPosition(0.25f, 0.5f));
+        if (!readdedPrimary.Succeeded)
+            throw new InvalidOperationException($"Could not restore migrated fixture Buddy: {readdedPrimary.Status}.");
 
         await coordinator.FlushAsync(force: true, CancellationToken.None);
     }
