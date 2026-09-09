@@ -20,19 +20,8 @@
   </PropertyGroup>
 
   <!--
-    C# comments are never emitted into IL. Shipping builds additionally disable every normal
-    source-adjacent compiler artifact that could preserve source text or documentation for a
-    decompiler/operator: external or embedded PDBs, XML documentation, and embedded source.
-    Godot's player export uses ExportRelease; normal developer Debug/Release builds are unchanged.
-    Directory.Build.targets complements this for Godot text code: GitHub Actions self-tests the
-    lexical scrubber, removes project-owned .gd/.gdshader comments in the disposable checkout
-    before Godot can import/package them, then verifies no removable comments remain.
+    Itch source-metadata hardening is intentionally defined in Directory.Build.targets rather than
+    here. TargetFramework is declared by the individual projects after Directory.Build.props is
+    imported, so a net10.0 condition here would be evaluated too early and silently skipped.
   -->
-  <PropertyGroup Condition=" '$(Configuration)' == 'ExportRelease' ">
-    <DebugSymbols>false</DebugSymbols>
-    <DebugType>none</DebugType>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
-    <EmbedAllSources>false</EmbedAllSources>
-    <EmbedUntrackedSources>false</EmbedUntrackedSources>
-  </PropertyGroup>
 </Project>
