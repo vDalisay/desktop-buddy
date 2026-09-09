@@ -38,6 +38,9 @@ env:
   GODOT_VERSION: 4.6.1-stable
   GODOT_TEMPLATE_VERSION: 4.6.1.stable.mono
   DESKTOP_BUDDY_BASE_APP_ID: "5114950"
+  # Valve publishes SteamCMD at a moving URL. Fail closed if those bootstrap bytes change until
+  # the new archive has been intentionally reviewed and this non-secret digest is updated.
+  STEAMCMD_BOOTSTRAP_SHA256: "cebf0046bfd08cf45da6bc094ae47aa39ebf4155e5ede41373b579b8f1071e7c"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
 
@@ -329,7 +332,7 @@ jobs:
             exit 1
           fi
 
-      - name: Install Valve SteamCMD
+      - name: Install pinned Valve SteamCMD bootstrap
         if: ${{ inputs.upload }}
         shell: bash
         run: |
@@ -344,6 +347,8 @@ jobs:
           curl -fL --retry 3 \
             -o "$RUNNER_TEMP/steamcmd_linux.tar.gz" \
             https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+          echo "$STEAMCMD_BOOTSTRAP_SHA256  $RUNNER_TEMP/steamcmd_linux.tar.gz" | sha256sum --check --strict
+          printf 'SteamCMD bootstrap SHA-256: `%s`\n' "$STEAMCMD_BOOTSTRAP_SHA256" >> "$GITHUB_STEP_SUMMARY"
           tar -xzf "$RUNNER_TEMP/steamcmd_linux.tar.gz" -C "$STEAMCMD_DIR"
 
           (
