@@ -1,7 +1,6 @@
 name: Achievement Build Scope
 
 on:
-  push:
   pull_request:
     branches: [main]
   workflow_dispatch:

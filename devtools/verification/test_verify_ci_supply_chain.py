@@ -5,7 +5,7 @@ import unittest
 from devtools.verification.verify_ci_supply_chain import audit_workflows
 
 
-SECURE_WORKFLOW = """name: Secure\n\non:\n  push:\n\npermissions:\n  contents: read\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          persist-credentials: false\n      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9\n"""
+SECURE_WORKFLOW = """name: Secure\n\non:\n  pull_request:\n\npermissions:\n  contents: read\n\njobs:\n  verify:\n    runs-on: ubuntu-latest\n    timeout-minutes: 10\n    steps:\n      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262\n        with:\n          persist-credentials: false\n      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9\n"""
 
 
 class VerifyCiSupplyChainTests(unittest.TestCase):
@@ -17,6 +17,11 @@ class VerifyCiSupplyChainTests(unittest.TestCase):
 
     def test_secure_workflow_passes(self) -> None:
         self.assertEqual([], self.audit(SECURE_WORKFLOW))
+
+    def test_only_ci_workflow_may_run_on_push(self) -> None:
+        content = SECURE_WORKFLOW.replace("  pull_request:\n", "  push:\n")
+        errors = self.audit(content)
+        self.assertTrue(any("only ci.yml may run on push" in error for error in errors), errors)
 
     def test_mutable_action_tag_is_rejected(self) -> None:
         content = SECURE_WORKFLOW.replace(

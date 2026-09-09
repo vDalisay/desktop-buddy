@@ -71,7 +71,10 @@ jobs:
       - name: Release tooling regression tests
         run: |
           python3 -m unittest discover -s devtools/release -p 'test_*.py'
-          python3 -m unittest devtools.verification.test_run_checked_process
+          python3 -m unittest \
+            devtools.verification.test_run_checked_process \
+            devtools.verification.test_prepare_encrypted_pck_spike \
+            devtools.verification.test_verify_encrypted_embedded_pck
 
       - name: Build solution
         run: dotnet build DesktopBuddy.sln -c Debug

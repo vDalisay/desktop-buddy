@@ -12,6 +12,7 @@ FULL_SHA = re.compile(r"^[0-9a-fA-F]{40}$")
 DOCKER_DIGEST = re.compile(r"@sha256:[0-9a-fA-F]{64}$")
 USES_LINE = re.compile(r"^(?P<indent>\s*)-\s+uses:\s*(?P<target>[^\s#]+)")
 JOB_LINE = re.compile(r"^  (?P<name>[A-Za-z0-9_.-]+):\s*$")
+PUSH_LINE = re.compile(r"^  push:\s*(?:#.*)?$")
 
 
 def _step_end(lines: list[str], start: int, indent: str) -> int:
@@ -45,6 +46,10 @@ def audit_workflow(path: Path) -> list[str]:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines()
     errors: list[str] = []
+
+    jobs_index = next((index for index, line in enumerate(lines) if line == "jobs:"), len(lines))
+    if path.name != "ci.yml" and any(PUSH_LINE.match(line) for line in lines[:jobs_index]):
+        errors.append(f"{path}: only ci.yml may run on push; push is reserved for CI / quick")
 
     if "permissions:" not in lines:
         errors.append(f"{path}: missing explicit top-level permissions block")

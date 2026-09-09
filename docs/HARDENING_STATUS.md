@@ -1,7 +1,12 @@
 # Distribution hardening — active handoff
 
+**Start here:** [audited hardening finish plan](HARDENING_FINISH_PLAN_2026-09-09.md).
+It owns the remaining H0–H8 queue and current evidence; older status below is historical.
+Do not repeat completed timeout fixes or mistake PR #60 for an open work queue.
+
 Updated: 2026-09-09. The sole active hardening branch is
-`feature/nativeaot-steam-demo-spike`, tracked by PR #60. `main` is the accepted
+`feature/nativeaot-steam-demo-spike`. PR #60 is merged; continue new hardening
+on this same branch. `main` is the accepted
 production baseline. Continue remaining hardening here; do not revive the retired
 integration branches. This status does not supersede product scope or release gates.
 
@@ -22,7 +27,7 @@ directory (`hardening-retired-2026-09-09.bundle`) for recovery, without active b
 
 ## Remaining gates
 
-The ordered closeout checklist is now
+The broader Initial Demo release acceptance matrix remains in
 [`PHASE_0_CLOSEOUT_PLAN_2026-09-09.md`](PHASE_0_CLOSEOUT_PLAN_2026-09-09.md).
 It separates the managed Initial Demo RC from optional NativeAOT acceptance and
 records the confirmed overlapping-export failure in run `34323615195` at `5e56cdfd`.
@@ -31,10 +36,14 @@ spike is manual-only, its exporter has one bounded process owner with regression
 coverage, and SteamPipe checks manifest distribution identity at the upload boundary.
 The managed candidate and external acceptance gates remain pending.
 
-- NativeAOT compatibility is **unproven**. Earlier runs failed during faulty Windows
-  export supervision. The retry has been removed; the next manual dispatch must run
-  the single exporter to completion and report its real exit code before any AOT
-  compatibility conclusion or setting change.
+Continuation evidence on 2026-09-09:
+
+- Managed Demo preflight run `34359734784` passed on `2f6d14d9` with runtime AppID `5228990`, physical Demo scope, native dependency, PCK, and 192-file manifest verification. Its ephemeral payload was not retained and is not a Windows candidate.
+- NativeAOT run `34360174738` used the corrected single process owner. Export, native x86_64 PE, `godotsharp_game_main_init`, and Demo PCK scope passed. Payload audit then correctly rejected `DesktopBuddy.Domain.pdb` and `DesktopBuddy.Visuals.pdb`; the workflow now strips export PDBs before applying the expanded forbidden-file audit. A rerun and exact-export acceptance remain required.
+- The manual encrypted/embedded-PCK workflow now builds a keyed template from pinned Godot `14d19694e0c88a3f9e82d899a0400f27a24c176e`, uses only an ephemeral masked key, verifies the embedded encrypted pack and shipped managed assembly, and retains no public binary/key artifact. It does not enable production encryption.
+- H8's re-upload runbook and private evidence checklist are tracked under `docs/release/`.
+
+- NativeAOT compilation/export compatibility is now proven only through the PE/PCK gates above. Packaging rerun, startup, manifest, functional, persistence, and performance acceptance remain unproven; production AOT stays disabled.
 - Require native PE/entry-point verification, exported PCK scope, payload audit,
   exact-export startup and manifest verification to pass on the final candidate.
 - Before production AOT enablement, complete gameplay, save/restart, Paint Room,
@@ -51,5 +60,26 @@ manifest validation. These tests now also run in PR/manual `CI / build-test`, no
 the push quick job. Existing scenario/journey checks remain intact. Asset Forge
 has no push trigger; Phase A remains manual. Ordinary CI uses GitHub-hosted Linux.
 
-Track current check results in PR #60. A green ordinary CI run alone does not close
+PR #60 records the previous merged baseline; track subsequent checks on the same hardening branch. A green ordinary CI run alone does not close
 the NativeAOT or external release gates above.
+
+## Owner branch organization — 2026-09-09 reconsolidation
+
+Keep exactly these two active work streams; do not create per-step, fix, spike,
+or integration branches for either stream:
+
+- Hardening: `feature/nativeaot-steam-demo-spike` (H0, H3, NativeAOT and release pipeline hardening).
+- Master release plan: `feature/master-release-plan-2026-09-08` (existing PR #61).
+
+The hardening branch now contains current main plus the latest H3 helper from
+`feature/h3-encrypted-embedded-steam-pck`. The merge tree was verified identical
+to that H3 tip before this documentation update. The older
+`feature/steam-encrypted-pck-spike` helper is superseded by H3's revised version.
+PRs #62–65 were already merged; their side branches and the redundant
+`fix/nerf-pistol-active-profile-flake` branch are retired. The already-integrated
+`integration/itch-hardening-validated`, `integration/itch-hardening-2026-09-08`,
+and `plan/three-build-release-scope` refs are retired too.
+
+Every pre-cleanup ref is recoverable from the verified local bundle
+`.git/hardening-consolidation-2026-09-09.bundle`. Historical unrelated branches
+are outside this cleanup. This organization changes no feature or release gates.
