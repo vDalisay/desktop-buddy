@@ -1,0 +1,186 @@
+name: Production Bootstrap Persistence
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-bootstrap-persistence-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  GODOT_TEMPLATE_VERSION: 4.6.1.stable.mono
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  tagged-production-bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build and run managed tests
+        run: |
+          dotnet build DesktopBuddy.sln -c Debug
+          dotnet test tests/DesktopBuddy.Domain.Tests/DesktopBuddy.Domain.Tests.csproj -c Debug --no-build
+
+      - name: Materialize verified GodotSteam addon
+        shell: pwsh
+        run: ./tools/install_godotsteam.ps1 -Force
+
+      - name: Download pinned Godot editor and Mono export templates
+        shell: bash
+        run: |
+          set -euo pipefail
+          GODOT_NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
+          GODOT_URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${GODOT_NAME}.zip"
+          TEMPLATE_NAME="Godot_v${GODOT_VERSION}_mono_export_templates.tpz"
+          TEMPLATE_URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${TEMPLATE_NAME}"
+
+          curl -fL --retry 3 -o "$RUNNER_TEMP/godot.zip" "$GODOT_URL"
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          GODOT_BIN="$(find "$RUNNER_TEMP/godot/$GODOT_NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
+          test -n "$GODOT_BIN"
+          chmod +x "$GODOT_BIN"
+          echo "GODOT_BIN=$GODOT_BIN" >> "$GITHUB_ENV"
+
+          curl -fL --retry 3 -o "$RUNNER_TEMP/$TEMPLATE_NAME" "$TEMPLATE_URL"
+          rm -rf "$RUNNER_TEMP/godot-templates"
+          mkdir -p "$RUNNER_TEMP/godot-templates"
+          unzip -q "$RUNNER_TEMP/$TEMPLATE_NAME" -d "$RUNNER_TEMP/godot-templates"
+          TEMPLATE_DIR="$HOME/.local/share/godot/export_templates/$GODOT_TEMPLATE_VERSION"
+          rm -rf "$TEMPLATE_DIR"
+          mkdir -p "$TEMPLATE_DIR"
+          cp -a "$RUNNER_TEMP/godot-templates/templates/." "$TEMPLATE_DIR/"
+          test -f "$TEMPLATE_DIR/linux_debug.x86_64"
+
+      - name: Add disposable tagged Linux verification presets
+        shell: bash
+        run: |
+          cat >> export_presets.cfg <<'EOF'
+
+          [preset.4]
+
+          name="CI Linux Initial Demo Verification"
+          platform="Linux/BSD"
+          runnable=false
+          advanced_options=false
+          dedicated_server=false
+          custom_features="steam,steam_demo"
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path=".artifacts/production-bootstrap/initial/DesktopBuddy.x86_64"
+          patches=PackedStringArray()
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.4.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          binary_format/architecture="x86_64"
+          binary_format/embed_pck=false
+          debug/export_console_wrapper=1
+          texture_format/s3tc_bptc=true
+          texture_format/etc2_astc=false
+
+          [preset.5]
+
+          name="CI Linux Next Fest Verification"
+          platform="Linux/BSD"
+          runnable=false
+          advanced_options=false
+          dedicated_server=false
+          custom_features="steam,steam_demo,next_fest_demo"
+          export_filter="all_resources"
+          include_filter=""
+          exclude_filter=""
+          export_path=".artifacts/production-bootstrap/next-fest/DesktopBuddy.x86_64"
+          patches=PackedStringArray()
+          encryption_include_filters=""
+          encryption_exclude_filters=""
+          seed=0
+          encrypt_pck=false
+          encrypt_directory=false
+          script_export_mode=2
+
+          [preset.5.options]
+
+          custom_template/debug=""
+          custom_template/release=""
+          binary_format/architecture="x86_64"
+          binary_format/embed_pck=false
+          debug/export_console_wrapper=1
+          texture_format/s3tc_bptc=true
+          texture_format/etc2_astc=false
+          EOF
+
+      - name: Import project with native Steam addon
+        shell: bash
+        run: xvfb-run -a "$GODOT_BIN" --headless --path . --import
+
+      - name: Export tagged Initial Demo debug build
+        shell: bash
+        env:
+          DesktopBuddySteamDemoScope: "true"
+          DesktopBuddyNextFestDemoScope: "false"
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/production-bootstrap/initial
+          xvfb-run -a "$GODOT_BIN" --headless --path . \
+            --export-debug "CI Linux Initial Demo Verification" \
+            .artifacts/production-bootstrap/initial/DesktopBuddy.x86_64
+          chmod +x .artifacts/production-bootstrap/initial/DesktopBuddy.x86_64
+
+      - name: Run Initial Demo production Bootstrap refusal journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          .artifacts/production-bootstrap/initial/DesktopBuddy.x86_64 --headless -- \
+            --journey=production_bootstrap_persistence \
+            --seed=1 \
+            --artifacts="$GITHUB_WORKSPACE/.artifacts/production-bootstrap/initial/journey"
+
+      - name: Export tagged Next Fest debug build
+        shell: bash
+        env:
+          DesktopBuddySteamDemoScope: "true"
+          DesktopBuddyNextFestDemoScope: "true"
+        run: |
+          set -euo pipefail
+          mkdir -p .artifacts/production-bootstrap/next-fest
+          xvfb-run -a "$GODOT_BIN" --headless --path . \
+            --export-debug "CI Linux Next Fest Verification" \
+            .artifacts/production-bootstrap/next-fest/DesktopBuddy.x86_64
+          chmod +x .artifacts/production-bootstrap/next-fest/DesktopBuddy.x86_64
+
+      - name: Run Next Fest production Bootstrap migration and recovery journey
+        shell: bash
+        run: |
+          set -euo pipefail
+          .artifacts/production-bootstrap/next-fest/DesktopBuddy.x86_64 --headless -- \
+            --journey=production_bootstrap_persistence \
+            --seed=1 \
+            --artifacts="$GITHUB_WORKSPACE/.artifacts/production-bootstrap/next-fest/journey"
+
+      - name: Show journey verdicts and logs on failure
+        if: failure()
+        shell: bash
+        run: |
+          find .artifacts/production-bootstrap -maxdepth 4 -type f \
+            \( -name '*.json' -o -name '*.log' \) -print -exec sh -c 'echo "--- $1"; tail -n 160 "$1"' _ {} \; || true
