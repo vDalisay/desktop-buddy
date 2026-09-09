@@ -146,16 +146,19 @@ public partial class Bootstrap : Node
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
         bool browser = OperatingSystem.IsBrowser();
         string saveRoot = ProjectSettings.GlobalizePath("user://");
+        string progressPath = ProjectSettings.GlobalizePath("user://progress.json");
+        string settingsPath = ProjectSettings.GlobalizePath("user://settings.json");
+        string characterRoot = ProjectSettings.GlobalizePath("user://characters");
 #if !DESKTOP_BUDDY_NO_DEV_TOOLS
         if (!string.IsNullOrWhiteSpace(args.BootstrapSaveRoot))
         {
             saveRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(args.BootstrapSaveRoot));
             Directory.CreateDirectory(saveRoot);
+            progressPath = Path.Combine(saveRoot, SteamCloudSavePolicy.ProgressFileName);
+            settingsPath = Path.Combine(saveRoot, SteamCloudSavePolicy.SettingsFileName);
+            characterRoot = Path.Combine(saveRoot, SteamCloudSavePolicy.CharactersDirectoryName);
         }
 #endif
-        string progressPath = Path.Combine(saveRoot, SteamCloudSavePolicy.ProgressFileName);
-        string settingsPath = Path.Combine(saveRoot, SteamCloudSavePolicy.SettingsFileName);
-        string characterRoot = Path.Combine(saveRoot, "characters");
         IAtomicSaveFileSystem saveFileSystem = browser
             ? new GodotBrowserAtomicSaveFileSystem()
             : new AtomicSaveFileSystem();
