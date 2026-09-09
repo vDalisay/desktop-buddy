@@ -8,29 +8,31 @@ using Godot;
 namespace DesktopBuddy.Buddy.Behavior;
 
 /// <summary>
-/// The two room surfaces the buddy can take an interest in — placed decorations and the painted
-/// background — and the colour searches over them.
-///
-/// <para>Both come from <c>src/Environment</c>, which the reduced itch.io distribution compiles
-/// out; <c>RoomInterestBootstrap.EnvironmentAbsent.cs</c> stands in there. Nothing is lost in that
-/// build: <c>EnvironmentCustomizationBootstrap</c> already returns early under the itch scope, so
-/// neither the decoration layer nor the background presenter is ever constructed and both searches
-/// were already finding nothing.</para>
+/// The room surfaces the buddy can take an interest in. Initial Steam Demo keeps painted-background
+/// interest while physically omitting Room Decorator; full builds keep both decorations and paint.
+/// The itch distribution replaces this whole partial with EnvironmentAbsent because it ships
+/// neither surface.
 /// </summary>
 public sealed partial class RoomInterestBootstrap
 {
+#if !DESKTOP_BUDDY_STEAM_DEMO
     private EnvironmentDecorationLayer? _layer;
+#endif
     private EnvironmentBackgroundPresenter? _background;
 
     private void ResolveRoomSurfaces()
     {
+#if !DESKTOP_BUDDY_STEAM_DEMO
         _layer ??= FindFirst<EnvironmentDecorationLayer>(GetTree().Root);
+#endif
         _background ??= FindFirst<EnvironmentBackgroundPresenter>(GetTree().Root);
     }
 
     private void ForgetRoomSurfaces()
     {
+#if !DESKTOP_BUDDY_STEAM_DEMO
         _layer = null;
+#endif
         _background = null;
     }
 
@@ -38,6 +40,10 @@ public sealed partial class RoomInterestBootstrap
     {
         point = default;
         score = double.PositiveInfinity;
+#if DESKTOP_BUDDY_STEAM_DEMO
+        // Room Decorator does not exist in this binary; a mutable feature tag cannot recreate it.
+        return false;
+#else
         if (!GodotObject.IsInstanceValid(_layer))
             return false;
 
@@ -79,6 +85,7 @@ public sealed partial class RoomInterestBootstrap
             new RoomScreenBounds(room.Position.X, room.Position.Y, room.Size.X, room.Size.Y));
         point = new Vector2(screenX, screenY);
         return true;
+#endif
     }
 
     /// <summary>

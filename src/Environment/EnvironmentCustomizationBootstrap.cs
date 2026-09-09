@@ -10,21 +10,25 @@ using Godot;
 namespace DesktopBuddy.Environment;
 
 /// <summary>
-/// Reserved composition root for the environment-customization branch. It owns Paint Background
-/// and Environment Decorator composition without widening the shared command-bar bootstrap.
+/// Reserved composition root for environment customization. Paint Background is shared by Steam
+/// Demo and full release; Room Decorator is compiled out of the physically reduced Steam Demo.
 /// </summary>
 public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCustomizationEvents
 {
     private const string LogCategory = "EnvironmentCustomization";
     private IDisposable? _registration;
+#if !DESKTOP_BUDDY_STEAM_DEMO
     private IDisposable? _decoratorRegistration;
+#endif
     private SandboxRoot? _sandbox;
     private EnvironmentBackgroundEditor? _backgroundEditor;
     private EnvironmentBackgroundPresenter? _backgroundPresenter;
     private EnvironmentPaintStore? _paintStore;
     private EnvironmentPaintToolIconBootstrap? _paintIconBootstrap;
+#if !DESKTOP_BUDDY_STEAM_DEMO
     private EnvironmentDecorationLayer? _decorationLayer;
     private EnvironmentDecorator? _decorator;
+#endif
     private readonly EnvironmentPresentationVisibility _presentationVisibility = new();
     private bool _workCompanionSubscribed;
     internal EnvironmentPaintStore? PaintStore => _paintStore;
@@ -57,16 +61,19 @@ public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCusto
         _backgroundPresenter.Canvas.MarkSaved();
     }
     internal bool HasPaintBackgroundRegistration => _registration is not null;
+#if DESKTOP_BUDDY_STEAM_DEMO
+    internal bool HasDecorateRoomRegistration => false;
+#else
     internal bool HasDecorateRoomRegistration => _decoratorRegistration is not null;
+#endif
 
     public override void _Ready()
     {
         ProcessMode = ProcessModeEnum.Always;
         if (!DemoScope.IncludesPaintRoom)
         {
-            // The itch.io build has no environment workspace at all. The normal Demo already
-            // hides Room Decorator, so stopping this bootstrap also avoids constructing the
-            // Paint Background canvas/editor and their supporting runtime nodes.
+            // The itch.io build has no environment workspace at all. The Steam Demo keeps Paint
+            // Background, so its compile-time Room Decorator reduction does not take this path.
             SetProcess(false);
             Log.Info(LogCategory, "Paint Room omitted by the active distribution scope.");
             return;
@@ -134,6 +141,11 @@ public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCusto
 
         if (GodotObject.IsInstanceValid(_sandbox))
         {
+#if DESKTOP_BUDDY_STEAM_DEMO
+            // Paint Background remains available, but no Room Decorator type or catalogue exists in
+            // this assembly. Work Mode still needs to hide the painted room temporarily.
+            _presentationVisibility.Configure(_backgroundPresenter);
+#else
             _decorationLayer = new EnvironmentDecorationLayer { Name = nameof(EnvironmentDecorationLayer) };
             _decorationLayer.Configure(state, _sandbox!.Boundaries);
             GetTree().Root.AddChild(_decorationLayer);
@@ -144,6 +156,7 @@ public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCusto
             _decorator.ConfigurePreferences(_sandbox.Shell);
             GetTree().Root.AddChild(_decorator);
             RegisterDecorator(commandBar, _decorator);
+#endif
             SubscribeWorkCompanionState();
         }
         _registration = commandBar.RegisterCustomizeCommand(
@@ -173,18 +186,17 @@ public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCusto
     private void OnWorkCompanionActiveChanged(bool active) =>
         _presentationVisibility.SetWorkCompanionActive(active);
 
+#if !DESKTOP_BUDDY_STEAM_DEMO
     /// <summary>
-    /// Registers the command whatever this build's scope is. The scenario that proves the
-    /// decorator's own wiring must keep running in a Demo-scoped build, or hiding the feature
-    /// would quietly stop testing it.
+    /// Registers the command whatever this build's runtime scope is. Scenario builds compile the
+    /// full implementation so hiding a feature never quietly stops testing it. Shipping Steam Demo
+    /// instead removes this method and the implementation at compile time.
     /// </summary>
     internal void RegisterDecoratorForStartupTest(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator) =>
         RegisterDecoratorCommand(commandBar, decorator);
 
     private void RegisterDecorator(Win98CommandBarBootstrap commandBar, EnvironmentDecorator decorator)
     {
-        // The Demo ships without the Room Decorator (owner decision 2026-08-20); the workspace
-        // itself stays built and tested, it simply has no way in.
         if (!DemoScope.IncludesRoomDecorator)
             return;
 
@@ -202,6 +214,7 @@ public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCusto
             decorator.Open,
             isEnabled: () => !decorator.IsOpen);
     }
+#endif
 
     public override void _ExitTree()
     {
@@ -213,22 +226,28 @@ public partial class EnvironmentCustomizationBootstrap : Node, IEnvironmentCusto
         _workCompanionSubscribed = false;
         _registration?.Dispose();
         _registration = null;
+#if !DESKTOP_BUDDY_STEAM_DEMO
         _decoratorRegistration?.Dispose();
         _decoratorRegistration = null;
+#endif
         if (GodotObject.IsInstanceValid(_backgroundEditor))
             _backgroundEditor!.BackgroundCommitted -= OnBackgroundCommitted;
         if (GodotObject.IsInstanceValid(_paintIconBootstrap)) _paintIconBootstrap!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundEditor)) _backgroundEditor!.QueueFree();
         if (GodotObject.IsInstanceValid(_backgroundPresenter)) _backgroundPresenter!.QueueFree();
+#if !DESKTOP_BUDDY_STEAM_DEMO
         if (GodotObject.IsInstanceValid(_decorationLayer)) _decorationLayer!.QueueFree();
         if (GodotObject.IsInstanceValid(_decorator)) _decorator!.QueueFree();
+#endif
         _presentationVisibility.SetWorkCompanionActive(false);
         _sandbox = null;
         _paintIconBootstrap = null;
         _backgroundEditor = null;
         _backgroundPresenter = null;
+#if !DESKTOP_BUDDY_STEAM_DEMO
         _decorationLayer = null;
         _decorator = null;
+#endif
     }
 
     internal void ApplyWorkCompanionVisibilityForTest(bool active) =>
