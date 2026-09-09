@@ -1,3 +1,4 @@
+using System;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Scenes;
@@ -46,9 +47,11 @@ public sealed record RunContext(
     public IRunProgressPersistence RunProgressPersistence => CreateRunProgressPersistence();
 
     /// <summary>
-    /// Progress binding for the one existing production Buddy actor during the staged Scene-runtime
-    /// migration. A Scene run must contain the stable legacy-primary placement until production
-    /// multi-Buddy spawning replaces this single-actor compatibility seam.
+    /// Compatibility progress binding for singular runtime/UI consumers that have not yet been
+    /// migrated to explicit actor targeting. In a Scene run this is the first placement in the
+    /// active Scene's durable order, never a reserved migration ID. The multi-Buddy host composes
+    /// every placement separately; this seam only preserves old singular call sites during that
+    /// migration.
     /// </summary>
     public BuddyRuntimeProgressBinding ActiveBuddyProgress
     {
@@ -58,7 +61,13 @@ public sealed record RunContext(
                 return new BuddyRuntimeProgressBinding(Progress);
 
             SceneProgressBindingRegistry bindings = SceneProgress.CreateActiveBindings();
-            return bindings.ForPlacement(BuddyPlacementId.LegacyPrimary).Progress;
+            if (bindings.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "A singular compatibility consumer requested an active Buddy, but the active Scene has no Buddy placements.");
+            }
+
+            return bindings.OrderedBindings[0].Progress;
         }
     }
 
