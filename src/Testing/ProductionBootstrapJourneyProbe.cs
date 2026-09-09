@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
+using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
@@ -16,15 +18,15 @@ using FileAccess = Godot.FileAccess;
 namespace DesktopBuddy.Testing;
 
 /// <summary>
-/// Read-only verification hook invoked only after the normal production Bootstrap has fully
-/// composed the sandbox. Unlike TestRunner journeys this never substitutes a persistence store or
-/// constructs a parallel coordinator; it observes the exact RunContext production created for the
-/// tagged debug export, writes a normal journey verdict, and terminates the verification process.
-/// Shipping exports compile the entire Testing tree out.
+/// Verification hook invoked only after the normal production Bootstrap has fully composed the
+/// sandbox. Unlike TestRunner journeys this never substitutes a persistence store or constructs a
+/// parallel coordinator; it observes and, for explicit switch phases, drives the exact RunContext
+/// and SandboxRoot production created for the tagged debug export. Shipping exports compile the
+/// entire Testing tree out.
 /// </summary>
 public static class ProductionBootstrapJourneyProbe
 {
-    public static bool Run(
+    public static async Task<bool> RunAsync(
         RunnerArguments args,
         SandboxRoot sandbox,
         RunContext context,
@@ -75,8 +77,46 @@ public static class ProductionBootstrapJourneyProbe
                 setup.TryGetProperty("expected_actor_count", out JsonElement actorCount) && actorCount.TryGetInt32(out int actorCountValue)
                     ? actorCountValue
                     : -1;
+            bool switchToOtherScene = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("switch_to_other_scene", out JsonElement switchElement) &&
+                switchElement.ValueKind == JsonValueKind.True;
 
             SceneRuntimeHost? runtime = sandbox.ActiveSceneRuntime;
+            BuddyIdentityId outgoingFirstIdentity = runtime is { Actors.Count: > 0 }
+                ? runtime.Actors[0].BuddyIdentityId
+                : default;
+            SceneId outgoingSceneId = context.SceneProgress?.ActiveSceneId ?? default;
+            BuddyActorRuntime[] outgoingSecondaryActors = runtime is null
+                ? []
+                : runtime.Actors.Skip(1).ToArray();
+
+            bool sceneSwitchSucceeded = !switchToOtherScene;
+            bool sceneSwitchRuntimeMatches = !switchToOtherScene;
+            bool sceneSwitchFirstIdentityChanged = !switchToOtherScene;
+            bool sceneSwitchSecondaryTeardown = !switchToOtherScene;
+            bool sceneSwitchCommitted = !switchToOtherScene;
+
+            if (switchToOtherScene)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Scene-switch phase requires Scene progress.");
+                SceneDocument target = scenes.Scenes.FirstOrDefault(scene => scene.SceneId != scenes.ActiveSceneId)
+                    ?? throw new InvalidOperationException("Scene-switch phase fixture has no inactive target Scene.");
+
+                SceneRuntimeSwitchResult switchResult = await sandbox.SwitchSceneAsync(target.SceneId);
+                runtime = sandbox.ActiveSceneRuntime;
+                sceneSwitchSucceeded = switchResult.Succeeded && scenes.ActiveSceneId == target.SceneId;
+                sceneSwitchRuntimeMatches = runtime is not null &&
+                    runtime.Scene.SceneId == target.SceneId &&
+                    runtime.ProgressBindings?.Scene.SceneId == target.SceneId;
+                sceneSwitchFirstIdentityChanged = runtime is { Actors.Count: > 0 } &&
+                    runtime.Actors[0].BuddyIdentityId != outgoingFirstIdentity;
+                sceneSwitchSecondaryTeardown = outgoingSecondaryActors.All(actor =>
+                    !GodotObject.IsInstanceValid(actor.Buddy) || !actor.Buddy.IsInsideTree());
+                sceneSwitchCommitted = switchResult.Succeeded && !scenes.IsDirty &&
+                    outgoingSceneId != scenes.ActiveSceneId;
+            }
+
             bool actorCountMatches = expectedActorCount < 0 ||
                 (runtime is not null && runtime.Actors.Count == expectedActorCount);
             bool actorBindingsMatch = runtime is not null && runtime.ProgressBindings is not null;
@@ -143,6 +183,11 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_actor_positions_distinct"] = actorPositionsDistinct,
                 ["scene_first_actor_not_legacy_primary"] = firstActorNotLegacyPrimary,
                 ["character_selection_matches_first_actor"] = characterSelectionMatchesFirstActor,
+                ["scene_switch_succeeded"] = sceneSwitchSucceeded,
+                ["scene_switch_runtime_matches_target"] = sceneSwitchRuntimeMatches,
+                ["scene_switch_first_identity_changed"] = sceneSwitchFirstIdentityChanged,
+                ["scene_switch_outgoing_secondary_torn_down"] = sceneSwitchSecondaryTeardown,
+                ["scene_switch_committed"] = sceneSwitchCommitted,
             };
 
             if (phase.TryGetProperty("assertions", out JsonElement assertions) && assertions.ValueKind == JsonValueKind.Array)
