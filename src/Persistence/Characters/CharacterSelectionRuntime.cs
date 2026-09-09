@@ -3,6 +3,7 @@ using System.Threading;
 using DesktopBuddy.App;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Scenes;
 using Godot;
 
 namespace DesktopBuddy.Persistence.Characters;
@@ -82,12 +83,20 @@ public partial class CharacterSelectionRuntime : Node
 
         if (_context.SceneProgress is { } scenes)
         {
-            // Production still owns one compatibility actor while multi-Buddy spawning is brought
-            // online. Its stable migrated identity is the authority for Character selection; the
-            // legacy SaveCoordinator is intentionally not involved after the Scene manifest exists.
+            // The existing CharacterSelectionState/RigView pair is the staged compatibility surface
+            // for the first actor in active Scene order. Reserved migration IDs must never choose the
+            // actor: a newly-authored Scene can legitimately put any persistent Buddy first.
+            SceneProgressBindingRegistry activeBindings = scenes.CreateActiveBindings();
+            if (activeBindings.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "Character selection requires at least one Buddy placement in the active Scene.");
+            }
+
+            SceneBuddyProgressBinding compatibilityActor = activeBindings.OrderedBindings[0];
             _sceneSelectionBinding = new SceneCharacterSelectionBinding(
                 scenes,
-                BuddyIdentityId.LegacyPrimary,
+                compatibilityActor.Placement.BuddyIdentityId,
                 _context.CharacterSelection);
             _coordinator = new CharacterSelectionCoordinator(
                 _context.Characters,
