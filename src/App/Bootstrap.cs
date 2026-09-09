@@ -76,6 +76,17 @@ public partial class Bootstrap : Node
 #if !DESKTOP_BUDDY_NO_DEV_TOOLS
     private void BootTestRunner(RunnerArguments args)
     {
+        if (ProductionBootstrapJourneyOrchestrator.Handles(args))
+        {
+            var orchestrator = new ProductionBootstrapJourneyOrchestrator
+            {
+                Name = nameof(ProductionBootstrapJourneyOrchestrator),
+            };
+            orchestrator.Configure(args);
+            AddChild(orchestrator);
+            return;
+        }
+
         var packed = GD.Load<PackedScene>("res://scenes/test_runner.tscn");
         if (packed is null)
         {
