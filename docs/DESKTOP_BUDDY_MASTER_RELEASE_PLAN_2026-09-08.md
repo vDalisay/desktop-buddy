@@ -1103,9 +1103,37 @@ Do not begin broad systemic features in a way that destabilizes the Initial Demo
 
 Status effects are secondary to Scenes, multi-Buddy, construction, Blueprints and Creator Studio Lite; do not let optional effect polish hold the event build hostage.
 
-### Immediate next step — Scene persistence audit follow-up (2026-09-08)
+### Progress audit and immediate steering (2026-09-09)
 
-**OPEN — complete before activating split Scene persistence or advancing the production multi-Buddy integration.** The owner requested this follow-up for the implementing agent. It closes correctness gaps in Phase 1 steps 4–6; it does not widen product scope.
+Audited implementation head: `0db908b49699d61c4717e9b05bbb52ef8608dbd6` on `feature/master-release-plan-2026-09-08`, after fetching origin. The branch contains 188 commits across 132 changed files relative to `origin/main`. This is an implementation-progress audit, not player acceptance or a complete line-by-line correctness review.
+
+| Plan area | Evidence and current status |
+|---|---|
+| Phase 0 Initial Demo RC | Remains a separate release gate; foundation code does not establish installed Windows, live Workshop or cross-machine Cloud acceptance. |
+| Phase 1 steps 1–3 | Build-scope policy, Next Fest preset, truth-table tests and semantic ID/capability registry are implemented. Physical achievement exclusion/inclusion also passes the four-profile build check at the audited head. Semantic registries are foundations, not a completed systemic runtime. |
+| Step 4 split persistence | Implemented with production manifest-first boot, account/Buddy/Work bindings, migration, transaction recovery and reset coverage. The four findings below have source fixes and managed regression coverage; production Godot migration/restart acceptance remains open. |
+| Steps 5–6 multi-Buddy/Scenes | Partial. Documents, library operations, bindings and ordered actor host exist. `Bootstrap.SceneProgress` still requires `BuddyIdentityId.LegacyPrimary`; `SandboxRoot.SceneRuntime` resolves its reserved placement and constructs exactly one actor. Production cast creation/removal, general roster restoration, Scene tabs and switching are not complete. |
+| Step 7 Scene environment | Scene-owned storage, paint migration, selection/reset/rebind seams and Next Fest Room Decorator gating are implemented. Actual cross-Scene runtime switching and restart still require integration acceptance. |
+| Step 8 achievements | The 24-rule catalogue, split-state qualification, monotonic reset, Full-only publishing and usage/customization adapters are implemented. Port/re-audit remains incomplete: new runtime observer adapters lack direct integration tests, and attribution still assumes the primary Buddy. |
+| Steps 9–17 | No completion evidence in this branch for Build/Edit, construction, devices, structural repair, Blueprints, Creator Lite, effects or expanded Workshop packages. Keep them pending. |
+
+**Verification actually observed:** [CI run 34318934403](https://github.com/vDalisay/desktop-buddy/actions/runs/34318934403) built the solution, passed all **1,753 managed tests** and the binary guard. [Achievement Build Scope run 34318934405](https://github.com/vDalisay/desktop-buddy/actions/runs/34318934405) passed. `CI / build-test` was skipped because this was a push. There is no open PR for this branch, and no new Godot scenarios/journeys accompany its production Scene or achievement wiring. This audit did not run interactive or live Steam checks.
+
+**Next work, before adding more systems:**
+
+1. Close the runtime verification gap: add/run Godot journeys through production Bootstrap for Initial save migration, committed restart, malformed/incomplete generation refusal/recovery, purchases/Work/character/background persistence and transactional reset. Prove Initial Demo refuses upgraded saves without modifying semantic files. Exercise the Initial and Next Fest build tags explicitly; untagged single-Buddy fixtures cannot prove these routes.
+2. Finish the planned Scene/cast vertical slice before extending achievements or starting Build/Edit. Remove the reserved-primary assumptions through actual roster composition and target ownership; verify independent actors, shared wallet, inactive-Scene suspension, Work focus, environment rebind and repeated switching/restart. Do not count managed library operations as shipped Scene UI.
+3. Cover achievement adapters through real successful/failed/unchanged actions, restart/reset, asynchronous character selection changes and observer teardown. Audit customization qualification against the approved baseline, including color/placement-only edits and imported appearances; `HasStudioCustomization` currently compares feature IDs only. Keep Demo Steam unlock prohibition and qualified-state monotonicity covered. Do not silently choose new qualification semantics.
+4. Restore the documented CI trigger split: the new `achievement-build-scope.yml` currently adds a four-build matrix to every push. Keep this matrix on PR/manual triggers; retain the existing quick push job. This is workflow steering, not permission to weaken build-scope verification.
+5. Keep Steamworks Auto-Cloud row publication and real cross-machine interrupted-generation recovery external until exercised. Source whitelist tests do not prove Partner configuration was published.
+
+**Merge recommendation:** extract the contiguous foundation prefix `fa6a9174` (build scope/preset) and `4da49f82` (semantic IDs/capabilities) as the first small PR. These nine files are separable from activating split persistence and achievements. They are review-ready candidates, not yet merge-approved: run the applicable full PR gates on the extracted head and verify its Initial Demo scope before merging. Keep the later persistence/runtime/achievement work together until its integration gaps above close; do not merge the entire branch based only on push checks.
+
+The separate open [PR #60, “Consolidate distribution hardening and NativeAOT compatibility work”](https://github.com/vDalisay/desktop-buddy/pull/60), at `5e56cdfd`, has green build-test, Asset Forge and native Steam smoke, but its **NativeAOT Initial Steam Demo export check fails**. Hold that merge pending a passing export/smoke result on its final head. It is not evidence that this branch's head passed those gates.
+
+### Historical finding detail — Scene persistence audit follow-up (2026-09-08)
+
+**SOURCE FIXES IMPLEMENTED; RUNTIME ACCEPTANCE OPEN — superseded in status by the 2026-09-09 audit above.** Preserve the original findings and acceptance criteria below as the verification checklist. Fixes include lazy manifest-first production bootstrap; Cloud-eligible committed `.next` bytes plus simulated Cloud-copy recovery tests; explicit backend selection for nullable extensions in both bindings; and fresh-generation dirty tracking with failure/retry coverage. Do not reimplement these fixes. Complete their production journey gate.
 
 Evidence: the audit examined `9094f33e`; the follow-up was refreshed after fetching and pulling origin through `ac46db25`. That newer head adds `SceneProgressBootstrapCoordinator`, split-safe `RunContext` bindings, and managed bootstrap/compatibility tests. Reuse those additions rather than introducing another coordinator. Production `Bootstrap` still constructs the legacy store directly. Recheck the latest head before editing because implementation is ongoing.
 
