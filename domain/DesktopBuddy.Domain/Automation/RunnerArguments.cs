@@ -54,6 +54,14 @@ public sealed record RunnerArguments
     public string? JourneyId { get; init; }
 
     /// <summary>
+    /// Development-only verification id that keeps <see cref="Mode"/> normal so Bootstrap follows
+    /// the production sandbox composition path before attaching a read-only verification probe.
+    /// </summary>
+    public string? BootstrapJourneyId { get; init; }
+    public int? BootstrapJourneyPhase { get; init; }
+    public string? BootstrapSaveRoot { get; init; }
+
+    /// <summary>
     /// Explicit seed for the injected RNG service. <see langword="null"/> means
     /// "seed from entropy" (production); every automated run supplies one so the
     /// behavior/decision stream is repeatable.
@@ -100,6 +108,9 @@ public sealed record RunnerArguments
 
         string? scenarioId = null;
         string? journeyId = null;
+        string? bootstrapJourneyId = null;
+        int? bootstrapJourneyPhase = null;
+        string? bootstrapSaveRoot = null;
         ulong? seed = null;
         string? artifactsDir = null;
         int? journeyPhase = null;
@@ -138,6 +149,15 @@ public sealed record RunnerArguments
                 case "journey":
                     journeyId = RequireValue(key, value);
                     break;
+                case "bootstrap-journey":
+                    bootstrapJourneyId = RequireValue(key, value);
+                    break;
+                case "bootstrap-phase":
+                    bootstrapJourneyPhase = ParseNonNegativeInt(key, RequireValue(key, value));
+                    break;
+                case "bootstrap-save-root":
+                    bootstrapSaveRoot = RequireValue(key, value);
+                    break;
                 case "artifacts":
                     artifactsDir = RequireValue(key, value);
                     break;
@@ -172,6 +192,11 @@ public sealed record RunnerArguments
             throw new ArgumentException(
                 "--scenario and --journey are mutually exclusive.", nameof(args));
         }
+        if (bootstrapJourneyId is not null && (scenarioId is not null || journeyId is not null))
+        {
+            throw new ArgumentException(
+                "--bootstrap-journey cannot be combined with --scenario or --journey.", nameof(args));
+        }
         if ((promoteTrace is null) != (journeyOut is null))
             throw new ArgumentException("--promote-trace and --journey-out must be supplied together.", nameof(args));
 
@@ -185,6 +210,9 @@ public sealed record RunnerArguments
             Mode = mode,
             ScenarioId = scenarioId,
             JourneyId = journeyId,
+            BootstrapJourneyId = bootstrapJourneyId,
+            BootstrapJourneyPhase = bootstrapJourneyPhase,
+            BootstrapSaveRoot = bootstrapSaveRoot,
             Seed = seed,
             ArtifactsDir = artifactsDir,
             JourneyPhase = journeyPhase,
