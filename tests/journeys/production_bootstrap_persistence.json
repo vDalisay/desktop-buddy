@@ -1,0 +1,81 @@
+{
+  "id": "production_bootstrap_persistence",
+  "description": "Tagged production-Bootstrap persistence gate for Initial Demo refusal and Next Fest migration/recovery.",
+  "milestone": 6,
+  "phases": [
+    {
+      "id": "next_fest_legacy_migration",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "legacy",
+        "expected_wallet_milli": 123000,
+        "expected_work_keyboard": 77
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_manifest_exists", "equals": true },
+        { "predicate": "wallet_preserved", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
+      "id": "next_fest_committed_restart",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "preserve",
+        "expected_wallet_milli": 123000,
+        "expected_work_keyboard": 77
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_manifest_exists", "equals": true },
+        { "predicate": "wallet_preserved", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
+      "id": "next_fest_incomplete_promotion",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "incomplete_promotion",
+        "expected_wallet_milli": 123000,
+        "expected_work_keyboard": 77
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_manifest_exists", "equals": true },
+        { "predicate": "wallet_preserved", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
+      "id": "next_fest_malformed_manifest_refusal",
+      "build_scope": "next_fest",
+      "expected_exit": 3,
+      "assert_semantic_unchanged": true,
+      "setup": {
+        "precondition": "malformed_manifest"
+      }
+    },
+    {
+      "id": "initial_demo_refuses_scene_upgrade",
+      "build_scope": "initial_demo",
+      "expected_exit": 3,
+      "assert_semantic_unchanged": true,
+      "setup": {
+        "precondition": "scene_upgraded",
+        "expected_wallet_milli": 123000,
+        "expected_work_keyboard": 77
+      }
+    }
+  ]
+}
