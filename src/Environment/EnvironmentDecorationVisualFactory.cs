@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DesktopBuddy.App;
 using Godot;
 
 namespace DesktopBuddy.Environment;
@@ -57,7 +58,7 @@ public static class EnvironmentDecorationVisualFactory
             !GodotObject.IsInstanceValid(definition.GeneratedAlbedo))
             throw new InvalidOperationException($"Generated Environment definition '{definition.DefinitionId}' is missing imported visual resources.");
 
-        Node instance = definition.GeneratedMesh!.Instantiate();
+        Node instance = SceneInstantiation.Instantiate<Node>(definition.GeneratedMesh!);
         if (instance is not Node3D generated)
         {
             instance.QueueFree();

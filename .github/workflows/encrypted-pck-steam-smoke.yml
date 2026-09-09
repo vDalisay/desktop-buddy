@@ -119,6 +119,13 @@ jobs:
           if (-not $editor) { throw "Pinned Godot .NET editor was not found." }
           "GODOT_BIN=$($editor.FullName)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Verify NativeAOT scene lifetime regression
+        shell: pwsh
+        run: |
+          python devtools/verification/verify_scene_instantiation_lifetime.py `
+            --godot $env:GODOT_BIN --custom-template $env:CUSTOM_TEMPLATE
+          if ($LASTEXITCODE -ne 0) { throw "NativeAOT scene lifetime regression failed." }
+
       - name: Prepare physically reduced Demo checkout
         shell: pwsh
         env:
