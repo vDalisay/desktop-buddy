@@ -7,6 +7,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.Scenes;
 using Godot;
