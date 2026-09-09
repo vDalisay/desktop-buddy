@@ -1,5 +1,9 @@
 # Distribution hardening — active handoff
 
+**Start here:** [audited hardening finish plan](HARDENING_FINISH_PLAN_2026-09-09.md).
+It owns the remaining H0–H8 queue and current evidence; older status below is historical.
+Do not repeat completed timeout fixes or mistake PR #60 for an open work queue.
+
 Updated: 2026-09-09. The sole active hardening branch is
 `feature/nativeaot-steam-demo-spike`. PR #60 is merged; continue new hardening
 on this same branch. `main` is the accepted
@@ -23,7 +27,7 @@ directory (`hardening-retired-2026-09-09.bundle`) for recovery, without active b
 
 ## Remaining gates
 
-The ordered closeout checklist is now
+The broader Initial Demo release acceptance matrix remains in
 [`PHASE_0_CLOSEOUT_PLAN_2026-09-09.md`](PHASE_0_CLOSEOUT_PLAN_2026-09-09.md).
 It separates the managed Initial Demo RC from optional NativeAOT acceptance and
 records the confirmed overlapping-export failure in run `34323615195` at `5e56cdfd`.
