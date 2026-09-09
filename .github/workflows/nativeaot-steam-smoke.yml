@@ -1,0 +1,270 @@
+name: NativeAOT Steam Demo Spike
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nativeaot-steam-demo-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GODOT_VERSION: 4.6.1-stable
+  GODOT_TEMPLATE_VERSION: 4.6.1.stable.mono
+  GODOT_WIN64_SHA256: e10a41f33392f86e93557610611ead8722142913f9e0fab6a8148d1aa5b64c78
+  GODOT_MONO_TEMPLATES_SHA256: 5792661ed089550357e0e10954af695846be0a32ed7494fa40a0009e3b5a3ea9
+  DESKTOP_BUDDY_BASE_APP_ID: "5114950"
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+
+jobs:
+  nativeaot-export:
+    name: Export and smoke-test native Initial Steam Demo code
+    runs-on: windows-2022
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET (pinned by global.json)
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          global-json-file: global.json
+
+      - name: NativeAOT preparation regression tests
+        shell: pwsh
+        run: |
+          python -m unittest `
+            devtools.verification.test_prepare_nativeaot_spike `
+            devtools.verification.test_apply_steam_demo_scope `
+            devtools.verification.test_verify_steam_distribution_scope `
+            devtools.verification.test_run_checked_process
+
+      - name: Verify Windows native toolchain
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (-not (Test-Path $vswhere)) { throw "Visual Studio Build Tools are missing." }
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "MSVC x64 tools required by NativeAOT are missing." }
+          "MSVC installation: $vs"
+
+      - name: Materialize verified GodotSteam 4.22 addon
+        shell: pwsh
+        run: ./tools/install_godotsteam.ps1 -Force
+
+      - name: Download and verify pinned Godot .NET editor
+        shell: pwsh
+        run: |
+          $name = "Godot_v${env:GODOT_VERSION}_mono_win64"
+          $zip = Join-Path $env:RUNNER_TEMP "$name.zip"
+          $url = "https://github.com/godotengine/godot-builds/releases/download/${env:GODOT_VERSION}/$name.zip"
+          Invoke-WebRequest -Uri $url -OutFile $zip
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:GODOT_WIN64_SHA256) {
+            throw "Godot editor checksum mismatch: expected $env:GODOT_WIN64_SHA256, got $actual"
+          }
+          $dest = Join-Path $env:RUNNER_TEMP "godot"
+          Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $zip -DestinationPath $dest -Force
+          $godot = Get-ChildItem $dest -Recurse -File -Filter "Godot*_mono_win64.exe" | Select-Object -First 1
+          if (-not $godot) { throw "Could not locate the pinned Godot .NET editor." }
+          "GODOT_BIN=$($godot.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Download and verify pinned Godot .NET export templates
+        shell: pwsh
+        run: |
+          $name = "Godot_v${env:GODOT_VERSION}_mono_export_templates.tpz"
+          $tpz = Join-Path $env:RUNNER_TEMP $name
+          $url = "https://github.com/godotengine/godot-builds/releases/download/${env:GODOT_VERSION}/$name"
+          Invoke-WebRequest -Uri $url -OutFile $tpz
+          $actual = (Get-FileHash $tpz -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $env:GODOT_MONO_TEMPLATES_SHA256) {
+            throw "Godot template checksum mismatch: expected $env:GODOT_MONO_TEMPLATES_SHA256, got $actual"
+          }
+
+          $zip = "$tpz.zip"
+          Copy-Item $tpz $zip -Force
+          $expanded = Join-Path $env:RUNNER_TEMP "godot-templates"
+          Remove-Item $expanded -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -Path $zip -DestinationPath $expanded -Force
+          $templateDir = Join-Path $env:APPDATA "Godot\export_templates\${env:GODOT_TEMPLATE_VERSION}"
+          Remove-Item $templateDir -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $templateDir -Force | Out-Null
+          Copy-Item (Join-Path $expanded "templates\*") $templateDir -Recurse -Force
+          if (-not (Test-Path (Join-Path $templateDir "windows_release_x86_64.exe"))) {
+            throw "Pinned Windows release template was not installed."
+          }
+
+      - name: Apply physical Initial Steam Demo scope
+        shell: pwsh
+        run: |
+          "DesktopBuddySteamDemoScope=true" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          New-Item -ItemType Directory -Path build\release-evidence -Force | Out-Null
+          python devtools/verification/apply_steam_demo_scope.py . --report build/release-evidence/nativeaot-steam-demo-scope.json
+          python devtools/verification/apply_steam_demo_scope.py . --check
+
+      - name: Build and verify reduced managed control before AOT
+        shell: pwsh
+        run: |
+          dotnet build DesktopBuddy.csproj -c ExportRelease -p:DesktopBuddySteamDemoScope=true
+          if ($LASTEXITCODE -ne 0) { throw "Reduced managed control build failed." }
+          $assembly = Get-ChildItem .godot\mono\temp\bin\ExportRelease -Recurse -File -Filter DesktopBuddy.dll | Select-Object -First 1
+          if (-not $assembly) { throw "Could not locate reduced managed control assembly." }
+          python devtools/verification/verify_steam_distribution_scope.py --target demo --assembly $assembly.FullName
+          $controlDir = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\managed-scope-control"
+          New-Item -ItemType Directory -Path $controlDir -Force | Out-Null
+          Copy-Item $assembly.FullName (Join-Path $controlDir "DesktopBuddy.dll") -Force
+
+      - name: Build reduced managed editor assembly for export tooling
+        shell: pwsh
+        run: |
+          dotnet build DesktopBuddy.csproj -c Debug -p:DesktopBuddySteamDemoScope=true
+          if ($LASTEXITCODE -ne 0) { throw "Reduced managed editor build failed." }
+          $editorAssembly = Get-ChildItem .godot\mono\temp\bin\Debug -Recurse -File -Filter DesktopBuddy.dll | Select-Object -First 1
+          if (-not $editorAssembly) { throw "Could not locate reduced Debug editor assembly." }
+
+      - name: Resolve and stamp Steam Demo App ID
+        shell: pwsh
+        env:
+          DEMO_APP_ID: ${{ vars.STEAM_DEMO_APP_ID }}
+        run: |
+          $appId = $env:DEMO_APP_ID
+          if ([string]::IsNullOrWhiteSpace($appId)) { $appId = $env:DESKTOP_BUDDY_BASE_APP_ID }
+          if ($appId -notmatch '^[1-9][0-9]*$') { throw "Invalid Steam App ID: $appId" }
+          $path = "project.godot"
+          $text = Get-Content $path -Raw
+          $updated = [regex]::Replace($text, '(?m)^initialization/app_data/app_id=\d+\s*$', "initialization/app_data/app_id=$appId", 1)
+          if ($updated -eq $text -and $text -notmatch "initialization/app_data/app_id=$appId") {
+            throw "Could not stamp Steam App ID into project.godot"
+          }
+          Set-Content -Path $path -Value $updated -NoNewline
+          "STEAM_APP_ID=$appId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Prepare disposable NativeAOT project
+        shell: pwsh
+        run: |
+          python devtools/verification/prepare_nativeaot_spike.py .
+          python devtools/verification/prepare_nativeaot_spike.py . --check
+          Select-String -Path DesktopBuddy.csproj -Pattern "PublishAOT|TrimmerRootAssembly"
+
+      - name: Export NativeAOT Initial Steam Demo
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo"
+          $exe = Join-Path $output "DesktopBuddy.exe"
+          Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $output -Force | Out-Null
+
+          $log = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\nativeaot-export.log"
+          python devtools/verification/run_checked_process.py `
+            --timeout 3600 `
+            --log $log `
+            -- $env:GODOT_BIN --headless --verbose --path . `
+            --export-release "Windows Steam Demo" $exe
+          if ($LASTEXITCODE -ne 0) { throw "Godot NativeAOT export failed with exit code $LASTEXITCODE; see $log" }
+          if (-not (Test-Path $exe)) { throw "Exported executable is missing." }
+          if (-not (Test-Path (Join-Path $output "DesktopBuddy.pck"))) { throw "Exported PCK is missing." }
+
+      - name: Prove project library is native x86_64 with the Godot AOT entry point
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo"
+          $assemblies = @(Get-ChildItem $output -Recurse -File -Filter "DesktopBuddy.dll")
+          if ($assemblies.Count -ne 1) { throw "Expected exactly one NativeAOT DesktopBuddy.dll, found $($assemblies.Count)." }
+          $assembly = $assemblies[0]
+
+          try {
+            [void][System.Reflection.AssemblyName]::GetAssemblyName($assembly.FullName)
+            throw "DesktopBuddy.dll is still a loadable managed assembly: $($assembly.FullName)"
+          }
+          catch [System.BadImageFormatException] {
+            "Confirmed DesktopBuddy.dll is not a normal managed assembly."
+          }
+
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vs = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vs) { throw "Could not resolve Visual Studio for dumpbin verification." }
+          $dumpbin = Get-ChildItem (Join-Path $vs "VC\Tools\MSVC") -Recurse -File -Filter dumpbin.exe |
+            Where-Object { $_.FullName -match 'Hostx64\\x64\\dumpbin\.exe$' } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if (-not $dumpbin) { throw "Could not locate x64 dumpbin.exe." }
+
+          $headers = & $dumpbin.FullName /headers $assembly.FullName | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin /headers failed." }
+          if ($headers -notmatch '8664 machine \(x64\)') { throw "DesktopBuddy.dll is not an x86_64 PE library." }
+
+          $exports = & $dumpbin.FullName /exports $assembly.FullName | Out-String
+          if ($LASTEXITCODE -ne 0) { throw "dumpbin /exports failed." }
+          if ($exports -notmatch '\bgodotsharp_game_main_init\b') {
+            throw "Native DesktopBuddy.dll is missing Godot's required godotsharp_game_main_init export."
+          }
+          "Confirmed native x86_64 PE library with godotsharp_game_main_init export."
+
+      - name: Verify exported PCK retains Initial Demo physical scope
+        shell: pwsh
+        run: |
+          $control = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\managed-scope-control\DesktopBuddy.dll"
+          $pck = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo\DesktopBuddy.pck"
+          python devtools/verification/verify_steam_distribution_scope.py --target demo --assembly $control --pck $pck
+
+      - name: Audit NativeAOT payload
+        shell: pwsh
+        run: |
+          $output = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo"
+          $forbidden = Get-ChildItem $output -Recurse -File -Include *.pdb,*.cs,*.csproj,*.sln,steam_appid.txt
+          if ($forbidden) {
+            $names = ($forbidden | ForEach-Object FullName) -join "`n"
+            throw "Forbidden release files:`n$names"
+          }
+          foreach ($pattern in @("steam_api64.dll", "*godotsteam*.dll")) {
+            if (-not (Get-ChildItem $output -Recurse -File -Filter $pattern | Select-Object -First 1)) {
+              throw "Missing required Windows runtime: $pattern"
+            }
+          }
+          Get-ChildItem $output -Recurse -File | Sort-Object FullName | ForEach-Object {
+            $_.FullName.Substring($output.Length + 1)
+          }
+
+      - name: Startup smoke test exact NativeAOT export
+        shell: pwsh
+        run: |
+          $exe = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo\DesktopBuddy.exe"
+          $process = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          $process.Refresh()
+          if ($process.HasExited) {
+            throw "NativeAOT export exited during startup smoke test with code $($process.ExitCode)."
+          }
+          Stop-Process -Id $process.Id -Force
+          "NativeAOT export remained alive through startup smoke test."
+
+      - name: Generate and verify provenance manifest
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:GITHUB_WORKSPACE "build\nativeaot-steam-demo"
+          $manifest = Join-Path $root "release-manifest.json"
+          python devtools/release/release_manifest.py generate `
+            --root $root `
+            --output $manifest `
+            --distribution steam-demo `
+            --version "nativeaot-spike-$env:GITHUB_RUN_NUMBER" `
+            --git-sha $env:GITHUB_SHA `
+            --build-id $env:GITHUB_RUN_ID `
+            --godot-version $env:GODOT_VERSION `
+            --steam-app-id $env:STEAM_APP_ID
+          python devtools/release/release_manifest.py verify --root $root --manifest $manifest
+
+          $exeHash = (Get-FileHash (Join-Path $root "DesktopBuddy.exe") -Algorithm SHA256).Hash.ToLowerInvariant()
+          $native = Get-ChildItem $root -Recurse -File -Filter DesktopBuddy.dll | Select-Object -First 1
+          $nativeHash = (Get-FileHash $native.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "### NativeAOT Initial Steam Demo spike" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Commit: ``$env:GITHUB_SHA``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- App ID: ``$env:STEAM_APP_ID``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- DesktopBuddy.exe SHA-256: ``$exeHash``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Native DesktopBuddy.dll SHA-256: ``$nativeHash``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "- Binary intentionally not uploaded as a public Actions artifact." | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append

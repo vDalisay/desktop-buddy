@@ -2,13 +2,13 @@ name: Asset Forge CI
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - asset-forge
   pull_request:
     branches:
       - asset-forge
       - main
+
+permissions:
+  contents: read
 
 concurrency:
   group: asset-forge-${{ github.ref }}
@@ -22,11 +22,14 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
         with:
           global-json-file: global.json
 
@@ -67,6 +70,7 @@ jobs:
           NAME="Godot_v${GODOT_VERSION}_mono_linux_x86_64"
           URL="https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${NAME}.zip"
           curl -fL --retry 3 -o godot.zip "$URL"
+          echo "3708d74f19a66b7139f6ba0055ccab0bbc2ed771c3752426fe59046c1b086a17  godot.zip" | sha256sum --check --strict
           unzip -q godot.zip
           GODOT_BIN="$(find "$PWD/$NAME" -maxdepth 2 -type f -name 'Godot*' | head -n 1)"
           test -n "$GODOT_BIN"
@@ -98,7 +102,7 @@ jobs:
           exit 0
 
       - name: Preserve baseball bat capture verdict
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: capture-bat-verdict
           path: .artifacts/capture-bat
@@ -130,7 +134,7 @@ jobs:
           exit 0
 
       - name: Preserve boxing glove capture verdict
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: capture-glove-verdict
           path: .artifacts/capture-glove
@@ -162,7 +166,7 @@ jobs:
           exit 0
 
       - name: Preserve grenade lifecycle verdict
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: capture-grenade-verdict
           path: .artifacts/capture-grenade

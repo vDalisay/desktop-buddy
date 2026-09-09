@@ -134,11 +134,11 @@ jobs:
         shell: bash
         run: echo "DesktopBuddySteamDemoScope=false" >> "$GITHUB_ENV"
 
-      - name: Build shipping managed solution
+      - name: Build shipping managed project
         shell: bash
         run: |
           set -euo pipefail
-          dotnet build DesktopBuddy.sln -c ExportRelease \
+          dotnet build DesktopBuddy.csproj -c ExportRelease \
             -p:DesktopBuddySteamDemoScope="$DesktopBuddySteamDemoScope"
 
       - name: Verify managed distribution scope before packaging
@@ -470,7 +470,8 @@ jobs:
           set -euo pipefail
           python3 devtools/release/release_manifest.py verify \
             --root build/steam-content --manifest build/steam-content/release-manifest.json \
-            --expect-git-sha "$GITHUB_SHA" --expect-build-id "$GITHUB_RUN_ID"
+            --expect-git-sha "$GITHUB_SHA" --expect-build-id "$GITHUB_RUN_ID" \
+            --expect-distribution "steam-${{ inputs.target }}"
           (
             cd "$STEAMCMD_DIR"
             ./steamcmd.sh \

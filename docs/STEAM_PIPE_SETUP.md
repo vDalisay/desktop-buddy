@@ -11,7 +11,7 @@ Desktop Buddy already has the two Godot export presets Steam needs:
 
 The base-game Steam App ID is `5114950`. GodotSteam 4.22 is materialized at build time by the pinned/hash-verified `tools/install_godotsteam.ps1`; Valve/GodotSteam binaries and development `steam_appid.txt` remain untracked.
 
-`.github/workflows/steam-pipe.yml` adds a manual Windows export and optional SteamPipe upload. It never uploads on push or pull request.
+`.github/workflows/steam-pipe.yml` adds a manual, Linux-hosted managed Windows export and optional SteamPipe upload. It never uploads on push or pull request. The separate NativeAOT spike is manual research and does not change this production path.
 
 ## 1. Configure the full game in Steamworks
 
@@ -119,7 +119,7 @@ First run:
 
 The workflow will:
 
-1. build the .NET solution in Release;
+1. build the shipping Godot project in `ExportRelease` with the selected distribution scope;
 2. materialize the verified GodotSteam 4.22 addon;
 3. download pinned Godot 4.6.1 .NET editor/export templates;
 4. stamp the target runtime App ID into the disposable CI checkout;
@@ -127,9 +127,10 @@ The workflow will:
 6. remove PDB files;
 7. reject accidental `steam_appid.txt` or source/project leakage;
 8. verify that a Windows Steam/GodotSteam DLL is present; and
-9. upload a GitHub Actions artifact containing the exact prospective depot payload.
+9. generate and verify a provenance manifest for the complete payload; and
+10. record the manifest hash in the workflow summary.
 
-Download and inspect `DesktopBuddy-Steam-Full-Windows` before the first Steam upload.
+The build-only payload stays on the ephemeral runner and is not published as a GitHub Actions artifact. A successful `upload=false` run is a release preflight, not a retained release candidate. Record its commit, workflow run ID and manifest hash from the summary.
 
 ## 8. First SteamPipe upload
 
@@ -147,13 +148,20 @@ For a private beta branch such as `internal`, the workflow can set it live autom
 
 Do not enter `default` as `release_branch`; Valve requires the default branch to be promoted through Steamworks rather than `SetLive` automation.
 
-## 9. Demo upload
+## 9. Demo candidate and upload
 
 After `STEAM_DEMO_APP_ID` and `STEAM_DEMO_WINDOWS_DEPOT_ID` are configured, use the same workflow with `target=demo`.
 
 The workflow chooses the `Windows Steam Demo` Godot preset and stamps the demo runtime App ID into the disposable export, while the source-controlled Workshop owner remains the base game (`5114950`).
 
-Use `upload=false` first, inspect the demo artifact, then upload to SteamPipe.
+Use `upload=false` first as the managed export preflight. It validates the assembly, PCK, physical Demo scope, required native libraries, forbidden-file policy and provenance manifest, but its runner-local payload cannot be downloaded or used for Windows acceptance.
+
+For an exact retained candidate, use one of these existing paths:
+
+- with release authorization, rerun the same commit with `target=demo`, `upload=true` and an empty `release_branch`; Steam retains the depot build without changing a live branch;
+- build the same managed Demo preset locally with the pinned Godot 4.6.1 editor/templates and verified GodotSteam 4.22 addon, then run the same scope, payload and manifest checks before Windows testing.
+
+Record the candidate commit, workflow/local build ID, runtime Demo App ID (`5228990`), Workshop owner App ID (`5114950`), manifest SHA-256 and payload file hashes together. Never treat the unretained preflight as the candidate tested on Windows.
 
 ## 10. Steam-side validation after upload
 
