@@ -28,6 +28,12 @@ unzip -q "$TEMPLATE_ZIP" -d "$TEMPLATE_UNPACK"
 cp -a "$TEMPLATE_UNPACK/templates/." "$TEMPLATE_DIR/"
 test -f "$TEMPLATE_DIR/linux_debug.x86_64"
 
+# Let Godot finish its first scan/import against the checked-in export configuration first.
+# The editor can rewrite export_presets.cfg during this initialization. Temporary CI-only
+# presets therefore have to be appended after import, immediately before the export processes
+# that consume them.
+xvfb-run -a "$GODOT_BIN" --headless --path . --import
+
 # Keep verification presets out of the checked-in export configuration. They
 # intentionally retain tests/journeys because the parent process is a debug-only
 # journey orchestrator, while excluding generated artifact directories so an
@@ -95,7 +101,10 @@ texture_format/s3tc_bptc=true
 texture_format/etc2_astc=false
 EOF
 
-xvfb-run -a "$GODOT_BIN" --headless --path . --import
+# Fail here with a small, actionable error instead of letting Godot fail later with a vague
+# "Invalid export preset name" if editor initialization or a future config change removed them.
+grep -Fq 'name="CI Linux Initial Demo Verification"' export_presets.cfg
+grep -Fq 'name="CI Linux Next Fest Verification"' export_presets.cfg
 
 export DesktopBuddySteamDemoScope=true
 export DesktopBuddyNextFestDemoScope=false
