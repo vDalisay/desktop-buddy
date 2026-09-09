@@ -251,7 +251,7 @@ public partial class SandboxRoot
             bounds.Size.Y * position.Y);
     }
 
-    private void OnSceneActorLayoutApplied(RoomLayout _layout, Rect2 innerBounds)
+    private void OnSceneActorLayoutApplied(DesktopBuddy.Domain.Physics.RoomLayout _layout, Rect2 innerBounds)
     {
         if (_sceneRuntime is null)
             return;
