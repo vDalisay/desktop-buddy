@@ -83,6 +83,12 @@ public static class ProductionBootstrapJourneyProbe
             bool actorsSharePlayer = runtime is not null && context.SceneProgress is not null;
             bool actorBuddyStatesIndependent = runtime is not null;
             bool actorPositionsDistinct = runtime is not null;
+            bool firstActorNotLegacyPrimary = runtime is not null &&
+                runtime.Actors.Count > 0 &&
+                runtime.Actors[0].BuddyIdentityId != BuddyIdentityId.LegacyPrimary;
+            bool characterSelectionMatchesFirstActor = runtime is not null &&
+                runtime.Actors.Count > 0 &&
+                context.CharacterSelection is not null;
 
             if (runtime is not null && runtime.ProgressBindings is { } progressBindings)
             {
@@ -110,6 +116,13 @@ public static class ProductionBootstrapJourneyProbe
                                 runtime.Actors[other].Buddy.Rig.Torso.GlobalPosition) > 8.0f;
                     }
                 }
+
+                if (runtime.Actors.Count > 0 && context.CharacterSelection is not null)
+                {
+                    BuddyRuntimeProgressBinding firstBinding = runtime.ProgressFor(runtime.Actors[0]);
+                    characterSelectionMatchesFirstActor =
+                        firstBinding.BuddyProgress?.CharacterId == context.CharacterSelection.ActiveCharacterId;
+                }
             }
 
             var state = new Dictionary<string, bool>(StringComparer.Ordinal)
@@ -128,6 +141,8 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_actors_share_player"] = actorsSharePlayer,
                 ["scene_actor_buddy_states_independent"] = actorBuddyStatesIndependent,
                 ["scene_actor_positions_distinct"] = actorPositionsDistinct,
+                ["scene_first_actor_not_legacy_primary"] = firstActorNotLegacyPrimary,
+                ["character_selection_matches_first_actor"] = characterSelectionMatchesFirstActor,
             };
 
             if (phase.TryGetProperty("assertions", out JsonElement assertions) && assertions.ValueKind == JsonValueKind.Array)
