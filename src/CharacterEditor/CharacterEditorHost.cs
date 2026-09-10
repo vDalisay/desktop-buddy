@@ -231,6 +231,15 @@ public partial class CharacterEditorHost : CanvasLayer
             GD.Print("DESKTOP_BUDDY_WEB_CHARACTER_UI_READY");
     }
 
+    /// <summary>
+    /// Customization edits the Buddy the player selected. Runs without a Scene roster keep the one
+    /// compatibility selection.
+    /// </summary>
+    private Guid? FocusedOrActiveCharacterId() =>
+        _sandbox.TryGetFocusedBuddyCharacterId(out Guid? focused)
+            ? focused
+            : _context.CharacterSelection?.ActiveCharacterId;
+
     private void BuildPreview()
     {
         _previewSource = new StaticBuddyVisualTransformSource(

@@ -37,8 +37,7 @@ public partial class CharacterEditorHost
 
     public async Task OpenPaintEditorAsync()
     {
-        CharacterEditorActionResult opened = await _session.OpenActiveAsync(
-            _context.CharacterSelection?.ActiveCharacterId);
+        CharacterEditorActionResult opened = await _session.OpenActiveAsync(FocusedOrActiveCharacterId());
         if (!opened.Completed)
         {
             Handle(opened);

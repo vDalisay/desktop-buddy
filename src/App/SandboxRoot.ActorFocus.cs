@@ -34,14 +34,21 @@ public partial class SandboxRoot
     /// The Character worn by the focused Buddy in a Scene run, so customization and Work follow the
     /// selected cast member instead of the one compatibility selection. Null outside Scene runs.
     /// </summary>
-    public Guid? FocusedBuddyCharacterId
+    public Guid? FocusedBuddyCharacterId =>
+        TryGetFocusedBuddyCharacterId(out Guid? characterId) ? characterId : null;
+
+    /// <summary>
+    /// Reports the Character worn by the focused Buddy. The result distinguishes "this Buddy wears
+    /// the built-in look" (true, null) from "there is no focused Scene Buddy" (false), which the
+    /// single compatibility selection then answers instead.
+    /// </summary>
+    public bool TryGetFocusedBuddyCharacterId(out Guid? characterId)
     {
-        get
-        {
-            if (FocusedActor is not { } actor || _sceneRuntime is not { UsesSplitProgress: true } runtime)
-                return null;
-            return runtime.ProgressFor(actor).BuddyProgress?.CharacterId;
-        }
+        characterId = null;
+        if (FocusedActor is not { } actor || _sceneRuntime is not { UsesSplitProgress: true } runtime)
+            return false;
+        characterId = runtime.ProgressFor(actor).BuddyProgress?.CharacterId;
+        return true;
     }
 
     /// <summary>

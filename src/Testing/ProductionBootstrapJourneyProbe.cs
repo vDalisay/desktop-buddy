@@ -295,13 +295,19 @@ public static class ProductionBootstrapJourneyProbe
 
                 bool focusedSecondary = sandbox.TryFocusActor(secondary.PlacementId);
                 bool appliedToSecondary = await sandbox.TryApplyCharacterToFocusedBuddyAsync(look);
+                // Customization opens against whatever this seam reports, so it must name the
+                // focused Buddy's Character rather than the compatibility selection.
+                bool customizationOpensOnSelection =
+                    sandbox.TryGetFocusedBuddyCharacterId(out Guid? focusedCharacter) &&
+                    focusedCharacter == look &&
+                    context.CharacterSelection?.ActiveCharacterId != look;
                 // The authored actor keeps the one compatibility selection path; only a secondary
                 // Buddy is dressed through the focused seam.
                 bool authoredUsesCompatibilityPath = sandbox.TryFocusActor(authored.PlacementId) &&
                     !await sandbox.TryApplyCharacterToFocusedBuddyAsync(look);
 
                 focusedCustomizationTargetsSelection = focusedSecondary && appliedToSecondary &&
-                    authoredUsesCompatibilityPath &&
+                    customizationOpensOnSelection && authoredUsesCompatibilityPath &&
                     live.ProgressFor(secondary).BuddyProgress?.CharacterId == look &&
                     live.ProgressFor(authored).BuddyProgress?.CharacterId == authoredCharacterBefore &&
                     !scenes.IsDirty;
