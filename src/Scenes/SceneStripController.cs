@@ -174,7 +174,7 @@ public partial class SceneStripController : Node
         popup.SetItemDisabled(popup.ItemCount - 1, scenes.Count <= 1);
         popup.AddSeparator("Cast");
         popup.AddItem("Add Buddy...", 2);
-        AppendRemoveBuddyItems(popup);
+        AppendCastMenuItems(popup);
         var overflowIds = new Dictionary<long, SceneId>();
         long itemId = 100;
         for (int index = 0; index < scenes.Count; index++)
@@ -198,8 +198,10 @@ public partial class SceneStripController : Node
                 DuplicateActiveSceneMenuAsync();
             else if (id == 4)
                 ConfirmDeleteActiveScene();
-            else if (id >= RemoveBuddyItemBase)
-                RemoveCastMemberAsync((int)(id - RemoveBuddyItemBase));
+            else if (id == 5)
+                RemoveFocusedCastMemberAsync();
+            else if (id >= FocusBuddyItemBase)
+                FocusCastMember((int)(id - FocusBuddyItemBase));
             else if (overflowIds.TryGetValue(id, out SceneId sceneId))
                 SwitchToAsync(sceneId);
         };

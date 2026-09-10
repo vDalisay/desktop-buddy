@@ -1,5 +1,6 @@
 using System;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
@@ -531,13 +532,18 @@ public partial class WorkCompanionView : CanvasLayer
         SubViewportContainer container = _buddyPreview;
         _root.AddChild(container);
 
+        // The companion shows the focused cast member; a run with no Scene roster keeps the
+        // authored Buddy.
+        BuddyRoot workBuddy = _sandbox.FocusedActor?.Buddy ?? _sandbox.Buddy;
+        BuddyVisualPresenter workPresenter = _sandbox.FocusedActor?.VisualPresenter ?? _sandbox.VisualPresenter;
+
         var preview = new BuddyPreviewSurface { Name = "WorkBuddyPreviewViewport" };
         preview.Configure(
             rigName: "WorkBuddyRig",
             viewportSize: new Vector2I(400, 315),
             transparentBackground: true,
-            rigProfile: _sandbox.Buddy.Rig.Profile,
-            visualProfile: _sandbox.Buddy.VisualProfile,
+            rigProfile: workBuddy.Rig.Profile,
+            visualProfile: workBuddy.VisualProfile,
             cameraSize: 215.0f,
             cameraPosition: new Vector3(0, 0, 600),
             lightRotationDegrees: new Vector3(-30, -20, 0),
@@ -549,7 +555,7 @@ public partial class WorkCompanionView : CanvasLayer
 
         _source = preview.Source;
         _rig = preview.Rig;
-        preview.CopyPresentationFrom(_sandbox.VisualPresenter.RigView, _appearanceOverride);
+        preview.CopyPresentationFrom(workPresenter.RigView, _appearanceOverride);
     }
 
     private void ApplyWorkPose()

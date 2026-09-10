@@ -86,6 +86,7 @@ public partial class SandboxRoot
         {
             SetAuthoredSceneActorActive(false);
             _sceneRuntime = new SceneRuntimeHost(bindings, []);
+            OnSceneRuntimeComposed();
             Boundaries.LayoutApplied += OnSceneActorLayoutApplied;
             return;
         }
@@ -101,6 +102,7 @@ public partial class SandboxRoot
         }
 
         _sceneRuntime = new SceneRuntimeHost(bindings, actors);
+        OnSceneRuntimeComposed();
         Boundaries.LayoutApplied += OnSceneActorLayoutApplied;
     }
 
@@ -403,6 +405,8 @@ public partial class SandboxRoot
         _sceneRuntime.PhysicsTick(actor =>
         {
             PuppetPartBody? actorGrabbedBody = actor.OwnsPart(grabbedBody) ? grabbedBody : null;
+            if (actorGrabbedBody is not null)
+                NoteActorInteraction(actor);
             return new BuddyActorTickContext(
                 Delta: delta,
                 GrabbedPart: actorGrabbedBody?.PartId,

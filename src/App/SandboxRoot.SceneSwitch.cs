@@ -281,6 +281,7 @@ public partial class SandboxRoot
         {
             SetAuthoredSceneActorActive(false);
             _sceneRuntime = new SceneRuntimeHost(bindings, []);
+            OnSceneRuntimeComposed();
             return;
         }
 
@@ -292,6 +293,7 @@ public partial class SandboxRoot
         for (int index = 1; index < bindings.OrderedBindings.Count; index++)
             actors.Add(ComposeAdditionalSceneActor(bindings.OrderedBindings[index], index));
         _sceneRuntime = new SceneRuntimeHost(bindings, actors);
+        OnSceneRuntimeComposed();
     }
 
     private BuddyActorRuntime RebindAuthoredSceneActor(SceneBuddyProgressBinding binding)

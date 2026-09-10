@@ -140,6 +140,8 @@ public static class ProductionBootstrapJourneyProbe
             bool castRemoveComposed = !changeCast;
             bool castIdentityPreserved = !changeCast;
             bool castCommitted = !changeCast;
+            bool focusFollowsSelection = !changeCast;
+            bool focusRecoversAfterRemoval = !changeCast;
 
             if (changeCast)
             {
@@ -149,6 +151,9 @@ public static class ProductionBootstrapJourneyProbe
                     throw new InvalidOperationException("Cast phase requires the player-facing Scene strip.");
 
                 int before = sandbox.ActiveSceneRuntime?.Actors.Count ?? 0;
+                // A fresh room focuses its first cast member until the player says otherwise.
+                bool focusStartsOnFirstActor = sandbox.FocusedActor is not null &&
+                    ReferenceEquals(sandbox.FocusedActor, sandbox.ActiveSceneRuntime?.Actors[0]);
                 BuddyIdentityId added = await strip.AddCastMemberAsync(
                     default,
                     characterId: null,
@@ -161,6 +166,16 @@ public static class ProductionBootstrapJourneyProbe
                     runtime.Actors.Any(actor => actor.BuddyIdentityId == added) &&
                     scenes.ActiveScene.BuddyPlacements.Any(p => p.BuddyIdentityId == added);
 
+                BuddyActorRuntime? addedActor = runtime?.Actors
+                    .FirstOrDefault(actor => actor.BuddyIdentityId == added);
+                focusFollowsSelection = focusStartsOnFirstActor &&
+                    addedActor is not null &&
+                    // Adding a Buddy must not steal the player's selection; choosing one must.
+                    !ReferenceEquals(sandbox.FocusedActor, addedActor) &&
+                    sandbox.TryFocusActor(addedActor.PlacementId) &&
+                    ReferenceEquals(sandbox.FocusedActor, addedActor) &&
+                    sandbox.FocusedBuddyCharacterId is null;
+
                 bool removed = await strip.RemoveCastMemberAsync(added);
                 runtime = sandbox.ActiveSceneRuntime;
                 castRemoveComposed = removed &&
@@ -172,6 +187,10 @@ public static class ProductionBootstrapJourneyProbe
                 castIdentityPreserved = scenes.TryGetBuddy(added, out BuddyIdentityState? keptBuddy) &&
                     keptBuddy is not null;
                 castCommitted = !scenes.IsDirty;
+                focusRecoversAfterRemoval = sandbox.FocusedActor is not null &&
+                    sandbox.FocusedActor.BuddyIdentityId != added &&
+                    runtime is not null &&
+                    runtime.Actors.Contains(sandbox.FocusedActor);
             }
 
             bool duplicateIsIndependent = !changeLibrary;
@@ -371,6 +390,8 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_cast_remove_composed"] = castRemoveComposed,
                 ["scene_cast_identity_preserved"] = castIdentityPreserved,
                 ["scene_cast_committed"] = castCommitted,
+                ["scene_focus_follows_selection"] = focusFollowsSelection,
+                ["scene_focus_recovers_after_removal"] = focusRecoversAfterRemoval,
                 ["scene_duplicate_independent"] = duplicateIsIndependent,
                 ["scene_duplicate_copied_background"] = duplicateCopiedBackground,
                 ["scene_delete_switched_safely"] = deleteSwitchedSafely,

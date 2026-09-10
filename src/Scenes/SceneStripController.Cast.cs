@@ -20,7 +20,7 @@ namespace DesktopBuddy.Scenes;
 /// </summary>
 public partial class SceneStripController
 {
-    private const long RemoveBuddyItemBase = 200;
+    private const long FocusBuddyItemBase = 300;
 
     private readonly List<CastChoice> _choices = [];
     private readonly Dictionary<Guid, string> _characterNames = [];
@@ -34,16 +34,48 @@ public partial class SceneStripController
     /// <summary>An existing Buddy identity to reuse, or a Character to register a new Buddy from.</summary>
     private readonly record struct CastChoice(BuddyIdentityId Identity, Guid? CharacterId, string Label);
 
-    private void AppendRemoveBuddyItems(PopupMenu popup)
+    private void AppendCastMenuItems(PopupMenu popup)
     {
         IReadOnlyList<BuddyPlacement> placements = _scenes.ActiveScene.BuddyPlacements;
+        BuddyPlacementId focused = _sandbox.FocusedActor?.PlacementId ?? default;
+        bool busy = _castBusy || _sandbox.IsSceneSwitchInProgress;
+
         for (int index = 0; index < placements.Count; index++)
         {
+            BuddyPlacement placement = placements[index];
+            bool isFocused = placement.PlacementId == focused;
             popup.AddItem(
-                $"Remove {CastLabel(index, placements[index].BuddyIdentityId)}",
-                (int)(RemoveBuddyItemBase + index));
-            popup.SetItemDisabled(popup.ItemCount - 1, _castBusy || _sandbox.IsSceneSwitchInProgress);
+                $"{(isFocused ? "• " : string.Empty)}{CastLabel(index, placement.BuddyIdentityId)}",
+                (int)(FocusBuddyItemBase + index));
+            popup.SetItemDisabled(popup.ItemCount - 1, busy || isFocused);
         }
+
+        popup.AddItem("Remove Focused Buddy", 5);
+        popup.SetItemDisabled(popup.ItemCount - 1, busy || _sandbox.FocusedActor is null);
+    }
+
+    private void FocusCastMember(int placementIndex)
+    {
+        IReadOnlyList<BuddyPlacement> placements = _scenes.ActiveScene.BuddyPlacements;
+        if (placementIndex < 0 || placementIndex >= placements.Count)
+            return;
+        if (!_sandbox.TryFocusActor(placements[placementIndex].PlacementId))
+        {
+            SetStatus("That Buddy is not in the room right now.");
+            return;
+        }
+        Rebuild();
+        SetStatus($"Focused {CastLabel(placementIndex, placements[placementIndex].BuddyIdentityId)}.");
+    }
+
+    private async void RemoveFocusedCastMemberAsync()
+    {
+        if (_sandbox.FocusedActor is not { } focused)
+        {
+            SetStatus("No Buddy is focused.");
+            return;
+        }
+        await RemoveCastMemberAsync(focused.BuddyIdentityId);
     }
 
     private string CastLabel(int index, BuddyIdentityId identity)
@@ -250,18 +282,6 @@ public partial class SceneStripController
 
         await ApplyCastChangeAsync($"Removed a Buddy from {_scenes.ActiveScene.Name}.");
         return true;
-    }
-
-    private async void RemoveCastMemberAsync(int placementIndex)
-    {
-        IReadOnlyList<BuddyPlacement> placements = _scenes.ActiveScene.BuddyPlacements;
-        if (placementIndex < 0 || placementIndex >= placements.Count)
-            return;
-
-        BuddyIdentityId identity = placements[placementIndex].BuddyIdentityId;
-        string label = CastLabel(placementIndex, identity);
-        if (await RemoveCastMemberAsync(identity))
-            SetStatus($"Removed {label}.");
     }
 
     /// <summary>Recomposes and commits the active Scene after its cast document changed.</summary>

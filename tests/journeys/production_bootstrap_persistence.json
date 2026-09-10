@@ -138,6 +138,8 @@
         { "predicate": "scene_cast_remove_composed", "equals": true },
         { "predicate": "scene_cast_identity_preserved", "equals": true },
         { "predicate": "scene_cast_committed", "equals": true },
+        { "predicate": "scene_focus_follows_selection", "equals": true },
+        { "predicate": "scene_focus_recovers_after_removal", "equals": true },
         { "predicate": "scene_actor_count_matches", "equals": true },
         { "predicate": "scene_actor_bindings_match", "equals": true },
         { "predicate": "scene_actors_share_player", "equals": true },

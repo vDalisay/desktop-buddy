@@ -400,9 +400,10 @@ public partial class WorkCompanionCoordinator : Node
 
     private async Task<CompiledCharacterAppearance?> ResolveAppearanceAsync(CancellationToken token)
     {
-        BuddyVisualRigView liveRig = _sandbox.VisualPresenter.RigView;
+        // Work takes the Buddy the player selected, not whichever actor happens to be first.
+        BuddyVisualRigView liveRig = (_sandbox.FocusedActor?.VisualPresenter ?? _sandbox.VisualPresenter).RigView;
         CompiledCharacterAppearance? liveAppearance = liveRig.ActiveAppearance;
-        Guid? activeId = _context.CharacterSelection?.ActiveCharacterId;
+        Guid? activeId = _sandbox.FocusedBuddyCharacterId ?? _context.CharacterSelection?.ActiveCharacterId;
 
         // CharacterId alone is not a freshness guarantee: Studio can save/equip another cosmetic
         // on the same character while the live rig is still waiting for its queued activation.
