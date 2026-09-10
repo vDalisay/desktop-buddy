@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Persistence.Characters;
+using DesktopBuddy.Serialization;
 
 namespace DesktopBuddy.Persistence.Sharing;
 
@@ -38,6 +39,7 @@ public sealed class RoomPaintingLibraryStore
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        TypeInfoResolver = AppJsonContext.Default,
     };
 
     public RoomPaintingLibraryStore(string resolvedRoot)

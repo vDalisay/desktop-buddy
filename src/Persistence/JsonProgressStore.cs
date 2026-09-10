@@ -5,6 +5,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Serialization;
 
 namespace DesktopBuddy.Persistence;
 
@@ -54,7 +55,11 @@ public sealed class AtomicSaveFileSystem : IAtomicSaveFileSystem
 public sealed class JsonProgressStore : IProgressStore
 {
     private static readonly JsonSerializerOptions JsonOptions =
-        new(JsonSerializerDefaults.Web) { WriteIndented = true };
+        new(JsonSerializerDefaults.Web)
+        {
+            WriteIndented = true,
+            TypeInfoResolver = DomainJsonContext.Default,
+        };
 
     private readonly string _progressPath;
     private readonly string _settingsPath;

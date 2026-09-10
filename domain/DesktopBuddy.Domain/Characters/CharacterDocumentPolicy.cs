@@ -5,10 +5,12 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
 using DesktopBuddy.Domain.Painting;
+using DesktopBuddy.Domain.Serialization;
+using System.Text.Json.Serialization.Metadata;
 
 namespace DesktopBuddy.Domain.Characters;
 
-public static class CharacterDocumentPolicy
+public static partial class CharacterDocumentPolicy
 {
     public const int CurrentSchemaVersion = 4;
 
@@ -16,7 +18,13 @@ public static class CharacterDocumentPolicy
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        TypeInfoResolver = JsonTypeInfoResolver.Combine(RawJsonContext.Default, DomainJsonContext.Default),
     };
+
+    // RawCharacterDocument is private to the migration path, so it gets its own nested context
+    // rather than being widened purely to satisfy the generator.
+    [JsonSerializable(typeof(RawCharacterDocument))]
+    private sealed partial class RawJsonContext : JsonSerializerContext;
 
     private static readonly IReadOnlyDictionary<int, Func<JsonElement, JsonElement>> Migrations =
         new Dictionary<int, Func<JsonElement, JsonElement>>
@@ -348,59 +356,59 @@ public static class CharacterDocumentPolicy
 
     private sealed class RawCharacterDocument
     {
-        public int SchemaVersion { get; init; }
-        public string? Id { get; init; }
-        public string? DisplayName { get; init; }
-        public RawPartColors? PartColors { get; init; }
-        public RawFeatureSet? Features { get; init; }
-        public RawPaintManifest? Paint { get; init; }
-        public Rgba32? FavoriteColor { get; init; }
-        [JsonExtensionData] public Dictionary<string, JsonElement>? ExtensionData { get; init; }
+        public int SchemaVersion { get; set; }
+        public string? Id { get; set; }
+        public string? DisplayName { get; set; }
+        public RawPartColors? PartColors { get; set; }
+        public RawFeatureSet? Features { get; set; }
+        public RawPaintManifest? Paint { get; set; }
+        public Rgba32? FavoriteColor { get; set; }
+        [JsonExtensionData] public Dictionary<string, JsonElement>? ExtensionData { get; set; }
     }
 
     private sealed class RawPartColors
     {
-        public Rgba32? Head { get; init; }
-        public Rgba32? Torso { get; init; }
-        public Rgba32? LeftHand { get; init; }
-        public Rgba32? RightHand { get; init; }
-        public Rgba32? LeftFoot { get; init; }
-        public Rgba32? RightFoot { get; init; }
+        public Rgba32? Head { get; set; }
+        public Rgba32? Torso { get; set; }
+        public Rgba32? LeftHand { get; set; }
+        public Rgba32? RightHand { get; set; }
+        public Rgba32? LeftFoot { get; set; }
+        public Rgba32? RightFoot { get; set; }
     }
 
     private sealed class RawFeatureSet
     {
-        public RawFeature? Face { get; init; }
-        public RawFeature? Hair { get; init; }
-        public RawFeature? Eyebrows { get; init; }
-        public RawFeature? Eyes { get; init; }
-        public RawFeature? Nose { get; init; }
-        public RawFeature? Mouth { get; init; }
-        public RawFeature? Ears { get; init; }
-        public RawFeature? Accessories { get; init; }
-        public RawFeature? Glasses { get; init; }
-        public RawFeature? Headwear { get; init; }
-        public RawFeature? Tops { get; init; }
-        public RawFeature? Shoes { get; init; }
+        public RawFeature? Face { get; set; }
+        public RawFeature? Hair { get; set; }
+        public RawFeature? Eyebrows { get; set; }
+        public RawFeature? Eyes { get; set; }
+        public RawFeature? Nose { get; set; }
+        public RawFeature? Mouth { get; set; }
+        public RawFeature? Ears { get; set; }
+        public RawFeature? Accessories { get; set; }
+        public RawFeature? Glasses { get; set; }
+        public RawFeature? Headwear { get; set; }
+        public RawFeature? Tops { get; set; }
+        public RawFeature? Shoes { get; set; }
     }
 
     private sealed class RawFeature
     {
-        public string? FeatureId { get; init; }
-        public double? OffsetX { get; init; }
-        public double? OffsetY { get; init; }
-        public double? Scale { get; init; }
-        public Rgba32? Color { get; init; }
-        public Dictionary<string, Rgba32>? Colors { get; init; }
+        public string? FeatureId { get; set; }
+        public double? OffsetX { get; set; }
+        public double? OffsetY { get; set; }
+        public double? Scale { get; set; }
+        public Rgba32? Color { get; set; }
+        public Dictionary<string, Rgba32>? Colors { get; set; }
     }
 
     private sealed class RawPaintManifest
     {
-        public string? Head { get; init; }
-        public string? Torso { get; init; }
-        public string? LeftHand { get; init; }
-        public string? RightHand { get; init; }
-        public string? LeftFoot { get; init; }
-        public string? RightFoot { get; init; }
+        public string? Head { get; set; }
+        public string? Torso { get; set; }
+        public string? LeftHand { get; set; }
+        public string? RightHand { get; set; }
+        public string? LeftFoot { get; set; }
+        public string? RightFoot { get; set; }
     }
 }

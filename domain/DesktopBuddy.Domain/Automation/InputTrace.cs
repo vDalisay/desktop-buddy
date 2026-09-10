@@ -52,6 +52,9 @@ public static class TracePromoter
                 new Dictionary<string, object?> { ["_todo"] = "add semantic assertions" },
             },
         };
+        // Deliberately reflection-based: the draft is an untyped object graph, which no source
+        // generator can describe. This runs only behind the --promote-trace developer flag, so a
+        // NativeAOT build throws here rather than shipping a player-facing failure.
         return JsonSerializer.Serialize(draft, new JsonSerializerOptions { WriteIndented = true });
     }
 }

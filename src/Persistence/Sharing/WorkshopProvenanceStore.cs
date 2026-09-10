@@ -3,6 +3,7 @@ using System.IO;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DesktopBuddy.Serialization;
 
 namespace DesktopBuddy.Persistence.Sharing;
 
@@ -21,6 +22,7 @@ public static class WorkshopProvenanceStore
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        TypeInfoResolver = AppJsonContext.Default,
     };
 
     public static WorkshopProvenance Create(

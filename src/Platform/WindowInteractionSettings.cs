@@ -4,6 +4,7 @@ using System.Text.Json;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
 using Godot;
+using DesktopBuddy.Serialization;
 
 namespace DesktopBuddy.Platform;
 
@@ -77,9 +78,10 @@ public static class WindowInteractionSettings
             ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
             : new Dictionary<string, JsonElement>(settings.UnknownFields, StringComparer.Ordinal);
         extensions[LayoutKey] = JsonSerializer.SerializeToElement(
-            layout == WindowLayoutMode.FullscreenOverlay ? "fullscreen-overlay" : "compact");
+            layout == WindowLayoutMode.FullscreenOverlay ? "fullscreen-overlay" : "compact",
+            AppJsonContext.Default.String);
         extensions[FullscreenMonitorKey] = JsonSerializer.SerializeToElement(
-            Math.Max(0, fullscreenMonitor));
+            Math.Max(0, fullscreenMonitor), AppJsonContext.Default.Int32);
 
         return settings with
         {

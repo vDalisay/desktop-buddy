@@ -14,7 +14,7 @@ namespace DesktopBuddy.Platform.Steam;
 /// immutable submitted snapshots, subscription enumeration and installed-content lookup without a
 /// Steam client. It is never selected automatically in release builds.
 /// </summary>
-public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
+public sealed partial class DirectoryWorkshopTransport : ISteamWorkshopTransport
 {
     private const string MetadataFileName = "item.json";
     private readonly string _root;
@@ -25,18 +25,24 @@ public sealed class DirectoryWorkshopTransport : ISteamWorkshopTransport
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        TypeInfoResolver = MetadataJsonContext.Default,
     };
+
+    // Nested so the generator can still see the private ItemMetadata record below without
+    // widening its accessibility just to satisfy NativeAOT.
+    [JsonSerializable(typeof(ItemMetadata))]
+    private sealed partial class MetadataJsonContext : JsonSerializerContext;
 
     private sealed record ItemMetadata
     {
-        public ulong PublishedFileId { get; init; }
-        public string Title { get; init; } = string.Empty;
-        public string Description { get; init; } = string.Empty;
-        public string Metadata { get; init; } = string.Empty;
-        public string[] Tags { get; init; } = [];
-        public WorkshopVisibility Visibility { get; init; }
-        public long TimeUpdated { get; init; }
-        public bool Subscribed { get; init; } = true;
+        public ulong PublishedFileId { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string Description { get; set; } = string.Empty;
+        public string Metadata { get; set; } = string.Empty;
+        public string[] Tags { get; set; } = [];
+        public WorkshopVisibility Visibility { get; set; }
+        public long TimeUpdated { get; set; }
+        public bool Subscribed { get; set; } = true;
     }
 
     public DirectoryWorkshopTransport(string resolvedRoot, ulong firstId = 1000)

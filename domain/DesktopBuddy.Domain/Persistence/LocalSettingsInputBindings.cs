@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using DesktopBuddy.Domain.Serialization;
 
 namespace DesktopBuddy.Domain.Persistence;
 
@@ -36,7 +37,7 @@ public static class LocalSettingsInputBindings
         var fields = settings.UnknownFields is null
             ? new Dictionary<string, JsonElement>(StringComparer.Ordinal)
             : new Dictionary<string, JsonElement>(settings.UnknownFields, StringComparer.Ordinal);
-        fields[DropToolField] = JsonSerializer.SerializeToElement(chord.Trim());
+        fields[DropToolField] = JsonSerializer.SerializeToElement(chord.Trim(), DomainJsonContext.Default.String);
         return settings with { UnknownFields = fields };
     }
 }

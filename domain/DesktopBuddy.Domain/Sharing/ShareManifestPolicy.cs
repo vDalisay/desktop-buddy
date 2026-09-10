@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using DesktopBuddy.Domain.Painting;
+using DesktopBuddy.Domain.Serialization;
 
 namespace DesktopBuddy.Domain.Sharing;
 
@@ -23,6 +24,7 @@ public static class ShareManifestPolicy
         WriteIndented = true,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        TypeInfoResolver = DomainJsonContext.Default,
     };
 
     private static readonly HashSet<string> BuddyAllowedPaths = new(
