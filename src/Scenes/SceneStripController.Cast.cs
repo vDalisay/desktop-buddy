@@ -59,7 +59,7 @@ public partial class SceneStripController
 
     private async void OpenAddBuddyPicker()
     {
-        if (!CanChangeCast(out string blocked))
+        if (!CanMutateScenes(out string blocked))
         {
             SetStatus(blocked);
             return;
@@ -187,7 +187,7 @@ public partial class SceneStripController
         CanonicalRoomPosition position)
     {
         var choice = new CastChoice(requestedIdentity, characterId, label);
-        if (!CanChangeCast(out string blocked))
+        if (!CanMutateScenes(out string blocked))
         {
             SetStatus(blocked);
             return default;
@@ -235,7 +235,7 @@ public partial class SceneStripController
     /// </summary>
     public async Task<bool> RemoveCastMemberAsync(BuddyIdentityId identity)
     {
-        if (!CanChangeCast(out string blocked))
+        if (!CanMutateScenes(out string blocked))
         {
             SetStatus(blocked);
             return false;
@@ -295,7 +295,7 @@ public partial class SceneStripController
         }
     }
 
-    private bool CanChangeCast(out string blocked)
+    private bool CanMutateScenes(out string blocked)
     {
         if (_castBusy || _sandbox.IsSceneSwitchInProgress)
         {
@@ -304,7 +304,7 @@ public partial class SceneStripController
         }
         if (_sandbox.Shell.Mode != InputMode.Play || _sandbox.Lifecycle.IsEditorModeActive)
         {
-            blocked = "Close Work/Edit state before changing the cast.";
+            blocked = "Close Work/Edit state before changing this Scene.";
             return false;
         }
         blocked = string.Empty;

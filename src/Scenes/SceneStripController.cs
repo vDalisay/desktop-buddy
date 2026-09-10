@@ -168,6 +168,10 @@ public partial class SceneStripController : Node
         PopupMenu popup = more.GetPopup();
         Win98MenuStyle.Apply(popup);
         popup.AddItem("Rename active Scene...", 1);
+        popup.AddItem("Duplicate active Scene", 3);
+        popup.SetItemDisabled(popup.ItemCount - 1, !_scenes.CanCreateScene);
+        popup.AddItem("Delete active Scene...", 4);
+        popup.SetItemDisabled(popup.ItemCount - 1, scenes.Count <= 1);
         popup.AddSeparator("Cast");
         popup.AddItem("Add Buddy...", 2);
         AppendRemoveBuddyItems(popup);
@@ -190,6 +194,10 @@ public partial class SceneStripController : Node
                 OpenNameDialog(rename: true);
             else if (id == 2)
                 OpenAddBuddyPicker();
+            else if (id == 3)
+                DuplicateActiveSceneMenuAsync();
+            else if (id == 4)
+                ConfirmDeleteActiveScene();
             else if (id >= RemoveBuddyItemBase)
                 RemoveCastMemberAsync((int)(id - RemoveBuddyItemBase));
             else if (overflowIds.TryGetValue(id, out SceneId sceneId))

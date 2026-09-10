@@ -146,6 +146,27 @@
       ]
     },
     {
+      "id": "next_fest_runtime_scene_library",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "scene_upgraded",
+        "change_scene_library": true,
+        "expected_work_keyboard": 77
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_duplicate_independent", "equals": true },
+        { "predicate": "scene_duplicate_copied_background", "equals": true },
+        { "predicate": "scene_delete_switched_safely", "equals": true },
+        { "predicate": "scene_delete_removed_assets", "equals": true },
+        { "predicate": "scene_last_scene_protected", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
       "id": "next_fest_malformed_manifest_refusal",
       "build_scope": "next_fest",
       "expected_exit": 3,

@@ -9,6 +9,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Persistence;
@@ -84,6 +85,9 @@ public static class ProductionBootstrapJourneyProbe
             bool changeCast = setup.ValueKind == JsonValueKind.Object &&
                 setup.TryGetProperty("change_active_cast", out JsonElement castElement) &&
                 castElement.ValueKind == JsonValueKind.True;
+            bool changeLibrary = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("change_scene_library", out JsonElement libraryElement) &&
+                libraryElement.ValueKind == JsonValueKind.True;
 
             SceneStripController? strip = sandbox.GetTree().Root.FindChild(
                 nameof(SceneStripController), recursive: true, owned: false) as SceneStripController;
@@ -158,6 +162,82 @@ public static class ProductionBootstrapJourneyProbe
                 castIdentityPreserved = scenes.TryGetBuddy(added, out BuddyIdentityState? keptBuddy) &&
                     keptBuddy is not null;
                 castCommitted = !scenes.IsDirty;
+            }
+
+            bool duplicateIsIndependent = !changeLibrary;
+            bool duplicateCopiedBackground = !changeLibrary;
+            bool deleteSwitchedSafely = !changeLibrary;
+            bool deleteRemovedAssets = !changeLibrary;
+            bool lastSceneProtected = !changeLibrary;
+
+            if (changeLibrary)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Scene library phase requires Scene progress.");
+                if (strip is null)
+                    throw new InvalidOperationException("Scene library phase requires the player-facing Scene strip.");
+
+                var files = new CharacterFileSystem();
+                string userRoot = ProjectSettings.GlobalizePath("user://");
+                SceneId sourceId = scenes.ActiveSceneId;
+                SceneDocument source = scenes.ActiveScene;
+                int scenesBefore = scenes.SceneCount;
+
+                // A painted background is the Scene-owned mutable asset the duplicate must copy
+                // rather than share.
+                var painted = new byte[EnvironmentCanvasPolicy.Bytes];
+                for (int index = 0; index < painted.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
+                {
+                    painted[index] = 12;
+                    painted[index + 1] = 34;
+                    painted[index + 2] = 56;
+                    painted[index + 3] = 255;
+                }
+                await EnvironmentPaintStore.ForScene(files, userRoot, sourceId).SaveAsync(painted);
+
+                SceneId copyId = await strip.DuplicateActiveSceneAsync();
+                SceneDocument? copy = scenes.Scenes.FirstOrDefault(scene => scene.SceneId == copyId);
+                duplicateIsIndependent = copyId.IsValid && copy is not null &&
+                    scenes.SceneCount == scenesBefore + 1 &&
+                    scenes.ActiveSceneId == sourceId &&
+                    SceneIndexOf(scenes, copy.SceneId) == SceneIndexOf(scenes, source.SceneId) + 1 &&
+                    copy.BuddyPlacements.Count == source.BuddyPlacements.Count &&
+                    copy.BuddyPlacements.All(placement =>
+                        source.BuddyPlacements.Any(original =>
+                            original.BuddyIdentityId == placement.BuddyIdentityId) &&
+                        source.BuddyPlacements.All(original => original.PlacementId != placement.PlacementId));
+
+                EnvironmentPaintStore copyPaint = EnvironmentPaintStore.ForScene(files, userRoot, copyId);
+                byte[]? copied = copyPaint.Load();
+                duplicateCopiedBackground = copied is not null &&
+                    copied.AsSpan().SequenceEqual(painted) &&
+                    !string.Equals(
+                        copyPaint.PaintPath,
+                        EnvironmentPaintStore.ForScene(files, userRoot, sourceId).PaintPath,
+                        StringComparison.OrdinalIgnoreCase);
+
+                // Deleting the active Scene must leave a usable committed room behind it.
+                bool deleted = await strip.DeleteActiveSceneAsync();
+                runtime = sandbox.ActiveSceneRuntime;
+                deleteSwitchedSafely = deleted &&
+                    scenes.SceneCount == scenesBefore &&
+                    scenes.Scenes.All(scene => scene.SceneId != sourceId) &&
+                    scenes.ActiveSceneId != sourceId &&
+                    runtime is not null && runtime.Scene.SceneId == scenes.ActiveSceneId &&
+                    !scenes.IsDirty;
+                deleteRemovedAssets = !files.DirectoryExists(Path.Combine(
+                    userRoot,
+                    SceneStoragePaths.SceneRoot(sourceId).Replace('/', Path.DirectorySeparatorChar)));
+
+                while (scenes.SceneCount > 1)
+                {
+                    if (!await strip.DeleteActiveSceneAsync())
+                        break;
+                }
+                lastSceneProtected = scenes.SceneCount == 1 && !await strip.DeleteActiveSceneAsync();
+                // Every teardown above freed its actors; the shared checks below must not read a
+                // roster from before the last deletion.
+                runtime = sandbox.ActiveSceneRuntime;
             }
 
             bool actorCountMatches = expectedActorCount < 0 ||
@@ -239,6 +319,11 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_cast_remove_composed"] = castRemoveComposed,
                 ["scene_cast_identity_preserved"] = castIdentityPreserved,
                 ["scene_cast_committed"] = castCommitted,
+                ["scene_duplicate_independent"] = duplicateIsIndependent,
+                ["scene_duplicate_copied_background"] = duplicateCopiedBackground,
+                ["scene_delete_switched_safely"] = deleteSwitchedSafely,
+                ["scene_delete_removed_assets"] = deleteRemovedAssets,
+                ["scene_last_scene_protected"] = lastSceneProtected,
             };
 
             if (phase.TryGetProperty("assertions", out JsonElement assertions) && assertions.ValueKind == JsonValueKind.Array)
@@ -271,6 +356,16 @@ public static class ProductionBootstrapJourneyProbe
         }
 
         return Finish(passed, null, null);
+
+        static int SceneIndexOf(SceneProgressCoordinator scenes, SceneId sceneId)
+        {
+            for (int index = 0; index < scenes.Scenes.Count; index++)
+            {
+                if (scenes.Scenes[index].SceneId == sceneId)
+                    return index;
+            }
+            return -1;
+        }
 
         bool Finish(bool ok, string? extraName, string? detail)
         {
