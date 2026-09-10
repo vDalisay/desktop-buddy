@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using DesktopBuddy.App;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Domain.Content;
@@ -6,6 +7,7 @@ using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Scenes;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -27,6 +29,7 @@ public partial class DroppedToolInteractionComponent : Node2D
     private CursorToolController _cursorTools = null!;
     private GrabTetherController _grab = null!;
     private BuddyRoot _buddy = null!;
+    private SandboxRoot? _sandbox;
 
     public bool IsInitialized { get; private set; }
 
@@ -35,7 +38,8 @@ public partial class DroppedToolInteractionComponent : Node2D
         InteractionDamageComponent pipeline,
         CursorToolController cursorTools,
         GrabTetherController grab,
-        BuddyRoot buddy)
+        BuddyRoot buddy,
+        SandboxRoot? sandbox = null)
     {
         if (IsInitialized)
             return;
@@ -52,6 +56,7 @@ public partial class DroppedToolInteractionComponent : Node2D
         _cursorTools = cursorTools;
         _grab = grab;
         _buddy = buddy;
+        _sandbox = sandbox;
         _pipeline.ToolChanged += OnToolChanged;
         IsInitialized = true;
     }
@@ -266,10 +271,14 @@ public partial class DroppedToolInteractionComponent : Node2D
         if (!GodotObject.IsInstanceValid(body))
             return;
 
-        if (_buddy.ObjectInteraction.IsHolding &&
-            _buddy.ObjectInteraction.TrackedRuntimeId == body.RuntimeId)
+        // Whichever Buddy is holding this object loses it, not just the first one in the room.
+        foreach (BuddyRoot holder in Buddies())
         {
-            _buddy.ObjectInteraction.CancelActiveInteraction();
+            if (holder.ObjectInteraction.IsHolding &&
+                holder.ObjectInteraction.TrackedRuntimeId == body.RuntimeId)
+            {
+                holder.ObjectInteraction.CancelActiveInteraction();
+            }
         }
         if (_grab.IsGrabbing && _grab.CurrentGrab.Target == body)
             _grab.Release(countsAsThrow: false);
@@ -289,5 +298,20 @@ public partial class DroppedToolInteractionComponent : Node2D
     {
         if (IsInitialized && GodotObject.IsInstanceValid(_pipeline))
             _pipeline.ToolChanged -= OnToolChanged;
+    }
+
+    private IEnumerable<BuddyRoot> Buddies()
+    {
+        if (GodotObject.IsInstanceValid(_sandbox) && _sandbox!.ActiveSceneRuntime is { Actors.Count: > 0 } runtime)
+        {
+            foreach (BuddyActorRuntime actor in runtime.Actors)
+            {
+                if (GodotObject.IsInstanceValid(actor.Buddy))
+                    yield return actor.Buddy;
+            }
+            yield break;
+        }
+        if (GodotObject.IsInstanceValid(_buddy))
+            yield return _buddy;
     }
 }

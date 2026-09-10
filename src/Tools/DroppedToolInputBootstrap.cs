@@ -116,7 +116,8 @@ public partial class DroppedToolInputBootstrap : Node
             _sandbox.Pipeline,
             _sandbox.CursorTools,
             _sandbox.Grab,
-            _sandbox.Buddy);
+            _sandbox.Buddy,
+            _sandbox);
 
         // The Sword's impalement rides along here because this is the one place that holds a
         // live dropped-tool component: an impaled blade is a dropped blade that has been

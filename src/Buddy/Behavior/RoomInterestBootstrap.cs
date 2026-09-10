@@ -1,5 +1,12 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Presentation;
+using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Domain.Scenes;
+using DesktopBuddy.Interaction;
+using DesktopBuddy.Scenes;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Physics;
@@ -46,9 +53,16 @@ public partial class RoomInterestBootstrap : Node
     /// <summary>Below this alpha the canvas is unpainted and the wallpaper shows through.</summary>
     private const byte PaintedAlphaThreshold = 128;
 
+    private readonly Dictionary<BuddyPlacementId, ActorInterest> _interests = [];
     private SandboxRoot? _sandbox;
-    private double _secondsUntilConsideration = FirstConsiderationSeconds;
-    private int _awaitedArrivalCount = -1;
+
+    /// <summary>Per-Buddy consideration timer and pending arrival. Every cast member looks for its
+    /// own favourite colour on its own schedule.</summary>
+    private sealed class ActorInterest
+    {
+        public double SecondsUntilConsideration = FirstConsiderationSeconds;
+        public int AwaitedArrivalCount = -1;
+    }
 
     public override void _Ready()
     {
@@ -65,45 +79,88 @@ public partial class RoomInterestBootstrap : Node
         if (!GodotObject.IsInstanceValid(_sandbox) || _sandbox!.Window.WorkCompanionActive)
             return;
 
-        ObserveArrival();
-
-        _secondsUntilConsideration -= Math.Max(0.0, delta);
-        if (_secondsUntilConsideration > 0.0)
+        if (_sandbox.ActiveSceneRuntime is { } runtime && runtime.Actors.Count > 0)
+        {
+            foreach (BuddyActorRuntime actor in runtime.Actors)
+            {
+                ConsiderActor(
+                    actor.PlacementId,
+                    actor.Buddy,
+                    actor.VisualPresenter,
+                    actor.Reaction,
+                    actor.Damage,
+                    delta);
+            }
             return;
-        _secondsUntilConsideration = NextConsiderationSeconds();
+        }
 
-        if (_sandbox.Buddy.AutonomousMotion.HasRoomInterest)
+        ConsiderActor(
+            default,
+            _sandbox.Buddy,
+            _sandbox.VisualPresenter,
+            _sandbox.Reactions,
+            _sandbox.Pipeline,
+            delta);
+    }
+
+    private void ConsiderActor(
+        BuddyPlacementId placementId,
+        BuddyRoot buddy,
+        BuddyVisualPresenter presenter,
+        BuddyReactionComponent? reactions,
+        InteractionDamageComponent? pipeline,
+        double delta)
+    {
+        if (!GodotObject.IsInstanceValid(buddy) || !GodotObject.IsInstanceValid(presenter))
+            return;
+        if (!_interests.TryGetValue(placementId, out ActorInterest? interest))
+        {
+            interest = new ActorInterest();
+            _interests[placementId] = interest;
+        }
+
+        ObserveArrival(interest, buddy, reactions, pipeline);
+
+        interest.SecondsUntilConsideration -= Math.Max(0.0, delta);
+        if (interest.SecondsUntilConsideration > 0.0)
+            return;
+        interest.SecondsUntilConsideration = NextConsiderationSeconds();
+
+        if (buddy.AutonomousMotion.HasRoomInterest)
             return;
 
-        CompiledCharacterAppearance? appearance = _sandbox.VisualPresenter.RigView.ActiveAppearance;
+        CompiledCharacterAppearance? appearance = presenter.RigView.ActiveAppearance;
         if (appearance is null)
             return;
 
         if (!TryFindFavouriteColour(appearance.FavoriteColor, out Vector2 point))
             return;
 
-        _awaitedArrivalCount = _sandbox.Buddy.AutonomousMotion.RoomInterestArrivals + 1;
-        _sandbox.Buddy.AutonomousMotion.SuggestRoomInterest(
-            point, InterestDurationTicks, ArrivalGazeTicks);
+        interest.AwaitedArrivalCount = buddy.AutonomousMotion.RoomInterestArrivals + 1;
+        buddy.AutonomousMotion.SuggestRoomInterest(point, InterestDurationTicks, ArrivalGazeTicks);
     }
 
     /// <summary>
     /// The buddy reached the colour it set out for: the gaze is already held by the motion
     /// component, so this only performs the smile and the small mood gain.
     /// </summary>
-    private void ObserveArrival()
+    private static void ObserveArrival(
+        ActorInterest interest,
+        BuddyRoot buddy,
+        BuddyReactionComponent? reactions,
+        InteractionDamageComponent? pipeline)
     {
-        if (_awaitedArrivalCount < 0 ||
-            _sandbox!.Buddy.AutonomousMotion.RoomInterestArrivals < _awaitedArrivalCount)
+        if (interest.AwaitedArrivalCount < 0 ||
+            buddy.AutonomousMotion.RoomInterestArrivals < interest.AwaitedArrivalCount)
         {
             return;
         }
 
-        _awaitedArrivalCount = -1;
-        if (GodotObject.IsInstanceValid(_sandbox.Reactions))
-            _sandbox.Reactions.PlayColourSmile();
-        if (GodotObject.IsInstanceValid(_sandbox.Pipeline))
-            _sandbox.Pipeline.ProgressBinding.ApplyCareMood(1.0f);
+        interest.AwaitedArrivalCount = -1;
+        if (GodotObject.IsInstanceValid(reactions))
+            reactions!.PlayColourSmile();
+        if (GodotObject.IsInstanceValid(pipeline))
+            pipeline!.ProgressBinding.ApplyCareMood(1.0f);
     }
 
     private static double NextConsiderationSeconds() =>
@@ -147,8 +204,28 @@ public partial class RoomInterestBootstrap : Node
             ForgetRoomSurfaces();
         }
 
+        SandboxRoot? previous = _sandbox;
         _sandbox ??= FindFirst<SandboxRoot>(GetTree().Root);
+        if (!ReferenceEquals(previous, _sandbox) && _sandbox is not null)
+        {
+            // Placements that leave the room take their pending interest with them.
+            _sandbox.SceneRosterChanged += ForgetDepartedActors;
+        }
         ResolveRoomSurfaces();
+    }
+
+    private void ForgetDepartedActors()
+    {
+        if (_sandbox?.ActiveSceneRuntime is not { } runtime)
+            return;
+        var live = new HashSet<BuddyPlacementId>();
+        foreach (BuddyActorRuntime actor in runtime.Actors)
+            live.Add(actor.PlacementId);
+        foreach (BuddyPlacementId placementId in _interests.Keys.ToArray())
+        {
+            if (!live.Contains(placementId))
+                _interests.Remove(placementId);
+        }
     }
 
     private static double ColourDistanceSquared(Rgba32 favorite, Color authored) =>
