@@ -17,6 +17,7 @@ namespace DesktopBuddy.Scenes;
 public partial class SceneBuddyAppearanceRuntime : Node
 {
     private CharacterSelectionCoordinator? _coordinator;
+    private BuddyIdentityState? _buddy;
     private RuntimePaintTextureBridge? _paintTextures;
     private CancellationTokenSource? _lifetime;
     private Task<CharacterActivationResult>? _loadTask;
@@ -38,6 +39,7 @@ public partial class SceneBuddyAppearanceRuntime : Node
         if (!presenter.IsInitialized)
             throw new InvalidOperationException("Scene Buddy appearance requires an initialized visual presenter.");
 
+        _buddy = buddy;
         var selection = new CharacterSelectionState(buddy.CharacterId);
         _coordinator = new CharacterSelectionCoordinator(
             store,
@@ -101,6 +103,31 @@ public partial class SceneBuddyAppearanceRuntime : Node
         _paintTextures!.Apply(coordinator.AppliedPaintPayload);
         LoadResult = result;
         IsLoaded = true;
+        return result;
+    }
+
+    /// <summary>
+    /// Dresses this actor in another Character and records it on the actor's own persistent Buddy
+    /// identity. The caller commits the Scene generation; this node owns only the live projection.
+    /// </summary>
+    public async Task<CharacterActivationResult> UseCharacterAsync(
+        Guid? characterId,
+        CancellationToken token = default)
+    {
+        if (!IsConfigured || _buddy is null)
+            throw new InvalidOperationException("Scene Buddy appearance runtime is not configured.");
+
+        CharacterSelectionCoordinator coordinator = _coordinator!;
+        CharacterActivationResult result = await coordinator.QueueUseCharacterAsync(characterId, token);
+        token.ThrowIfCancellationRequested();
+
+        // This actor has no physics-process selection router of its own, so consume the prepared
+        // activation here exactly as the startup load does.
+        coordinator.PhysicsTick();
+        _paintTextures!.Apply(coordinator.AppliedPaintPayload);
+        _buddy.SetCharacter(characterId);
+        IsLoaded = true;
+        LoadResult = result;
         return result;
     }
 

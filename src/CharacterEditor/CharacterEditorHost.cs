@@ -211,7 +211,10 @@ public partial class CharacterEditorHost : CanvasLayer
             library,
             _selectionRuntime.Coordinator,
             _preview,
-            economy: _context.Economy);
+            economy: _context.Economy,
+            focusedBuddy: new FocusedBuddyAppearanceHooks(
+                () => _sandbox.FocusedBuddyCharacterId,
+                _sandbox.TryApplyCharacterToFocusedBuddyAsync));
         _session.Changed += RefreshAll;
         _session.LibraryChanged += RefreshLibrary;
         _session.CloseResolved += closed =>

@@ -25,7 +25,7 @@ public partial class SandboxRoot
     private const string SceneBuddyPackedScenePath = "res://scenes/buddy/puppet.tscn";
 
     private readonly List<Node> _sceneSpawnedActorNodes = [];
-    private readonly List<SceneBuddyAppearanceRuntime> _sceneSpawnedAppearanceRuntimes = [];
+    private readonly Dictionary<BuddyPlacementId, SceneBuddyAppearanceRuntime> _sceneSpawnedAppearanceRuntimes = [];
     private SceneRuntimeHost? _sceneRuntime;
 
     /// <summary>
@@ -246,7 +246,7 @@ public partial class SandboxRoot
             appearance.Configure(characters, buddyProgress, visual);
             AddChild(appearance);
             TrackSpawnedSceneActorNode(appearance);
-            _sceneSpawnedAppearanceRuntimes.Add(appearance);
+            _sceneSpawnedAppearanceRuntimes[binding.Placement.PlacementId] = appearance;
         }
 
         return new BuddyActorRuntime(
@@ -269,9 +269,8 @@ public partial class SandboxRoot
     /// </summary>
     private async Task EnsureSecondarySceneAppearancesLoadedAsync(CancellationToken token)
     {
-        for (int index = 0; index < _sceneSpawnedAppearanceRuntimes.Count; index++)
+        foreach (SceneBuddyAppearanceRuntime appearance in _sceneSpawnedAppearanceRuntimes.Values)
         {
-            SceneBuddyAppearanceRuntime appearance = _sceneSpawnedAppearanceRuntimes[index];
             if (GodotObject.IsInstanceValid(appearance))
                 await appearance.EnsureLoadedAsync(token);
         }

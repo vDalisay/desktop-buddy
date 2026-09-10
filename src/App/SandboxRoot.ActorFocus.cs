@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Domain.Scenes;
@@ -34,6 +36,31 @@ public partial class SandboxRoot
                 return null;
             return runtime.ProgressFor(actor).BuddyProgress?.CharacterId;
         }
+    }
+
+    /// <summary>
+    /// Dresses the focused Buddy in a Character when that Buddy is not the authored compatibility
+    /// actor, and commits the change. Returns false when the caller should use the existing single
+    /// selection path instead: no Scene run, no focus, or the authored actor is the focused one.
+    /// </summary>
+    public async Task<bool> TryApplyCharacterToFocusedBuddyAsync(
+        Guid? characterId,
+        CancellationToken token = default)
+    {
+        if (_runContext?.SceneProgress is not { } scenes || FocusedActor is not { } actor ||
+            _sceneRuntime is null || ReferenceEquals(actor, _sceneRuntime.Actors.Count > 0 ? _sceneRuntime.Actors[0] : null))
+        {
+            return false;
+        }
+        if (!_sceneSpawnedAppearanceRuntimes.TryGetValue(actor.PlacementId, out SceneBuddyAppearanceRuntime? appearance) ||
+            !GodotObject.IsInstanceValid(appearance))
+        {
+            return false;
+        }
+
+        await appearance.UseCharacterAsync(characterId, token);
+        await scenes.FlushAsync(force: true, token);
+        return true;
     }
 
     /// <summary>Focuses one placement of the active Scene. Returns false when it is not live.</summary>

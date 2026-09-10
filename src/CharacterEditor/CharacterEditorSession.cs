@@ -27,6 +27,14 @@ public readonly record struct CharacterEditorActionResult(
 /// for the lifetime of the session so shipped and Asset Forge-generated definitions are resolved
 /// through the same validation/preview/purchase/save path without mutable global registration.
 /// </summary>
+/// <summary>
+/// Lets the editor dress the Buddy the player selected in a multi-Buddy Scene. <see cref="Apply"/>
+/// returns false when there is no such Buddy and the single compatibility selection owns the change.
+/// </summary>
+public sealed record FocusedBuddyAppearanceHooks(
+    Func<Guid?> CurrentCharacterId,
+    Func<Guid?, CancellationToken, Task<bool>> Apply);
+
 public sealed class CharacterEditorSession
 {
     private const string PaletteKey = "palette";
@@ -38,6 +46,7 @@ public sealed class CharacterEditorSession
     private readonly Func<Guid> _newGuid;
     private readonly EconomyService? _economy;
     private readonly CharacterFeatureCatalog _featureCatalog;
+    private readonly FocusedBuddyAppearanceHooks? _focusedBuddy;
     private readonly Dictionary<CharacterFeatureSlot, CharacterFeatureDocument> _unownedPreviews = [];
     private readonly Dictionary<CharacterFeatureSlot, CharacterFeatureDocument> _ownedPreviews = [];
     private CharacterDocument? _savedDocument;
@@ -54,7 +63,8 @@ public sealed class CharacterEditorSession
         BuddyVisualRigView preview,
         Func<Guid>? newGuid = null,
         EconomyService? economy = null,
-        CharacterFeatureCatalog? featureCatalog = null)
+        CharacterFeatureCatalog? featureCatalog = null,
+        FocusedBuddyAppearanceHooks? focusedBuddy = null)
     {
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _library = library ?? throw new ArgumentNullException(nameof(library));
@@ -63,6 +73,7 @@ public sealed class CharacterEditorSession
         _newGuid = newGuid ?? Guid.NewGuid;
         _economy = economy;
         _featureCatalog = featureCatalog ?? BuddyGeneratedCosmeticRegistry.Current.FeatureCatalog;
+        _focusedBuddy = focusedBuddy;
     }
 
     public event Action? Changed;
@@ -435,7 +446,10 @@ public sealed class CharacterEditorSession
         // painting a buddy, saving it and then leaving without pressing Use Character left the
         // live buddy on the pixels it loaded at startup (owner report 2026-08-19). Re-activating
         // is a no-op for any other character being edited.
-        if (_selection.ActiveCharacterId == saved.Document.Id)
+        bool reachedFocusedBuddy = _focusedBuddy is not null &&
+            _focusedBuddy.CurrentCharacterId() == saved.Document.Id &&
+            await _focusedBuddy.Apply(saved.Document.Id, token);
+        if (!reachedFocusedBuddy && _selection.ActiveCharacterId == saved.Document.Id)
             await _selection.QueueUseCharacterAsync(saved.Document.Id, token);
 
         await RefreshPageAsync(PageOffset, PageSize, token);
@@ -452,6 +466,8 @@ public sealed class CharacterEditorSession
         CancelCosmeticPreviews();
         CharacterEditorActionResult saved = IsDirty ? await SaveAsync(token) : new CharacterEditorActionResult(true);
         if (!saved.Completed || WorkingDocument is null) return saved;
+        if (_focusedBuddy is not null && await _focusedBuddy.Apply(WorkingDocument.Id, token))
+            return new CharacterEditorActionResult(true);
         CharacterActivationResult activation = await _selection.QueueUseCharacterAsync(WorkingDocument.Id, token);
         return activation.WasQueued
             ? new CharacterEditorActionResult(true)

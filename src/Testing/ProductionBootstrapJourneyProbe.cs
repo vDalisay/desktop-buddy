@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Domain.Persistence;
@@ -92,6 +93,9 @@ public static class ProductionBootstrapJourneyProbe
             bool changeLibrary = setup.ValueKind == JsonValueKind.Object &&
                 setup.TryGetProperty("change_scene_library", out JsonElement libraryElement) &&
                 libraryElement.ValueKind == JsonValueKind.True;
+            bool customizeFocused = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("customize_focused_buddy", out JsonElement customizeElement) &&
+                customizeElement.ValueKind == JsonValueKind.True;
             bool prepareRestart = setup.ValueKind == JsonValueKind.Object &&
                 setup.TryGetProperty("prepare_restart_room", out JsonElement prepareElement) &&
                 prepareElement.ValueKind == JsonValueKind.True;
@@ -262,6 +266,40 @@ public static class ProductionBootstrapJourneyProbe
                 runtime = sandbox.ActiveSceneRuntime;
             }
 
+            bool focusedCustomizationTargetsSelection = !customizeFocused;
+
+            if (customizeFocused)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Customization phase requires Scene progress.");
+                CharacterStore characters = context.Characters
+                    ?? throw new InvalidOperationException("Customization phase requires the Character store.");
+                SceneRuntimeHost live = sandbox.ActiveSceneRuntime
+                    ?? throw new InvalidOperationException("Customization phase requires a live Scene roster.");
+                if (live.Actors.Count < 2)
+                    throw new InvalidOperationException("Customization phase requires a second cast member.");
+
+                Guid look = Guid.NewGuid();
+                await characters.SaveAsync(CharacterDocument.CreateDefault(look, "Journey Look"), default);
+
+                BuddyActorRuntime authored = live.Actors[0];
+                BuddyActorRuntime secondary = live.Actors[1];
+                Guid? authoredCharacterBefore = live.ProgressFor(authored).BuddyProgress?.CharacterId;
+
+                bool focusedSecondary = sandbox.TryFocusActor(secondary.PlacementId);
+                bool appliedToSecondary = await sandbox.TryApplyCharacterToFocusedBuddyAsync(look);
+                // The authored actor keeps the one compatibility selection path; only a secondary
+                // Buddy is dressed through the focused seam.
+                bool authoredUsesCompatibilityPath = sandbox.TryFocusActor(authored.PlacementId) &&
+                    !await sandbox.TryApplyCharacterToFocusedBuddyAsync(look);
+
+                focusedCustomizationTargetsSelection = focusedSecondary && appliedToSecondary &&
+                    authoredUsesCompatibilityPath &&
+                    live.ProgressFor(secondary).BuddyProgress?.CharacterId == look &&
+                    live.ProgressFor(authored).BuddyProgress?.CharacterId == authoredCharacterBefore &&
+                    !scenes.IsDirty;
+            }
+
             bool restartPrepared = !prepareRestart;
             bool restartRestored = !expectRestart;
 
@@ -397,6 +435,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_delete_switched_safely"] = deleteSwitchedSafely,
                 ["scene_delete_removed_assets"] = deleteRemovedAssets,
                 ["scene_last_scene_protected"] = lastSceneProtected,
+                ["scene_focused_customization_targets_selection"] = focusedCustomizationTargetsSelection,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,
             };
