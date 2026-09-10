@@ -117,6 +117,10 @@ public sealed class SceneSwitchTransactionTests
         Assert.Throws<ArgumentException>(() => new SceneSwitchTransaction(default, scene));
         Assert.Throws<ArgumentException>(() => new SceneSwitchTransaction(scene, default));
         Assert.Throws<ArgumentException>(() => new SceneSwitchTransaction(scene, scene));
+
+        // A cast change recomposes the same room and is the one legitimate same-Scene transaction.
+        var reload = new SceneSwitchTransaction(scene, scene, reloadInPlace: true);
+        Assert.Equal(scene, reload.TargetSceneId);
     }
 
     private static void CompleteThrough(SceneSwitchTransaction transaction, SceneSwitchStep finalStep)

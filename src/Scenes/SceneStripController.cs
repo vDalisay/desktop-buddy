@@ -28,6 +28,12 @@ public partial class SceneStripController : Node
     private bool _configured;
     private bool _renaming;
 
+    /// <summary>
+    /// The tab row itself. The Win98 command bar reparents it when the desktop chrome exists;
+    /// headless verification has no window frame, so the controls are addressed from here.
+    /// </summary>
+    public Control SceneStripRoot => _strip;
+
     public void Configure(SandboxRoot sandbox, Win98CommandBarBootstrap commandBar)
     {
         if (IsInsideTree())
@@ -64,6 +70,7 @@ public partial class SceneStripController : Node
 
         if (SceneViewChanged())
             Rebuild();
+        UpdatePlacementPreview();
     }
 
     public override void _ExitTree()
@@ -161,6 +168,9 @@ public partial class SceneStripController : Node
         PopupMenu popup = more.GetPopup();
         Win98MenuStyle.Apply(popup);
         popup.AddItem("Rename active Scene...", 1);
+        popup.AddSeparator("Cast");
+        popup.AddItem("Add Buddy...", 2);
+        AppendRemoveBuddyItems(popup);
         var overflowIds = new Dictionary<long, SceneId>();
         long itemId = 100;
         for (int index = 0; index < scenes.Count; index++)
@@ -178,6 +188,10 @@ public partial class SceneStripController : Node
         {
             if (id == 1)
                 OpenNameDialog(rename: true);
+            else if (id == 2)
+                OpenAddBuddyPicker();
+            else if (id >= RemoveBuddyItemBase)
+                RemoveCastMemberAsync((int)(id - RemoveBuddyItemBase));
             else if (overflowIds.TryGetValue(id, out SceneId sceneId))
                 SwitchToAsync(sceneId);
         };

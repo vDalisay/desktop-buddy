@@ -120,6 +120,32 @@
       ]
     },
     {
+      "id": "next_fest_runtime_cast_change",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "scene_upgraded",
+        "change_active_cast": true,
+        "expected_wallet_milli": 123000,
+        "expected_work_keyboard": 77,
+        "expected_actor_count": 2
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_cast_add_composed", "equals": true },
+        { "predicate": "scene_cast_remove_composed", "equals": true },
+        { "predicate": "scene_cast_identity_preserved", "equals": true },
+        { "predicate": "scene_cast_committed", "equals": true },
+        { "predicate": "scene_actor_count_matches", "equals": true },
+        { "predicate": "scene_actor_bindings_match", "equals": true },
+        { "predicate": "scene_actors_share_player", "equals": true },
+        { "predicate": "wallet_preserved", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
       "id": "next_fest_malformed_manifest_refusal",
       "build_scope": "next_fest",
       "expected_exit": 3,

@@ -46,13 +46,17 @@ public sealed class SceneSwitchTransaction
 
     private int _nextStepIndex;
 
-    public SceneSwitchTransaction(SceneId outgoingSceneId, SceneId targetSceneId)
+    /// <param name="reloadInPlace">
+    /// True when the active Scene is being recomposed after its own document changed (a cast change),
+    /// which is the only case where the outgoing and target Scene are the same room.
+    /// </param>
+    public SceneSwitchTransaction(SceneId outgoingSceneId, SceneId targetSceneId, bool reloadInPlace = false)
     {
         if (!outgoingSceneId.IsValid)
             throw new ArgumentException("Scene switch requires a stable outgoing Scene ID.", nameof(outgoingSceneId));
         if (!targetSceneId.IsValid)
             throw new ArgumentException("Scene switch requires a stable target Scene ID.", nameof(targetSceneId));
-        if (outgoingSceneId == targetSceneId)
+        if (outgoingSceneId == targetSceneId && !reloadInPlace)
             throw new ArgumentException("Scene switch target must differ from the active Scene.", nameof(targetSceneId));
 
         OutgoingSceneId = outgoingSceneId;

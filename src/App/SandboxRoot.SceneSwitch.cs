@@ -45,9 +45,33 @@ public partial class SandboxRoot
     /// actor, instantiate the target roster, apply every Buddy appearance and finally persist the
     /// new active Scene. A failed post-teardown step reconstructs the outgoing Scene before returning.
     /// </summary>
-    public async Task<SceneRuntimeSwitchResult> SwitchSceneAsync(
+    public Task<SceneRuntimeSwitchResult> SwitchSceneAsync(
         SceneId targetSceneId,
-        CancellationToken token = default)
+        CancellationToken token = default) =>
+        SwitchSceneCoreAsync(targetSceneId, reloadInPlace: false, token);
+
+    /// <summary>
+    /// Recomposes the active Scene through the same transaction after its cast document changed.
+    /// Adding or removing a Buddy is rare and player-initiated, so it reuses the whole switch
+    /// transaction (anchor capture, commit, teardown, composition, appearance) instead of growing a
+    /// second incremental composition path.
+    /// </summary>
+    public Task<SceneRuntimeSwitchResult> ReloadActiveSceneAsync(CancellationToken token = default)
+    {
+        if (SceneProgress is not { } scenes)
+        {
+            return Task.FromResult(new SceneRuntimeSwitchResult(
+                SceneRuntimeSwitchStatus.Unavailable,
+                default,
+                "This run does not have an active split Scene runtime."));
+        }
+        return SwitchSceneCoreAsync(scenes.ActiveSceneId, reloadInPlace: true, token);
+    }
+
+    private async Task<SceneRuntimeSwitchResult> SwitchSceneCoreAsync(
+        SceneId targetSceneId,
+        bool reloadInPlace,
+        CancellationToken token)
     {
         if (!targetSceneId.IsValid)
             return new SceneRuntimeSwitchResult(SceneRuntimeSwitchStatus.InvalidTarget, default, "Target Scene ID is invalid.");
@@ -63,7 +87,7 @@ public partial class SandboxRoot
                 SceneProgress?.ActiveSceneId ?? default,
                 "This run does not have an active split Scene runtime.");
         }
-        if (scenes.ActiveSceneId == targetSceneId)
+        if (scenes.ActiveSceneId == targetSceneId && !reloadInPlace)
             return new SceneRuntimeSwitchResult(SceneRuntimeSwitchStatus.NoChange, scenes.ActiveSceneId);
         if (Shell.Mode != InputMode.Play || Lifecycle.IsEditorModeActive || HasOpenSceneEnvironmentEditor())
         {
@@ -96,7 +120,7 @@ public partial class SandboxRoot
         }
 
         SceneId outgoingSceneId = scenes.ActiveSceneId;
-        var transaction = new SceneSwitchTransaction(outgoingSceneId, targetSceneId);
+        var transaction = new SceneSwitchTransaction(outgoingSceneId, targetSceneId, reloadInPlace);
         bool runtimeTornDown = false;
         bool rootPhysicsWasActive = IsPhysicsProcessing();
         _sceneSwitchInProgress = true;
@@ -118,7 +142,7 @@ public partial class SandboxRoot
             transaction.CompleteStep(SceneSwitchStep.TearDownActiveRuntime);
 
             SceneLibraryResult switched = scenes.SwitchScene(targetSceneId);
-            if (!switched.Succeeded)
+            if (!switched.Succeeded && !(reloadInPlace && switched.Status == SceneLibraryStatus.NoChange))
                 throw new InvalidOperationException($"Scene library switch failed: {switched.Status}.");
             if (!TryRebindSceneEnvironment(scenes))
                 throw new InvalidOperationException("Active room editor/presentation could not rebind to the target Scene.");
@@ -195,7 +219,11 @@ public partial class SandboxRoot
                 scenes.ActiveSceneId,
                 actor.PlacementId,
                 new CanonicalRoomPosition(x, y));
-            if (!moved.Succeeded)
+            // An actor that never left its stored anchor reports NoChange; that is a captured
+            // placement, not a failure. A cast removal drops the placement before the runtime is
+            // recomposed, so its still-live actor has no anchor left to capture either.
+            if (!moved.Succeeded &&
+                moved.Status is not (SceneLibraryStatus.NoChange or SceneLibraryStatus.BuddyNotFound))
             {
                 throw new InvalidOperationException(
                     $"Could not capture Buddy placement {actor.PlacementId}: {moved.Status}.");

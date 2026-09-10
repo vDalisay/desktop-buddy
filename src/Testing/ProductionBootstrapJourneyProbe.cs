@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Persistence;
@@ -80,7 +81,12 @@ public static class ProductionBootstrapJourneyProbe
             bool switchToOtherScene = setup.ValueKind == JsonValueKind.Object &&
                 setup.TryGetProperty("switch_to_other_scene", out JsonElement switchElement) &&
                 switchElement.ValueKind == JsonValueKind.True;
+            bool changeCast = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("change_active_cast", out JsonElement castElement) &&
+                castElement.ValueKind == JsonValueKind.True;
 
+            SceneStripController? strip = sandbox.GetTree().Root.FindChild(
+                nameof(SceneStripController), recursive: true, owned: false) as SceneStripController;
             SceneRuntimeHost? runtime = sandbox.ActiveSceneRuntime;
             SceneId outgoingSceneId = context.SceneProgress?.ActiveSceneId ?? default;
             BuddyActorRuntime[] outgoingSecondaryActors = runtime is null
@@ -114,6 +120,44 @@ public static class ProductionBootstrapJourneyProbe
                     sandbox.Buddy.Rig.Parts.All(part =>
                         part.Freeze && part.CollisionLayer == 0 && part.CollisionMask == 0 && !part.Visible) &&
                     !sandbox.VisualPresenter.Visible;
+            }
+
+            bool castAddComposed = !changeCast;
+            bool castRemoveComposed = !changeCast;
+            bool castIdentityPreserved = !changeCast;
+            bool castCommitted = !changeCast;
+
+            if (changeCast)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Cast phase requires Scene progress.");
+                if (strip is null)
+                    throw new InvalidOperationException("Cast phase requires the player-facing Scene strip.");
+
+                int before = sandbox.ActiveSceneRuntime?.Actors.Count ?? 0;
+                BuddyIdentityId added = await strip.AddCastMemberAsync(
+                    default,
+                    characterId: null,
+                    label: "Journey Buddy",
+                    new CanonicalRoomPosition(0.25f, 0.5f));
+                runtime = sandbox.ActiveSceneRuntime;
+                castAddComposed = added.IsValid &&
+                    runtime is not null &&
+                    runtime.Actors.Count == before + 1 &&
+                    runtime.Actors.Any(actor => actor.BuddyIdentityId == added) &&
+                    scenes.ActiveScene.BuddyPlacements.Any(p => p.BuddyIdentityId == added);
+
+                bool removed = await strip.RemoveCastMemberAsync(added);
+                runtime = sandbox.ActiveSceneRuntime;
+                castRemoveComposed = removed &&
+                    runtime is not null &&
+                    runtime.Actors.Count == before &&
+                    runtime.Actors.All(actor => actor.BuddyIdentityId != added) &&
+                    scenes.ActiveScene.BuddyPlacements.All(p => p.BuddyIdentityId != added);
+                // Removing a placement must never delete the Buddy itself.
+                castIdentityPreserved = scenes.TryGetBuddy(added, out BuddyIdentityState? keptBuddy) &&
+                    keptBuddy is not null;
+                castCommitted = !scenes.IsDirty;
             }
 
             bool actorCountMatches = expectedActorCount < 0 ||
@@ -171,11 +215,10 @@ public static class ProductionBootstrapJourneyProbe
                 ["tag_next_fest"] = DemoScope.IsSteamDemo && DemoScope.IsNextFestDemo && DemoScope.IncludesScenes,
                 ["split_scene_progress"] = context.SceneProgress is not null && context.UsesSplitSceneProgress,
                 ["legacy_scene_progress"] = context.SceneProgress is null && !context.UsesSplitSceneProgress,
-                ["scene_strip_composed"] = sandbox.GetTree().Root.FindChild(
-                    nameof(SceneStripController), recursive: true, owned: false) is SceneStripController,
-                ["scene_management_controls"] = sandbox.GetTree().Root.FindChild(
-                    "SceneCreateButton", recursive: true, owned: false) is Button &&
-                    sandbox.GetTree().Root.FindChild("SceneMenu", recursive: true, owned: false) is MenuButton,
+                ["scene_strip_composed"] = strip is not null,
+                ["scene_management_controls"] = strip is not null &&
+                    strip.SceneStripRoot.FindChild("SceneCreateButton", recursive: true, owned: false) is Button &&
+                    strip.SceneStripRoot.FindChild("SceneMenu", recursive: true, owned: false) is MenuButton,
                 ["scene_manifest_exists"] = System.IO.File.Exists(Path.Combine(saveRoot, SceneProgressTransactionStore.ManifestFileName)),
                 ["wallet_preserved"] = expectedWallet < 0 || context.PlayerProgress.BalanceMilliCredits == expectedWallet,
                 ["work_preserved"] = expectedKeyboard < 0 ||
@@ -192,6 +235,10 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_switch_outgoing_secondary_torn_down"] = sceneSwitchSecondaryTeardown,
                 ["scene_switch_committed"] = sceneSwitchCommitted,
                 ["scene_switch_target_empty"] = sceneSwitchTargetEmpty,
+                ["scene_cast_add_composed"] = castAddComposed,
+                ["scene_cast_remove_composed"] = castRemoveComposed,
+                ["scene_cast_identity_preserved"] = castIdentityPreserved,
+                ["scene_cast_committed"] = castCommitted,
             };
 
             if (phase.TryGetProperty("assertions", out JsonElement assertions) && assertions.ValueKind == JsonValueKind.Array)

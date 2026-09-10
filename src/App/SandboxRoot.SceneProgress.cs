@@ -1,5 +1,6 @@
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Persistence.Characters;
 
 namespace DesktopBuddy.App;
 
@@ -11,6 +12,9 @@ public partial class SandboxRoot
     /// the narrower progress bindings unless they genuinely own Scene-level composition.
     /// </summary>
     public SceneProgressCoordinator? SceneProgress => _runContext?.SceneProgress;
+
+    /// <summary>Local Character document library for Scene-level composition; null on saveless fixtures.</summary>
+    public CharacterStore? Characters => _runContext?.Characters;
 
     /// <summary>
     /// Account-global runtime seam for UI and entitlement systems. Scene builds route wallet,
