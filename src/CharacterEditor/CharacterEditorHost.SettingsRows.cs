@@ -151,6 +151,12 @@ public partial class CharacterEditorHost
             settings.WorkRetroFilter,
             value => edit(s => s with { WorkRetroFilter = value }),
             DisplayGroup);
+        _settingsPanel.AddAction(
+            "Reset Work Mode",
+            "Puts the Work Mode companion back in the middle of your screen at its default size. Use this if you have dragged it off-screen.",
+            () => _ = _sandbox.Shell.ResetWorkPlacementAsync(Work.WorkCompanionView.PreferredSize),
+            DisplayGroup,
+            buttonText: "Reset");
         _settingsPanel.AddToggle(
             "Always On Top",
             "Keeps Buddy's window above your other windows.",

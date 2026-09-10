@@ -15,7 +15,7 @@ class PrepareNativeAotSpikeTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         return root
 
-    def test_prepare_is_idempotent_and_scoped_to_initial_demo(self):
+    def test_prepare_is_idempotent_and_gated_on_the_nativeaot_opt_in(self):
         root = self._root()
 
         self.assertTrue(prepare_nativeaot_spike.prepare(root))
@@ -25,7 +25,7 @@ class PrepareNativeAotSpikeTests(unittest.TestCase):
         text = (root / "DesktopBuddy.csproj").read_text(encoding="utf-8")
         self.assertEqual(text.count(prepare_nativeaot_spike.MARKER), 1)
         self.assertEqual(text.count("<PublishAOT>true</PublishAOT>"), 1)
-        self.assertIn("'$(DesktopBuddyInitialSteamDemoScope)' == 'true'", text)
+        self.assertIn("'$(DesktopBuddyNativeAot)' == 'true'", text)
         self.assertIn("'$(GodotTargetPlatform)' != 'web'", text)
 
     def test_check_rejects_unprepared_project(self):

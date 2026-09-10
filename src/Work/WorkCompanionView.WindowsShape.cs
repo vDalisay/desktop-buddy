@@ -17,12 +17,13 @@ public partial class WorkCompanionView
     private nint _ownedWorkWindowHandle;
     private bool _nativeShapeApplied;
     private bool _nativeShapeRefreshPending;
-    private double _nativeShapeStableSeconds;
+    private ulong _nativeShapeScheduledFrame;
     private Win98BuddyShellController? _normalWin98Shell;
     private WorldEnvironment? _normalBackdrop;
     private bool _normalShellWasProcessing;
     private bool _normalFrameWasVisible;
     private Godot.Environment? _normalBackdropEnvironment;
+    private Color _normalClearColor;
     private bool _normalShellIsolated;
 
     public override void _EnterTree()
@@ -67,6 +68,12 @@ public partial class WorkCompanionView
         {
             GetWindow().Transparent = true;
             GetViewport().TransparentBg = true;
+            // The engine's default clear colour is opaque grey, and a resized window clears
+            // with it before the transparent frame at the new size lands. That grey - not the
+            // window shape - is the smear that flashed across the companion while resizing
+            // (owner report 2026-09-10). Clearing to nothing makes those frames invisible.
+            _normalClearColor = RenderingServer.GetDefaultClearColor();
+            RenderingServer.SetDefaultClearColor(new Color(0.0f, 0.0f, 0.0f, 0.0f));
         }
         _normalShellIsolated = true;
     }
@@ -82,6 +89,8 @@ public partial class WorkCompanionView
             _normalBackdrop!.Environment = _normalBackdropEnvironment;
         }
         _normalBackdropEnvironment = null;
+        if (DisplayServer.GetName() != "headless")
+            RenderingServer.SetDefaultClearColor(_normalClearColor);
         if (GodotObject.IsInstanceValid(_normalWin98Shell))
         {
             _normalWin98Shell!.Frame.Visible = _normalFrameWasVisible;
@@ -128,10 +137,16 @@ public partial class WorkCompanionView
             built = AddNativeRegion(combined, region);
         }
 
-        if (!built || SetWindowRgn(_ownedWorkWindowHandle, combined, true) == 0)
+        // Godot redraws the transparent client every frame. A native redraw here repaints
+        // newly exposed region strips before that frame, producing grey resize outlines.
+        if (!built || SetWindowRgn(_ownedWorkWindowHandle, combined, false) == 0)
         {
+            // Keep whatever region already succeeded, handle included: forgetting the handle
+            // here would leave a failed re-shape stuck on the last good region with nothing to
+            // clear it on the way out of Work Mode.
             DeleteObject(combined);
-            _ownedWorkWindowHandle = 0;
+            if (!_nativeShapeApplied)
+                _ownedWorkWindowHandle = 0;
             return;
         }
 
@@ -154,23 +169,36 @@ public partial class WorkCompanionView
         return result != 0;
     }
 
+    /// <summary>
+    /// Re-shapes the window to the size it has right now.
+    ///
+    /// <para>The shape used to be dropped here and rebuilt 80 ms later, which put the whole
+    /// rectangular HWND back on screen for the gap. Resizing changes the size continuously, so
+    /// the gap never closed and the bare window - which Windows paints with its own grey
+    /// background - flashed for the entire gesture (owner report 2026-09-10).</para>
+    ///
+    /// <para>It applies immediately rather than a frame late: lagging the shape behind the
+    /// window only traded the flash for the art being clipped along the drag. The undrawn
+    /// pixels a growing region exposes are handled where they come from - the clear colour, in
+    /// IsolateNormalShell - not by withholding the shape.</para>
+    /// </summary>
     private void ScheduleNativeWindowShapeRefresh()
     {
         if (!OperatingSystem.IsWindows() || DisplayServer.GetName() == "headless")
             return;
         _nativeShapeRefreshPending = true;
-        _nativeShapeStableSeconds = 0.0;
-        if (_nativeShapeApplied)
-            ClearNativeWindowShape();
+        _nativeShapeScheduledFrame = Engine.GetProcessFrames();
+        ApplyNativeWindowShape();
     }
 
-    private void TickNativeWindowShape(double delta)
+    private void TickNativeWindowShape()
     {
-        if (!_nativeShapeRefreshPending)
+        if (!_nativeShapeRefreshPending ||
+            Engine.GetProcessFrames() <= _nativeShapeScheduledFrame)
+        {
             return;
-        _nativeShapeStableSeconds += Math.Max(0.0, delta);
-        if (_nativeShapeStableSeconds < 0.08)
-            return;
+        }
+
         _nativeShapeRefreshPending = false;
         ApplyNativeWindowShape();
     }

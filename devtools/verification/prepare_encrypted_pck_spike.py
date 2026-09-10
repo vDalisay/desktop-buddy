@@ -14,9 +14,7 @@ import re
 import sys
 
 PRESET_PATH = Path("export_presets.cfg")
-PRESET_HEADER = "[preset.0]"
-OPTIONS_HEADER = "[preset.0.options]"
-EXPECTED_NAME = 'name="Windows Steam Demo"'
+DEFAULT_PRESET = "Windows Steam Demo"
 EXPECTED_PLATFORM = 'platform="Windows Desktop"'
 
 
@@ -36,15 +34,32 @@ def _replace_or_insert(section: str, key: str, value: str) -> str:
     return section + replacement + "\n"
 
 
-def _split_preset(text: str) -> tuple[str, str, str, str]:
-    if text.count(PRESET_HEADER) != 1 or text.count(OPTIONS_HEADER) != 1:
-        raise ValueError("Expected exactly one Windows Steam Demo preset.0/options section.")
-    preset_start = text.find(PRESET_HEADER)
-    options_start = text.find(OPTIONS_HEADER)
-    if preset_start < 0 or options_start < 0 or options_start <= preset_start:
-        raise ValueError("Windows Steam Demo preset.0/options sections are missing or malformed.")
+def _preset_index(text: str, preset_name: str) -> int:
+    """Find which [preset.N] block carries this name; the order is not guaranteed."""
+    matches = [
+        int(index)
+        for index, body in re.findall(r"(?ms)^\[preset\.(\d+)\]$(.*?)(?=^\[preset\.|\Z)", text)
+        if f'name="{preset_name}"' in body
+    ]
+    if len(matches) != 1:
+        raise ValueError(
+            f"Expected exactly one preset named {preset_name!r}, found {len(matches)}."
+        )
+    return matches[0]
 
-    next_preset = text.find("\n[preset.", options_start + len(OPTIONS_HEADER))
+
+def _split_preset(text: str, preset_name: str = DEFAULT_PRESET) -> tuple[str, str, str, str]:
+    index = _preset_index(text, preset_name)
+    preset_header = f"[preset.{index}]"
+    options_header = f"[preset.{index}.options]"
+    if text.count(preset_header) != 1 or text.count(options_header) != 1:
+        raise ValueError(f"Expected exactly one {preset_header}/options section.")
+    preset_start = text.find(preset_header)
+    options_start = text.find(options_header)
+    if preset_start < 0 or options_start < 0 or options_start <= preset_start:
+        raise ValueError(f"{preset_header}/options sections are missing or malformed.")
+
+    next_preset = text.find("\n[preset.", options_start + len(options_header))
     end = len(text) if next_preset < 0 else next_preset + 1
     return (
         text[:preset_start],
@@ -58,11 +73,11 @@ def _template_value(custom_template: str) -> str:
     return Path(custom_template).resolve().as_posix()
 
 
-def prepare(text: str, custom_template: str) -> str:
-    prefix, preset, options, suffix = _split_preset(text)
-    if EXPECTED_NAME not in preset or EXPECTED_PLATFORM not in preset:
+def prepare(text: str, custom_template: str, preset_name: str = DEFAULT_PRESET) -> str:
+    prefix, preset, options, suffix = _split_preset(text, preset_name)
+    if f'name="{preset_name}"' not in preset or EXPECTED_PLATFORM not in preset:
         raise ValueError(
-            "preset.0 is no longer the expected Windows Steam Demo preset; refusing to edit it."
+            f"The {preset_name!r} preset is not the expected Windows preset; refusing to edit it."
         )
 
     preset = _replace_or_insert(preset, "encryption_include_filters", '"*"')
@@ -76,15 +91,15 @@ def prepare(text: str, custom_template: str) -> str:
     return prefix + preset + options + suffix
 
 
-def verify(text: str, custom_template: str) -> list[str]:
+def verify(text: str, custom_template: str, preset_name: str = DEFAULT_PRESET) -> list[str]:
     errors: list[str] = []
     try:
-        _, preset, options, _ = _split_preset(text)
+        _, preset, options, _ = _split_preset(text, preset_name)
     except ValueError as exc:
         return [str(exc)]
 
-    if EXPECTED_NAME not in preset or EXPECTED_PLATFORM not in preset:
-        errors.append("preset.0 is not the expected Windows Steam Demo preset.")
+    if f'name="{preset_name}"' not in preset or EXPECTED_PLATFORM not in preset:
+        errors.append(f"The {preset_name!r} preset is not the expected Windows preset.")
 
     for section, key in (
         (preset, "encryption_include_filters"),
@@ -120,6 +135,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("root", nargs="?", default=".")
     parser.add_argument("--custom-template", required=True)
     parser.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--preset",
+        default=DEFAULT_PRESET,
+        help="Name of the Windows export preset to harden (default: the Steam Demo).",
+    )
     args = parser.parse_args(argv)
 
     path = Path(args.root) / PRESET_PATH
@@ -129,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
 
     text = path.read_text(encoding="utf-8")
     if args.check:
-        errors = verify(text, args.custom_template)
+        errors = verify(text, args.custom_template, args.preset)
         if errors:
             for error in errors:
                 print(error, file=sys.stderr)
@@ -138,7 +158,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     try:
-        updated = prepare(text, args.custom_template)
+        updated = prepare(text, args.custom_template, args.preset)
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2

@@ -31,6 +31,26 @@ public partial class DesktopShellController
         await _saves.SaveRegisteredSettingsAsync();
     }
 
+    /// <summary>
+    /// Forgets the player's Work placement: the companion is written back centred at its
+    /// default size, and moved there now if Work Mode happens to be running.
+    /// </summary>
+    public async Task ResetWorkPlacementAsync(Vector2I size)
+    {
+        Rect2I centred = Window.CentredWorkCompanionRect(size);
+        if (Window.WorkCompanionActive)
+        {
+            Window.ResizeWorkCompanion(centred.Size);
+            Window.MoveWorkCompanion(centred.Position);
+        }
+
+        await SaveWorkPreferencesAsync(
+            centred,
+            positionSet: true,
+            _settings.WorkAnimationsEnabled,
+            _settings.WorkShowLifetimeCounter);
+    }
+
     public Rect2I ResolveInitialWorkCompanionRect(Vector2I size)
     {
         if (_settings.WorkWindowWidth > 0 && _settings.WorkWindowHeight > 0)

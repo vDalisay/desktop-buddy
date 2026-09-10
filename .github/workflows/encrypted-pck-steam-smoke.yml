@@ -1,8 +1,16 @@
-name: Hardened NativeAOT + Encrypted PCK Steam Demo
+name: Hardened NativeAOT + Encrypted PCK Steam Build
 
 on:
   workflow_dispatch:
     inputs:
+      target:
+        description: Steam product to build
+        required: true
+        default: demo
+        type: choice
+        options:
+          - demo
+          - full
       retain_candidate:
         description: Retain the exact candidate as a public artifact for owner testing
         required: true
@@ -28,7 +36,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: encrypted-pck-steam-demo-${{ github.ref }}
+  group: encrypted-pck-steam-${{ inputs.target }}-${{ github.ref }}
   cancel-in-progress: true
 
 env:
@@ -145,49 +153,71 @@ jobs:
             --godot $env:GODOT_BIN --custom-template $env:CUSTOM_TEMPLATE
           if ($LASTEXITCODE -ne 0) { throw "NativeAOT scene lifetime regression failed." }
 
-      - name: Prepare physically reduced Demo checkout
+      - name: Resolve the target product
         shell: pwsh
         env:
           DEMO_APP_ID: ${{ vars.STEAM_DEMO_APP_ID }}
+          FULL_APP_ID: ${{ vars.STEAM_FULL_APP_ID }}
         run: |
-          if ($env:DEMO_APP_ID -notmatch '^[1-9][0-9]*$') { throw "STEAM_DEMO_APP_ID is missing or invalid." }
-          "DesktopBuddySteamDemoScope=true" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
-          python devtools/verification/apply_steam_demo_scope.py . --report build/release-evidence/encrypted-pck-demo-scope.json
-          python devtools/verification/apply_steam_demo_scope.py . --check
+          if ("${{ inputs.target }}" -eq "demo") {
+            $appId = $env:DEMO_APP_ID
+            $preset = "Windows Steam Demo"
+            $scope = "true"
+          } else {
+            $appId = $env:FULL_APP_ID
+            $preset = "Windows Full Release"
+            $scope = "false"
+          }
+          if ($appId -notmatch '^[1-9][0-9]*$') { throw "The Steam App ID for '${{ inputs.target }}' is missing or invalid." }
+          "TARGET_APP_ID=$appId" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "TARGET_PRESET=$preset" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "TARGET_DEMO_SCOPE=$scope" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "Building the ${{ inputs.target }} product: preset '$preset', App $appId."
+
+      - name: Prepare the hardened checkout
+        shell: pwsh
+        run: |
+          # The Demo is physically reduced; the Full Release ships the whole tree and must not be.
+          "DesktopBuddySteamDemoScope=$env:TARGET_DEMO_SCOPE" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          "DesktopBuddyNativeAot=true" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+          if ("${{ inputs.target }}" -eq "demo") {
+            python devtools/verification/apply_steam_demo_scope.py . --report build/release-evidence/encrypted-pck-demo-scope.json
+            python devtools/verification/apply_steam_demo_scope.py . --check
+          }
           $project = Get-Content project.godot -Raw
-          $project = [regex]::Replace($project, '(?m)^initialization/app_data/app_id=\d+\s*$', "initialization/app_data/app_id=$env:DEMO_APP_ID", 1)
+          $project = [regex]::Replace($project, '(?m)^initialization/app_data/app_id=\d+\s*$', "initialization/app_data/app_id=$env:TARGET_APP_ID", 1)
           Set-Content project.godot $project -NoNewline
-          dotnet build DesktopBuddy.csproj -c ExportRelease -p:DesktopBuddySteamDemoScope=true
-          if ($LASTEXITCODE -ne 0) { throw "Reduced managed control build failed." }
-          $control = Get-ChildItem .godot\mono\temp\bin\ExportRelease -Recurse -File -Filter DesktopBuddy.dll | Select-Object -First 1
-          if (-not $control) { throw "Could not locate reduced managed control assembly." }
-          python devtools/verification/verify_steam_distribution_scope.py --target demo --assembly $control.FullName
-          New-Item build\release-evidence\managed-scope-control -ItemType Directory -Force | Out-Null
-          Copy-Item $control.FullName build\release-evidence\managed-scope-control\DesktopBuddy.dll -Force
-          dotnet build DesktopBuddy.csproj -c Debug -p:DesktopBuddySteamDemoScope=true
+          dotnet build DesktopBuddy.csproj -c ExportRelease -p:DesktopBuddySteamDemoScope=$env:TARGET_DEMO_SCOPE
+          if ($LASTEXITCODE -ne 0) { throw "Managed control build failed." }
+          $control = Get-ChildItem .godot/mono/temp/bin/ExportRelease -Recurse -File -Filter DesktopBuddy.dll | Select-Object -First 1
+          if (-not $control) { throw "Could not locate the managed control assembly." }
+          python devtools/verification/verify_steam_distribution_scope.py --target ${{ inputs.target }} --assembly $control.FullName
+          New-Item build/release-evidence/managed-scope-control -ItemType Directory -Force | Out-Null
+          Copy-Item $control.FullName build/release-evidence/managed-scope-control/DesktopBuddy.dll -Force
+          dotnet build DesktopBuddy.csproj -c Debug -p:DesktopBuddySteamDemoScope=$env:TARGET_DEMO_SCOPE
           ./tools/install_godotsteam.ps1 -Force
           & $env:GODOT_BIN --headless --verbose --path . --import
           if ($LASTEXITCODE -ne 0) { throw "Godot import failed." }
           python devtools/verification/prepare_nativeaot_spike.py .
           python devtools/verification/prepare_nativeaot_spike.py . --check
-          python devtools/verification/prepare_encrypted_pck_spike.py . --custom-template $env:CUSTOM_TEMPLATE
-          python devtools/verification/prepare_encrypted_pck_spike.py . --custom-template $env:CUSTOM_TEMPLATE --check
+          python devtools/verification/prepare_encrypted_pck_spike.py . --custom-template $env:CUSTOM_TEMPLATE --preset "$env:TARGET_PRESET"
+          python devtools/verification/prepare_encrypted_pck_spike.py . --custom-template $env:CUSTOM_TEMPLATE --preset "$env:TARGET_PRESET" --check
 
-      - name: Export hardened NativeAOT encrypted embedded-PCK Demo
+      - name: Export the hardened NativeAOT encrypted embedded-PCK build
         shell: pwsh
         run: |
-          $output = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-demo"
+          $output = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-payload"
           New-Item -ItemType Directory -Path $output -Force | Out-Null
           $exe = Join-Path $output "DesktopBuddy.exe"
           $log = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\encrypted-pck-export.log"
           python devtools/verification/run_checked_process.py --timeout 3600 --log $log -- `
-            $env:GODOT_BIN --headless --verbose --path . --export-release "Windows Steam Demo" $exe
+            $env:GODOT_BIN --headless --verbose --path . --export-release "$env:TARGET_PRESET" $exe
           if ($LASTEXITCODE -ne 0 -or -not (Test-Path $exe)) { throw "Encrypted export failed; see $log" }
 
       - name: Verify exact protected payload
         shell: pwsh
         run: |
-          $root = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-demo"
+          $root = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-payload"
           $exe = Join-Path $root "DesktopBuddy.exe"
           python devtools/verification/verify_encrypted_embedded_pck.py $exe
           $assemblies = @(Get-ChildItem $root -Recurse -File -Filter DesktopBuddy.dll)
@@ -208,7 +238,7 @@ jobs:
             throw "DesktopBuddy.dll is not an x86_64 NativeAOT Godot library."
           }
           $control = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\managed-scope-control\DesktopBuddy.dll"
-          python devtools/verification/verify_steam_distribution_scope.py --target demo --assembly $control
+          python devtools/verification/verify_steam_distribution_scope.py --target ${{ inputs.target }} --assembly $control
           Get-ChildItem $root -Recurse -File -Filter *.pdb | Remove-Item -Force
           $forbidden = Get-ChildItem $root -Recurse -File -Include *.pdb,*.map,*.mdb,*.cs,*.fs,*.vb,*.csproj,*.fsproj,*.vbproj,*.sln,*.slnx,*.props,*.targets,*.ps1,*.bat,steam_appid.txt
           if ($forbidden) { throw "Protected export contains forbidden loose files: $($forbidden.FullName -join ', ')" }
@@ -216,7 +246,7 @@ jobs:
       - name: Startup smoke exact encrypted export
         shell: pwsh
         run: |
-          $exe = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-demo\DesktopBuddy.exe"
+          $exe = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-payload\DesktopBuddy.exe"
           $log = Join-Path $env:GITHUB_WORKSPACE "build\release-evidence\hardened-startup.log"
           python devtools/verification/run_checked_process.py --timeout 60 --log $log -- `
             $exe --headless --quit-after 120
@@ -243,15 +273,13 @@ jobs:
 
       - name: Generate and verify candidate manifest
         shell: pwsh
-        env:
-          DEMO_APP_ID: ${{ vars.STEAM_DEMO_APP_ID }}
         run: |
-          $root = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-demo"
+          $root = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-payload"
           python devtools/release/release_manifest.py generate `
             --root $root --output (Join-Path $root "release-manifest.json") `
-            --distribution steam-demo --version "hardened-$env:GITHUB_RUN_NUMBER" `
+            --distribution "steam-${{ inputs.target }}" --version "hardened-$env:GITHUB_RUN_NUMBER" `
             --git-sha $env:GITHUB_SHA --build-id $env:GITHUB_RUN_ID `
-            --godot-version $env:GODOT_VERSION --steam-app-id $env:DEMO_APP_ID
+            --godot-version $env:GODOT_VERSION --steam-app-id $env:TARGET_APP_ID
           python devtools/release/release_manifest.py verify `
             --root $root --manifest (Join-Path $root "release-manifest.json")
           "CANDIDATE_MANIFEST_SHA256=$((Get-FileHash (Join-Path $root 'release-manifest.json') -Algorithm SHA256).Hash.ToLowerInvariant())" |
@@ -261,8 +289,8 @@ jobs:
         if: ${{ inputs.retain_candidate || inputs.upload }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: hardened-steam-demo-${{ github.sha }}
-          path: build/hardened-steam-demo
+          name: hardened-steam-${{ inputs.target }}-${{ github.sha }}
+          path: build/hardened-steam-payload
           if-no-files-found: error
           retention-days: 7
 
@@ -270,7 +298,7 @@ jobs:
         if: ${{ always() }}
         shell: pwsh
         run: |
-          "### Hardened NativeAOT + encrypted embedded-PCK Steam Demo" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+          "### Hardened NativeAOT + encrypted embedded-PCK Steam ${{ inputs.target }}" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Commit: ``$env:GITHUB_SHA``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Godot source: ``$env:GODOT_SOURCE_SHA``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Template SHA-256: ``$env:CUSTOM_TEMPLATE_SHA256``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
@@ -297,15 +325,15 @@ jobs:
       - name: Download the exact hardened candidate
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          name: hardened-steam-demo-${{ github.sha }}
+          name: hardened-steam-${{ inputs.target }}-${{ github.sha }}
           path: build/steam-content
 
       - name: Resolve and validate SteamPipe configuration
         id: target
         shell: bash
         env:
-          APP_ID: ${{ vars.STEAM_DEMO_APP_ID }}
-          DEPOT_ID: ${{ vars.STEAM_DEMO_WINDOWS_DEPOT_ID }}
+          APP_ID: ${{ inputs.target == 'demo' && vars.STEAM_DEMO_APP_ID || vars.STEAM_FULL_APP_ID }}
+          DEPOT_ID: ${{ inputs.target == 'demo' && vars.STEAM_DEMO_WINDOWS_DEPOT_ID || vars.STEAM_FULL_WINDOWS_DEPOT_ID }}
           RELEASE_BRANCH: ${{ inputs.release_branch }}
           BUILD_DESCRIPTION: ${{ inputs.build_description }}
           STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
@@ -313,8 +341,8 @@ jobs:
         run: |
           set -euo pipefail
 
-          [[ "$APP_ID" =~ ^[1-9][0-9]*$ ]] || { echo "STEAM_DEMO_APP_ID is missing or invalid." >&2; exit 1; }
-          [[ "$DEPOT_ID" =~ ^[1-9][0-9]*$ ]] || { echo "STEAM_DEMO_WINDOWS_DEPOT_ID is missing or invalid." >&2; exit 1; }
+          [[ "$APP_ID" =~ ^[1-9][0-9]*$ ]] || { echo "The Steam App ID for '${{ inputs.target }}' is missing or invalid." >&2; exit 1; }
+          [[ "$DEPOT_ID" =~ ^[1-9][0-9]*$ ]] || { echo "The Windows Depot ID for '${{ inputs.target }}' is missing or invalid." >&2; exit 1; }
           [ -n "$STEAM_USERNAME" ] || { echo "STEAM_USERNAME secret is missing." >&2; exit 1; }
           [ -n "$STEAM_CONFIG_VDF" ] || { echo "STEAM_CONFIG_VDF secret is missing." >&2; exit 1; }
 
@@ -329,7 +357,7 @@ jobs:
 
           description="$BUILD_DESCRIPTION"
           if [ -z "$description" ]; then
-            description="Hardened NativeAOT encrypted Demo ${GITHUB_SHA::12} (run $GITHUB_RUN_ID)"
+            description="Hardened NativeAOT encrypted ${{ inputs.target }} ${GITHUB_SHA::12} (run $GITHUB_RUN_ID)"
           fi
 
           echo "app_id=$APP_ID" >> "$GITHUB_OUTPUT"
@@ -343,7 +371,7 @@ jobs:
           python3 devtools/release/release_manifest.py verify \
             --root build/steam-content --manifest build/steam-content/release-manifest.json \
             --expect-git-sha "$GITHUB_SHA" --expect-build-id "$GITHUB_RUN_ID" \
-            --expect-distribution steam-demo
+            --expect-distribution "steam-${{ inputs.target }}"
 
           # The hardened export embeds its PCK, so prove the encrypted pack is still inside
           # the shipped executable instead of trusting the build job's copy of that check.

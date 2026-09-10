@@ -47,6 +47,17 @@ public partial class WorkCompanionView : CanvasLayer
     private Button _motionToggle = null!;
     private Button _exitButton = null!;
     private BuddyVisualRigView _rig = null!;
+    private BuddyPreviewSurface _preview = null!;
+    // The character's composited part textures land over the following frames, so the preview
+    // keeps refreshing briefly rather than freezing on a half-built buddy.
+    private double _previewWarmupSeconds = 1.0;
+    // A transparent always-on-top window is re-composited by the desktop on every frame it
+    // draws, which is real cost on the whole machine for a picture that only moves on a
+    // keystroke. Unfocused — the normal Work Mode state, with the player typing in another
+    // app — the companion runs at a desktop-pet rate and goes back to the player's own frame
+    // limit the moment it is focused (owner report 2026-09-10).
+    private const int UnfocusedMaxFps = 30;
+    private int _focusedMaxFps;
     private StaticBuddyVisualTransformSource _source = null!;
     private CompiledCharacterAppearance? _appearanceOverride;
     private bool _showLifetime;
@@ -136,8 +147,15 @@ public partial class WorkCompanionView : CanvasLayer
     public override void _Process(double delta)
     {
         SyncCompositionToWindow();
-        TickNativeWindowShape(delta);
+        TickNativeWindowShape();
         RefreshTutorialGates();
+        if (_previewWarmupSeconds > 0.0)
+        {
+            _previewWarmupSeconds -= delta;
+            if (GodotObject.IsInstanceValid(_preview))
+                _preview.RequestSingleFrame();
+        }
+
         if (_reactionRemaining <= 0.0)
             return;
         _reactionRemaining = Math.Max(0.0, _reactionRemaining - delta);
@@ -367,12 +385,20 @@ public partial class WorkCompanionView : CanvasLayer
         Window window = GetWindow();
         window.MouseEntered += ShowHoverControls;
         window.MouseExited += HideHoverControls;
+        _focusedMaxFps = Engine.MaxFps;
+        window.FocusEntered += RestoreFocusedFrameRate;
+        window.FocusExited += CapUnfocusedFrameRate;
+        if (!window.HasFocus())
+            CapUnfocusedFrameRate();
         TreeExiting += () =>
         {
+            RestoreFocusedFrameRate();
             if (GodotObject.IsInstanceValid(window))
             {
                 window.MouseEntered -= ShowHoverControls;
                 window.MouseExited -= HideHoverControls;
+                window.FocusEntered -= RestoreFocusedFrameRate;
+                window.FocusExited -= CapUnfocusedFrameRate;
             }
         };
     }
@@ -434,6 +460,22 @@ public partial class WorkCompanionView : CanvasLayer
         return new Rect2I(
             new Vector2I(Mathf.RoundToInt(origin.X), Mathf.RoundToInt(origin.Y)),
             ControlClusterSize);
+    }
+
+    private void CapUnfocusedFrameRate()
+    {
+        // Headless runs are paced by --fixed-fps; touching Engine.MaxFps there would retime the
+        // scenarios rather than save anything.
+        if (DisplayServer.GetName() == "headless")
+            return;
+        if (_focusedMaxFps <= 0 || _focusedMaxFps > UnfocusedMaxFps)
+            Engine.MaxFps = UnfocusedMaxFps;
+    }
+
+    private void RestoreFocusedFrameRate()
+    {
+        if (DisplayServer.GetName() != "headless" && Engine.MaxFps != _focusedMaxFps)
+            Engine.MaxFps = _focusedMaxFps;
     }
 
     private void ShowHoverControls() => SetHoverControlsVisible(true);
@@ -544,11 +586,16 @@ public partial class WorkCompanionView : CanvasLayer
             lightEnergy: 0.82f,
             sourceOrigin: Vector2.Zero,
             face: ":)",
-            visibilityOwner: container);
+            // Deliberately not a continuous surface. Work Mode sits on the desktop for hours
+            // while the player works in another app, and a continuous preview re-rendered the
+            // whole 3D buddy every frame for a pose that only moves on a keystroke. ApplyWorkPose
+            // asks for the frames it actually needs (owner report 2026-09-10).
+            visibilityOwner: null);
         container.AddChild(preview);
 
         _source = preview.Source;
         _rig = preview.Rig;
+        _preview = preview;
         preview.CopyPresentationFrom(_sandbox.VisualPresenter.RigView, _appearanceOverride);
     }
 
@@ -610,6 +657,9 @@ public partial class WorkCompanionView : CanvasLayer
             BuiltInCharacterAppearance.NeutralFaceState,
             string.Empty,
             0.0f));
+
+        if (GodotObject.IsInstanceValid(_preview))
+            _preview.RequestSingleFrame();
     }
 
     /// <summary>
