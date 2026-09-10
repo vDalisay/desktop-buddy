@@ -8,6 +8,21 @@ on:
         required: true
         default: false
         type: boolean
+      upload:
+        description: Upload the hardened candidate to SteamPipe
+        required: true
+        default: false
+        type: boolean
+      release_branch:
+        description: Optional Steam beta branch to set live after upload; leave blank to upload only
+        required: false
+        type: string
+        default: ""
+      build_description:
+        description: Optional internal Steam build description
+        required: false
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -22,6 +37,10 @@ env:
   GODOT_WIN64_SHA256: e10a41f33392f86e93557610611ead8722142913f9e0fab6a8148d1aa5b64c78
   SCONS_VERSION: 4.10.1
   SCONS_WHEEL_SHA256: bd9d1c52f908d874eba92a8c0c0a8dcf2ed9f3b88ab956d0fce1da479c4e7126
+  # Valve publishes SteamCMD at a moving URL. Fail closed if those bootstrap bytes change until
+  # the new archive has been intentionally reviewed and this non-secret digest is updated.
+  # Kept identical to steam-pipe.yml; both upload paths pin the same bootstrap.
+  STEAMCMD_BOOTSTRAP_SHA256: "cebf0046bfd08cf45da6bc094ae47aa39ebf4155e5ede41373b579b8f1071e7c"
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
 
@@ -221,7 +240,7 @@ jobs:
             Out-File $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Retain candidate for owner testing
-        if: ${{ inputs.retain_candidate }}
+        if: ${{ inputs.retain_candidate || inputs.upload }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: hardened-steam-demo-${{ github.sha }}
@@ -241,3 +260,236 @@ jobs:
           "- Candidate manifest SHA-256: ``$env:CANDIDATE_MANIFEST_SHA256``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Candidate retained as a public artifact: ``${{ inputs.retain_candidate }}``" | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
           "- Key, custom template, and logs were not uploaded as artifacts." | Out-File $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+  # SteamPipe runs on Linux even though the payload targets Windows: only the NativeAOT
+  # link needs MSVC, so the upload logic, pinned bootstrap and Steam Guard handling are
+  # reused unchanged from steam-pipe.yml rather than reimplemented for a Windows client.
+  steam_upload:
+    name: Upload hardened candidate to SteamPipe
+    needs: compatibility
+    if: ${{ inputs.upload }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: steam-release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Download the exact hardened candidate
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: hardened-steam-demo-${{ github.sha }}
+          path: build/steam-content
+
+      - name: Resolve and validate SteamPipe configuration
+        id: target
+        shell: bash
+        env:
+          APP_ID: ${{ vars.STEAM_DEMO_APP_ID }}
+          DEPOT_ID: ${{ vars.STEAM_DEMO_WINDOWS_DEPOT_ID }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+          BUILD_DESCRIPTION: ${{ inputs.build_description }}
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          set -euo pipefail
+
+          [[ "$APP_ID" =~ ^[1-9][0-9]*$ ]] || { echo "STEAM_DEMO_APP_ID is missing or invalid." >&2; exit 1; }
+          [[ "$DEPOT_ID" =~ ^[1-9][0-9]*$ ]] || { echo "STEAM_DEMO_WINDOWS_DEPOT_ID is missing or invalid." >&2; exit 1; }
+          [ -n "$STEAM_USERNAME" ] || { echo "STEAM_USERNAME secret is missing." >&2; exit 1; }
+          [ -n "$STEAM_CONFIG_VDF" ] || { echo "STEAM_CONFIG_VDF secret is missing." >&2; exit 1; }
+
+          if [ "$RELEASE_BRANCH" = "default" ]; then
+            echo "SteamPipe cannot automatically set the default branch live. Leave release_branch blank and promote the build in Steamworks." >&2
+            exit 1
+          fi
+          if [ -n "$RELEASE_BRANCH" ] && ! [[ "$RELEASE_BRANCH" =~ ^[A-Za-z0-9._-]+$ ]]; then
+            echo "release_branch may contain only letters, numbers, dot, underscore, and dash." >&2
+            exit 1
+          fi
+
+          description="$BUILD_DESCRIPTION"
+          if [ -z "$description" ]; then
+            description="Hardened NativeAOT encrypted Demo ${GITHUB_SHA::12} (run $GITHUB_RUN_ID)"
+          fi
+
+          echo "app_id=$APP_ID" >> "$GITHUB_OUTPUT"
+          echo "depot_id=$DEPOT_ID" >> "$GITHUB_OUTPUT"
+          echo "build_description=$description" >> "$GITHUB_OUTPUT"
+
+      - name: Verify the downloaded candidate is the exact built payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 devtools/release/release_manifest.py verify \
+            --root build/steam-content --manifest build/steam-content/release-manifest.json \
+            --expect-git-sha "$GITHUB_SHA" --expect-build-id "$GITHUB_RUN_ID" \
+            --expect-distribution steam-demo
+
+          # The hardened export embeds its PCK, so prove the encrypted pack is still inside
+          # the shipped executable instead of trusting the build job's copy of that check.
+          python3 devtools/verification/verify_encrypted_embedded_pck.py build/steam-content/DesktopBuddy.exe
+          if find build/steam-content -type f -iname '*.pck' -print -quit | grep -q .; then
+            echo "A loose PCK appeared beside the hardened export; the pack must stay embedded." >&2
+            exit 1
+          fi
+
+      - name: Install pinned Valve SteamCMD bootstrap
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y lib32gcc-s1
+
+          STEAMCMD_DIR="$RUNNER_TEMP/steamcmd"
+          rm -rf "$STEAMCMD_DIR"
+          mkdir -p "$STEAMCMD_DIR"
+
+          curl -fL --retry 3 \
+            -o "$RUNNER_TEMP/steamcmd_linux.tar.gz" \
+            https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz
+          echo "$STEAMCMD_BOOTSTRAP_SHA256  $RUNNER_TEMP/steamcmd_linux.tar.gz" | sha256sum --check --strict
+          printf 'SteamCMD bootstrap SHA-256: `%s`\n' "$STEAMCMD_BOOTSTRAP_SHA256" >> "$GITHUB_STEP_SUMMARY"
+          tar -xzf "$RUNNER_TEMP/steamcmd_linux.tar.gz" -C "$STEAMCMD_DIR"
+
+          (
+            cd "$STEAMCMD_DIR"
+            ./steamcmd.sh +quit
+          )
+
+          echo "STEAMCMD_DIR=$STEAMCMD_DIR" >> "$GITHUB_ENV"
+
+      - name: Restore Steam Guard session
+        shell: bash
+        env:
+          STEAM_CONFIG_VDF: ${{ secrets.STEAM_CONFIG_VDF }}
+        run: |
+          set -euo pipefail
+          SESSION_FILE="$RUNNER_TEMP/steam-config.vdf"
+          printf '%s' "$STEAM_CONFIG_VDF" | base64 -d > "$SESSION_FILE"
+
+          # Current Valve SteamCMD builds on GitHub's Linux runner keep their client state in
+          # $HOME/Steam even when steamcmd.sh itself lives elsewhere. Keep the executable-local
+          # copy too so a future client that reads either location still finds the session.
+          for steam_root in "$HOME/Steam" "$HOME/.local/share/Steam" "$HOME/.steam/steam" "$STEAMCMD_DIR"; do
+            mkdir -p "$steam_root/config"
+            cp "$SESSION_FILE" "$steam_root/config/config.vdf"
+            chmod 600 "$steam_root/config/config.vdf"
+          done
+          echo "Steam Guard session restored to SteamCMD client-state locations."
+
+      - name: Verify cached Steam login
+        shell: bash
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+        run: |
+          set -euo pipefail
+          (
+            cd "$STEAMCMD_DIR"
+            ./steamcmd.sh +login "$STEAM_USERNAME" +quit
+          )
+
+      - name: Generate SteamPipe app build script
+        id: steampipe
+        shell: bash
+        env:
+          APP_ID: ${{ steps.target.outputs.app_id }}
+          DEPOT_ID: ${{ steps.target.outputs.depot_id }}
+          BUILD_DESCRIPTION: ${{ steps.target.outputs.build_description }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+        run: |
+          set -euo pipefail
+          CONTENT_ROOT="$GITHUB_WORKSPACE/build/steam-content"
+          BUILD_OUTPUT="$RUNNER_TEMP/steampipe-output"
+          SCRIPT="$RUNNER_TEMP/app_build_${APP_ID}.vdf"
+
+          mkdir -p "$BUILD_OUTPUT"
+
+          python3 - "$SCRIPT" "$APP_ID" "$DEPOT_ID" "$BUILD_DESCRIPTION" "$CONTENT_ROOT" "$BUILD_OUTPUT" "$RELEASE_BRANCH" <<'PY'
+          import pathlib
+          import sys
+
+          script, app_id, depot_id, description, content_root, build_output, release_branch = sys.argv[1:]
+
+          def vdf(value: str) -> str:
+              return value.replace("\\", "\\\\").replace('"', '\\"')
+
+          lines = [
+              '"AppBuild"',
+              '{',
+              f'    "AppID" "{vdf(app_id)}"',
+              f'    "Desc" "{vdf(description)}"',
+              f'    "ContentRoot" "{vdf(content_root)}"',
+              f'    "BuildOutput" "{vdf(build_output)}"',
+          ]
+          if release_branch:
+              lines.append(f'    "SetLive" "{vdf(release_branch)}"')
+          lines += [
+              '    "Depots"',
+              '    {',
+              f'        "{vdf(depot_id)}"',
+              '        {',
+              '            "FileMapping"',
+              '            {',
+              '                "LocalPath" "*"',
+              '                "DepotPath" "."',
+              '                "Recursive" "1"',
+              '            }',
+              '            "FileExclusion" "*.pdb"',
+              '            "FileExclusion" "steam_appid.txt"',
+              '        }',
+              '    }',
+              '}',
+              '',
+          ]
+          pathlib.Path(script).write_text("\n".join(lines), encoding="utf-8")
+          PY
+
+          echo "script=$SCRIPT" >> "$GITHUB_OUTPUT"
+          echo "SteamPipe script generated for App $APP_ID / Depot $DEPOT_ID."
+          if [ -n "$RELEASE_BRANCH" ]; then
+            echo "Successful upload will set beta branch '$RELEASE_BRANCH' live."
+          else
+            echo "Successful upload will not change any live branch."
+          fi
+
+      - name: Upload build with SteamPipe
+        shell: bash
+        env:
+          STEAM_USERNAME: ${{ secrets.STEAM_USERNAME }}
+          STEAMPIPE_SCRIPT: ${{ steps.steampipe.outputs.script }}
+        run: |
+          set -euo pipefail
+          (
+            cd "$STEAMCMD_DIR"
+            ./steamcmd.sh \
+              +login "$STEAM_USERNAME" \
+              +run_app_build "$STEAMPIPE_SCRIPT" \
+              +quit
+          )
+
+      - name: Remove cached Steam credentials
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          rm -f "$RUNNER_TEMP/steam-config.vdf"
+          for steam_root in "$HOME/Steam" "$HOME/.local/share/Steam" "$HOME/.steam/steam" "$RUNNER_TEMP/steamcmd"; do
+            rm -f "$steam_root/config/config.vdf"
+          done
+
+      - name: Record upload evidence
+        if: ${{ always() }}
+        shell: bash
+        env:
+          APP_ID: ${{ steps.target.outputs.app_id }}
+          DEPOT_ID: ${{ steps.target.outputs.depot_id }}
+          RELEASE_BRANCH: ${{ inputs.release_branch }}
+        run: |
+          {
+            echo "### Hardened candidate SteamPipe upload"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- App / Depot: \`$APP_ID\` / \`$DEPOT_ID\`"
+            echo "- Beta branch set live: \`${RELEASE_BRANCH:-none}\`"
+            echo "- Payload: NativeAOT, encrypted embedded PCK, no loose PCK."
+          } >> "$GITHUB_STEP_SUMMARY"
