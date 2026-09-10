@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
@@ -10,8 +11,8 @@ namespace DesktopBuddy.Domain.Tests.Persistence;
 
 public sealed class LegacyProgressCompatibilityStoreTests
 {
-    private const string SaveRoot = "/save";
-    private const string ManifestPath = "/save/scene-progress.commit.json";
+    private static readonly string SaveRoot = OperatingSystem.IsWindows() ? @"C:\save-test" : "/save-test";
+    private static readonly string ManifestPath = Path.Combine(SaveRoot, SceneProgressTransactionStore.ManifestFileName);
 
     [Fact]
     public async Task Legacy_progress_load_is_blocked_without_touching_inner_store_after_scene_commit()
