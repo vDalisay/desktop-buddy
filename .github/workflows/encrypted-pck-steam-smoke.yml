@@ -273,7 +273,6 @@ jobs:
 
       - name: Generate and verify candidate manifest
         shell: pwsh
-        env:
         run: |
           $root = Join-Path $env:GITHUB_WORKSPACE "build\hardened-steam-payload"
           python devtools/release/release_manifest.py generate `
