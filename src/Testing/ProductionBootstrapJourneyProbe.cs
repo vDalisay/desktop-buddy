@@ -172,7 +172,7 @@ public static class ProductionBootstrapJourneyProbe
                     default,
                     characterId: null,
                     label: "Journey Buddy",
-                    new CanonicalRoomPosition(0.25f, 0.5f));
+                    new CanonicalRoomPosition(0.0f, 1.0f));
                 runtime = sandbox.ActiveSceneRuntime;
                 castAddComposed = added.IsValid &&
                     runtime is not null &&
@@ -182,6 +182,8 @@ public static class ProductionBootstrapJourneyProbe
 
                 BuddyActorRuntime? addedActor = runtime?.Actors
                     .FirstOrDefault(actor => actor.BuddyIdentityId == added);
+                castAddComposed &= addedActor is not null &&
+                    addedActor.Buddy.Recovery.AllBodiesInsideSafeBounds();
                 focusFollowsSelection = focusStartsOnFirstActor &&
                     addedActor is not null &&
                     // Adding a Buddy must not steal the player's selection; choosing one must.
@@ -226,7 +228,7 @@ public static class ProductionBootstrapJourneyProbe
                     throw new InvalidOperationException("Scene library phase requires the player-facing Scene strip.");
 
                 var files = new CharacterFileSystem();
-                string userRoot = ProjectSettings.GlobalizePath("user://");
+                string userRoot = saveRoot;
                 SceneId sourceId = scenes.ActiveSceneId;
                 SceneDocument source = scenes.ActiveScene;
                 int scenesBefore = scenes.SceneCount;
@@ -324,6 +326,8 @@ public static class ProductionBootstrapJourneyProbe
             bool buildModePausesAndPlaces = !buildRoom;
             bool buildRemovalPicksThePartUnderThePointer = !buildRoom;
             bool buildCommitsOnReturnToPlay = !buildRoom;
+            bool buildPreviewRightOfList = !buildRoom;
+            bool buildSurfaceSupportsBuddy = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
             if (buildRoom)
@@ -339,8 +343,13 @@ public static class ProductionBootstrapJourneyProbe
                 Vector2 wheelPoint = bounds.Position + bounds.Size * new Vector2(0.65f, 0.7f);
 
                 build.Toggle();
+                await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
                 bool entered = build.IsActive &&
                     sandbox.Lifecycle.PauseCoordinator.Contains(GameplayPauseReason.BuildMode);
+                Control? list = build.FindChild("BuildModePartList", recursive: true, owned: false) as Control;
+                Control? preview = build.FindChild("BuildModePartPreview", recursive: true, owned: false) as Control;
+                buildPreviewRightOfList = list is not null && preview is not null &&
+                    preview.GlobalPosition.X >= list.GlobalPosition.X + list.Size.X;
 
                 build.SelectPart(SandboxPartCatalogue.WoodBeam);
                 build.PlaceSelectedPartAt(beamPoint);
@@ -363,6 +372,23 @@ public static class ProductionBootstrapJourneyProbe
                 buildCommitsOnReturnToPlay = !build.IsActive &&
                     !sandbox.Lifecycle.PauseCoordinator.Contains(GameplayPauseReason.BuildMode) &&
                     !scenes.IsDirty;
+
+                if (runtime is { Actors.Count: > 0 } &&
+                    sandbox.BuiltParts.Values.FirstOrDefault() is SandboxPartBody beam)
+                {
+                    BuddyActorRuntime actor = runtime.Actors[0];
+                    beam.Freeze = true;
+                    Vector2 origin = new(
+                        beam.GlobalPosition.X,
+                        beam.GlobalPosition.Y - 8.0f - 17.0f - 55.0f);
+                    actor.Buddy.Recovery.SafePoseOrigin = origin;
+                    actor.Buddy.Rig.ResetToSafePose(origin);
+                    for (int frame = 0; frame < 30; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    buildSurfaceSupportsBuddy =
+                        actor.Buddy.Rig.LeftFoot.HasSupportContact ||
+                        actor.Buddy.Rig.RightFoot.HasSupportContact;
+                }
             }
 
             if (expectBuiltRoom)
@@ -392,7 +418,7 @@ public static class ProductionBootstrapJourneyProbe
                     label: "Restart Buddy",
                     new CanonicalRoomPosition(RestartAnchorX, RestartAnchorY));
                 await EnvironmentPaintStore
-                    .ForScene(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"), scenes.ActiveSceneId)
+                    .ForScene(new CharacterFileSystem(), saveRoot, scenes.ActiveSceneId)
                     .SaveAsync(FixturePaint());
                 await scenes.FlushAsync(force: true);
                 runtime = sandbox.ActiveSceneRuntime;
@@ -407,7 +433,7 @@ public static class ProductionBootstrapJourneyProbe
                 SceneDocument active = scenes.ActiveScene;
                 Rect2 bounds = sandbox.Boundaries.InnerBounds;
                 byte[]? restoredPaint = EnvironmentPaintStore
-                    .ForScene(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"), active.SceneId)
+                    .ForScene(new CharacterFileSystem(), saveRoot, active.SceneId)
                     .Load();
 
                 restartRestored = string.Equals(active.Name, RestartRoomName, StringComparison.Ordinal) &&
@@ -436,6 +462,19 @@ public static class ProductionBootstrapJourneyProbe
             bool characterSelectionMatchesFirstActor = runtime is not null &&
                 runtime.Actors.Count > 0 &&
                 context.CharacterSelection is not null;
+            bool sceneActorsFullyInitialized = runtime is not null && runtime.Actors.All(actor =>
+                actor.Buddy.RoutedTicks > 0 &&
+                actor.Buddy.ActiveDrive.IsInitialized &&
+                actor.Buddy.Constraints.IsInitialized &&
+                actor.VisualPresenter.PosePipeline is { IsInitialized: true } &&
+                actor.VisualPresenter.Facing is { IsInitialized: true } &&
+                actor.VisualPresenter.Activities is { IsInitialized: true } &&
+                actor.VisualPresenter.HeadLookAt is { IsInitialized: true } &&
+                actor.VisualPresenter.Face is { IsInitialized: true } &&
+                actor.VisualPresenter.ImpactVisualOffset is { IsInitialized: true } &&
+                actor.Buddy.Rig.Parts.All(actor.Buddy.Rig.OwnsPart) &&
+                runtime.Actors.Where(other => !ReferenceEquals(other, actor))
+                    .All(other => other.Buddy.Rig.Parts.All(part => !actor.Buddy.Rig.OwnsPart(part))));
 
             if (runtime is not null && runtime.ProgressBindings is { } progressBindings)
             {
@@ -480,9 +519,10 @@ public static class ProductionBootstrapJourneyProbe
                 ["split_scene_progress"] = context.SceneProgress is not null && context.UsesSplitSceneProgress,
                 ["legacy_scene_progress"] = context.SceneProgress is null && !context.UsesSplitSceneProgress,
                 ["scene_strip_composed"] = strip is not null,
+                // One Scene button now opens the workspace that owns every Scene and cast control;
+                // the tabs, the "Scene ▾" dropdown and the separate "+" are gone (2026-09-10).
                 ["scene_management_controls"] = strip is not null &&
-                    strip.SceneStripRoot.FindChild("SceneCreateButton", recursive: true, owned: false) is Button &&
-                    strip.SceneStripRoot.FindChild("SceneMenu", recursive: true, owned: false) is MenuButton,
+                    strip.SceneStripRoot.FindChild("SceneMenu", recursive: true, owned: false) is Button,
                 ["scene_manifest_exists"] = System.IO.File.Exists(Path.Combine(saveRoot, SceneProgressTransactionStore.ManifestFileName)),
                 ["wallet_preserved"] = expectedWallet < 0 || context.PlayerProgress.BalanceMilliCredits == expectedWallet,
                 ["work_preserved"] = expectedKeyboard < 0 ||
@@ -492,6 +532,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_actors_share_player"] = actorsSharePlayer,
                 ["scene_actor_buddy_states_independent"] = actorBuddyStatesIndependent,
                 ["scene_actor_positions_distinct"] = actorPositionsDistinct,
+                ["scene_actors_fully_initialized"] = sceneActorsFullyInitialized,
                 ["scene_first_actor_not_legacy_primary"] = firstActorNotLegacyPrimary,
                 ["character_selection_matches_first_actor"] = characterSelectionMatchesFirstActor,
                 ["scene_switch_succeeded"] = sceneSwitchSucceeded,
@@ -515,6 +556,8 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_mode_pauses_and_places"] = buildModePausesAndPlaces,
                 ["build_removal_picks_pointed_part"] = buildRemovalPicksThePartUnderThePointer,
                 ["build_commits_on_return_to_play"] = buildCommitsOnReturnToPlay,
+                ["build_preview_right_of_list"] = buildPreviewRightOfList,
+                ["build_surface_supports_buddy"] = buildSurfaceSupportsBuddy,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,

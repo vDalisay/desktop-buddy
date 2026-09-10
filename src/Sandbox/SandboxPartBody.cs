@@ -23,6 +23,16 @@ public partial class SandboxPartBody : RigidBody2D
     private static readonly Color RubberFill = new("3a3f47");
     private static readonly Color Outline = new("2a2118");
 
+    /// <summary>The material colours, shared so the build palette previews the real part.</summary>
+    public static Color FillFor(SandboxPartMaterial material) => material switch
+    {
+        SandboxPartMaterial.Metal => MetalFill,
+        SandboxPartMaterial.Rubber => RubberFill,
+        _ => WoodFill,
+    };
+
+    public static Color OutlineColor => Outline;
+
     private SandboxPartDefinition _definition = null!;
     private Color _fill = WoodFill;
 
@@ -38,12 +48,7 @@ public partial class SandboxPartBody : RigidBody2D
 
         PartId = part.PartId;
         _definition = definition;
-        _fill = definition.Material switch
-        {
-            SandboxPartMaterial.Metal => MetalFill,
-            SandboxPartMaterial.Rubber => RubberFill,
-            _ => WoodFill,
-        };
+        _fill = FillFor(definition.Material);
 
         AddChild(new CollisionShape2D
         {

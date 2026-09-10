@@ -27,7 +27,10 @@ public partial class BuildModeController : Node
     private IDisposable? _registration;
     private CanvasLayer? _layer;
     private PanelContainer? _panel;
+    private Win98PinnablePanel? _panelPin;
     private ItemList? _partList;
+    private SandboxPartPreview? _preview;
+    private Label? _description;
     private Label? _hint;
     private bool _configured;
     private int _selectedIndex;
@@ -101,7 +104,6 @@ public partial class BuildModeController : Node
         IsActive = true;
         _sandbox.Lifecycle.PauseCoordinator.Set(GameplayPauseReason.BuildMode, true);
         BuildUi();
-        _layer!.Visible = true;
         RefreshPalette();
         SetStatus("Build: click to place, right-click a part to remove it. Escape plays.");
     }
@@ -110,8 +112,10 @@ public partial class BuildModeController : Node
     public async Task LeaveAsync()
     {
         IsActive = false;
-        if (_layer is not null)
-            _layer.Visible = false;
+        // The panel, never the layer: a detached palette lives in its own desktop window, and
+        // Win98PinnablePanel mirrors that window's visibility from the panel it follows.
+        if (_panel is not null)
+            _panel.Visible = false;
         _sandbox.Lifecycle.PauseCoordinator.Set(GameplayPauseReason.BuildMode, false);
         SetStatus("Play.");
 
@@ -136,7 +140,11 @@ public partial class BuildModeController : Node
             _ = LeaveAsync();
     }
 
-    public override void _Input(InputEvent @event)
+    /// <summary>
+    /// Unhandled, not <c>_Input</c>: the palette is a Control, so the GUI must get the click first
+    /// or every press on it is swallowed as a placement and no other part can be selected.
+    /// </summary>
+    public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsActive)
             return;
@@ -172,6 +180,7 @@ public partial class BuildModeController : Node
                 continue;
             _partList?.Select(index);
             _selectedIndex = index;
+            ShowSelectedPart();
             return true;
         }
         return false;
@@ -221,6 +230,18 @@ public partial class BuildModeController : Node
         SetStatus($"Removed a part. {_scenes.ActiveSandbox.Count} parts in this room.");
     }
 
+    private void ShowSelectedPart()
+    {
+        SandboxPartDefinition? definition = SelectedDefinition();
+        _preview?.Show(definition);
+        if (_description is not null)
+        {
+            _description.Text = definition is null
+                ? string.Empty
+                : $"{definition.Description}\n{definition.Material} · {definition.Width:0}×{definition.Height:0} · mass {definition.Mass:0.#}";
+        }
+    }
+
     private SandboxPartDefinition? SelectedDefinition()
     {
         int[] selected = _partList?.GetSelectedItems() ?? [];
@@ -231,35 +252,89 @@ public partial class BuildModeController : Node
     private void BuildUi()
     {
         if (_layer is not null)
+        {
+            _panel!.Visible = true;
             return;
+        }
 
         _layer = new CanvasLayer { Name = "BuildModeLayer", Layer = 90 };
-        _panel = new PanelContainer
-        {
-            Name = "BuildModePalette",
-            Theme = Win98ThemeFactory.Create(),
-            Position = new Vector2(12, 40),
-            CustomMinimumSize = new Vector2(176, 220),
-        };
-        var column = new VBoxContainer { Name = "BuildModeColumn" };
-        column.AddChild(new Label { Text = "Parts" });
+        _panel = Win98Dialog.Create(
+            "BuildModePalette", "Build", new Vector2(450, 320), out VBoxContainer body,
+            () => _ = LeaveAsync(), draggable: false);
+        _panel.Visible = true;
         _partList = new ItemList
         {
             Name = "BuildModePartList",
-            CustomMinimumSize = new Vector2(160, 140),
+            CustomMinimumSize = new Vector2(200, 92),
         };
-        column.AddChild(_partList);
+        _partList.ItemSelected += index =>
+        {
+            _selectedIndex = (int)index;
+            ShowSelectedPart();
+        };
+
+        var browser = new HBoxContainer { Name = "BuildModeBrowser" };
+        browser.AddThemeConstantOverride("separation", 10);
+        body.AddChild(browser);
+        browser.AddChild(_partList);
+
+        // What the part actually is, before it is in the room: the shape and material that will
+        // be placed, plus what it is for (owner instruction 2026-09-10).
+        _preview = new SandboxPartPreview
+        {
+            Name = "BuildModePartPreview",
+            CustomMinimumSize = new Vector2(200, 76),
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+        };
+        var details = new VBoxContainer
+        {
+            Name = "BuildModeDetails",
+            CustomMinimumSize = new Vector2(200, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        details.AddChild(_preview);
+
+        _description = new Label
+        {
+            Name = "BuildModePartDescription",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(200, 52),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        details.AddChild(_description);
+        browser.AddChild(details);
+
         _hint = new Label
         {
             Name = "BuildModeHint",
             Text = "Left click places, right click removes.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(160, 0),
+            CustomMinimumSize = new Vector2(200, 0),
         };
-        column.AddChild(_hint);
-        _panel.AddChild(column);
+        body.AddChild(_hint);
         _layer.AddChild(_panel);
         AddChild(_layer);
+        NudgeToLeftEdge();
+        // Same deal as Paint Background: the pin controller owns the title drag, so the palette
+        // can be pulled out onto the desktop and pinned back rather than being stuck in the room.
+        _panelPin = new Win98PinnablePanel { Name = "BuildModePinController" };
+        AddChild(_panelPin);
+        _panelPin.Configure(_panel, new Vector2I(470, 350), "BuildModeWindow");
+    }
+
+    /// <summary>
+    /// <see cref="Win98Dialog"/> centres its windows; the palette belongs beside the room rather
+    /// than on top of the parts being placed. Drag from the title bar moves it from here.
+    /// </summary>
+    private void NudgeToLeftEdge()
+    {
+        Vector2 view = GetViewport().GetVisibleRect().Size;
+        float width = _panel!.OffsetRight - _panel.OffsetLeft;
+        float height = _panel.OffsetBottom - _panel.OffsetTop;
+        _panel.OffsetLeft = -view.X / 2f + 16f;
+        _panel.OffsetTop = -view.Y / 2f + 48f;
+        _panel.OffsetRight = _panel.OffsetLeft + width;
+        _panel.OffsetBottom = _panel.OffsetTop + height;
     }
 
     private void RefreshPalette()
@@ -276,6 +351,7 @@ public partial class BuildModeController : Node
         }
         if (_hint is not null)
             _hint.Text = $"{_scenes.ActiveSandbox.Count} of {SandboxDocument.MaximumParts} parts placed.";
+        ShowSelectedPart();
     }
 
     private void SetStatus(string status)

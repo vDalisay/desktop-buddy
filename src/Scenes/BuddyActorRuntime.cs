@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Behavior;
 using DesktopBuddy.Buddy.Physics;
@@ -121,18 +120,7 @@ public sealed class BuddyActorRuntime
     }
 
     public bool OwnsPart(PuppetPartBody? part)
-    {
-        if (part is null || !GodotObject.IsInstanceValid(part))
-            return false;
-
-        IReadOnlyList<PuppetPartBody> parts = Buddy.Rig.Parts;
-        for (int index = 0; index < parts.Count; index++)
-        {
-            if (ReferenceEquals(parts[index], part))
-                return true;
-        }
-        return false;
-    }
+        => Buddy.Rig.OwnsPart(part);
 
     private static T RequireValid<T>(T value, string parameterName) where T : GodotObject
     {

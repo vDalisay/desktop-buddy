@@ -18,9 +18,7 @@ namespace DesktopBuddy.Scenes;
 /// </summary>
 public partial class SceneStripController
 {
-    private ConfirmationDialog? _deleteDialog;
-
-    private static string SaveRoot => ProjectSettings.GlobalizePath("user://");
+    private Control? _deleteBlocker;
 
     private async void DuplicateActiveSceneMenuAsync() => await DuplicateActiveSceneAsync();
 
@@ -79,25 +77,25 @@ public partial class SceneStripController
             return;
         }
 
-        _deleteDialog ??= BuildDeleteDialog();
-        _deleteDialog.DialogText =
-            $"Delete {_scenes.ActiveScene.Name}? Its room and layout are removed. Buddies stay in your library.";
-        _deleteDialog.PopupCentered();
-    }
+        _deleteBlocker = OpenShellModal(
+            "SceneDeleteDialog",
+            "Delete Scene",
+            new Vector2(380, 168),
+            out VBoxContainer body,
+            out Label message);
+        if (_deleteBlocker is null)
+            return;
 
-    private ConfirmationDialog BuildDeleteDialog()
-    {
-        var dialog = new ConfirmationDialog
+        message.Text =
+            $"Delete {_scenes.ActiveScene.Name}? Its room and layout are removed. Buddies stay in your library.";
+        HBoxContainer actions = ModalActions(body, "SceneDeleteActions");
+        Win98Dialog.Action(actions, "Delete", () =>
         {
-            Name = "SceneDeleteDialog",
-            Title = "Delete Scene",
-            OkButtonText = "Delete",
-            MinSize = new Vector2I(380, 160),
-            Theme = Win98ThemeFactory.Create(),
-        };
-        dialog.Confirmed += async () => await DeleteActiveSceneAsync();
-        AddChild(dialog);
-        return dialog;
+            _deleteBlocker!.Visible = false;
+            _ = DeleteActiveSceneAsync();
+        }).Name = "SceneDeleteConfirmButton";
+        Win98Dialog.Action(actions, "Cancel", () => _deleteBlocker!.Visible = false).Name =
+            "SceneDeleteCancelButton";
     }
 
     /// <summary>
@@ -169,24 +167,24 @@ public partial class SceneStripController
         throw new InvalidOperationException("The Scene to delete is not in the library.");
     }
 
-    private static async Task CopySceneBackgroundAsync(SceneId sourceId, SceneId targetId)
+    private async Task CopySceneBackgroundAsync(SceneId sourceId, SceneId targetId)
     {
         var files = new CharacterFileSystem();
-        byte[]? painted = EnvironmentPaintStore.ForScene(files, SaveRoot, sourceId).Load();
+        byte[]? painted = EnvironmentPaintStore.ForScene(files, _saveRoot, sourceId).Load();
         if (painted is null)
             return;
-        await EnvironmentPaintStore.ForScene(files, SaveRoot, targetId)
+        await EnvironmentPaintStore.ForScene(files, _saveRoot, targetId)
             .SaveAsync(painted, CancellationToken.None);
     }
 
-    private static void DeleteSceneAssets(SceneId sceneId)
+    private void DeleteSceneAssets(SceneId sceneId)
     {
         // Committed generations are addressed by the manifest, so a leftover directory would only
         // be dead bytes the player believes they deleted.
         try
         {
             var files = new CharacterFileSystem();
-            string path = Path.Combine(SaveRoot, SceneStoragePaths.SceneRoot(sceneId).Replace('/', Path.DirectorySeparatorChar));
+            string path = Path.Combine(_saveRoot, SceneStoragePaths.SceneRoot(sceneId).Replace('/', Path.DirectorySeparatorChar));
             if (files.DirectoryExists(path))
                 files.DeleteDirectory(path, recursive: true);
         }

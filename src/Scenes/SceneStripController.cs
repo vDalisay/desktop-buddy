@@ -12,17 +12,19 @@ namespace DesktopBuddy.Scenes;
 /// <summary>Player-facing Scene tabs; Scene mutation and switching stay with their existing owners.</summary>
 public partial class SceneStripController : Node
 {
-    private const int VisibleTabCount = 3;
-
     private readonly List<SceneId> _knownIds = [];
     private readonly List<string> _knownNames = [];
     private SandboxRoot _sandbox = null!;
     private SceneProgressCoordinator _scenes = null!;
     private Win98CommandBarBootstrap _commandBar = null!;
+    private string _saveRoot = null!;
     private Win98WindowFrame? _frame;
     private HBoxContainer _strip = null!;
-    private AcceptDialog _nameDialog = null!;
-    private LineEdit _nameInput = null!;
+    private Control? _nameBlocker;
+    private Label? _nameMessage;
+    private Label? _nameTitle;
+    private Button? _nameConfirm;
+    private LineEdit? _nameInput;
     private SceneId _knownActive;
     private bool _knownBusy;
     private bool _configured;
@@ -34,13 +36,16 @@ public partial class SceneStripController : Node
     /// </summary>
     public Control SceneStripRoot => _strip;
 
-    public void Configure(SandboxRoot sandbox, Win98CommandBarBootstrap commandBar)
+    public void Configure(SandboxRoot sandbox, Win98CommandBarBootstrap commandBar, string saveRoot)
     {
         if (IsInsideTree())
             throw new InvalidOperationException("Scene strip must be configured before entering the tree.");
 
         _sandbox = sandbox ?? throw new ArgumentNullException(nameof(sandbox));
         _commandBar = commandBar ?? throw new ArgumentNullException(nameof(commandBar));
+        _saveRoot = string.IsNullOrWhiteSpace(saveRoot)
+            ? throw new ArgumentException("Scene strip requires a resolved save root.", nameof(saveRoot))
+            : System.IO.Path.TrimEndingDirectorySeparator(System.IO.Path.GetFullPath(saveRoot));
         _scenes = sandbox.SceneProgress
             ?? throw new ArgumentException("Scene strip requires Scene-enabled progress.", nameof(sandbox));
         _configured = true;
@@ -58,7 +63,6 @@ public partial class SceneStripController : Node
         };
         _strip.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(2));
         _commandBar.SetSceneStrip(_strip);
-        BuildNameDialog();
         Rebuild();
     }
 
@@ -117,149 +121,117 @@ public partial class SceneStripController : Node
         _knownActive = _scenes.ActiveSceneId;
         _knownBusy = _sandbox.IsSceneSwitchInProgress;
 
-        int visibleCount = Math.Min(VisibleTabCount, scenes.Count);
-        int firstVisible = scenes.Count <= VisibleTabCount
-            ? 0
-            : Math.Clamp(activeIndex - 1, 0, scenes.Count - VisibleTabCount);
-
-        for (int index = firstVisible; index < firstVisible + visibleCount; index++)
-            _strip.AddChild(CreateTab(scenes[index]));
-
-        _strip.AddChild(CreateSceneMenu(scenes, firstVisible, visibleCount));
-        _strip.AddChild(CreateAddButton());
+        _strip.AddChild(CreateSceneButton());
+        RefreshSceneMenu();
     }
 
-    private Button CreateTab(SceneDocument scene)
+    /// <summary>
+    /// One click, one workspace. This replaced three Scene tabs, a "Scene ▾" dropdown and a "+"
+    /// button, which between them scattered switching, renaming, the cast and the overflow list
+    /// across the command bar (owner instruction 2026-09-10).
+    /// </summary>
+    private Button CreateSceneButton()
     {
         var button = new Button
         {
-            Name = $"SceneTab_{scene.SceneId}",
-            Text = scene.Name,
-            TooltipText = $"Switch to {scene.Name}.",
-            ToggleMode = true,
-            ButtonPressed = scene.SceneId == _scenes.ActiveSceneId,
+            Name = "SceneMenu",
+            Text = $"Scene: {_scenes.ActiveScene.Name}",
+            TooltipText = "Open the Scene workspace: switch, create, rename and manage the cast.",
             Disabled = _sandbox.IsSceneSwitchInProgress,
             FocusMode = Control.FocusModeEnum.All,
             TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis,
-            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(72), Win98ThemeFactory.Px(22)),
+            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(148), Win98ThemeFactory.Px(22)),
         };
-        SceneId sceneId = scene.SceneId;
-        button.Pressed += () =>
-        {
-            if (sceneId == _scenes.ActiveSceneId)
-                button.ButtonPressed = true;
-            else
-                SwitchToAsync(sceneId);
-        };
+        button.Pressed += OpenSceneMenu;
         return button;
     }
 
-    private MenuButton CreateSceneMenu(IReadOnlyList<SceneDocument> scenes, int firstVisible, int visibleCount)
+    /// <summary>
+    /// One Win98 modal, built the way every other workspace in this shell builds one. The Scene
+    /// menu used raw AcceptDialog/ConfirmationDialog windows, so it wore the engine's own chrome
+    /// instead of the shell's while the rest of the game stayed in period (owner report
+    /// 2026-09-10). The blocker is the modal; hiding it closes the dialog.
+    /// </summary>
+    internal Control? OpenShellModal(
+        string name,
+        string title,
+        Vector2 size,
+        out VBoxContainer body,
+        out Label heading)
     {
-        var more = new MenuButton
+        body = null!;
+        heading = null!;
+        if (_frame is null || !GodotObject.IsInstanceValid(_frame))
+            return null;
+
+        Control blocker = Win98Dialog.Blocker(_frame, $"{name}Blocker");
+        blocker.ZIndex = 500;
+        foreach (Node child in blocker.GetChildren())
+            child.QueueFree();
+
+        PanelContainer dialog = Win98Dialog.Create(name, title, size, out body, () => blocker.Visible = false);
+        blocker.AddChild(dialog);
+        heading = new Label
         {
-            Name = "SceneMenu",
-            Text = "Scene ▾",
-            TooltipText = "Manage Scenes and show hidden tabs.",
-            Disabled = _sandbox.IsSceneSwitchInProgress,
-            FocusMode = Control.FocusModeEnum.All,
-            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(78), Win98ThemeFactory.Px(22)),
+            Name = $"{name}Message",
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
         };
-        PopupMenu popup = more.GetPopup();
-        Win98MenuStyle.Apply(popup);
-        popup.AddItem("Rename active Scene...", 1);
-        popup.AddItem("Duplicate active Scene", 3);
-        popup.SetItemDisabled(popup.ItemCount - 1, !_scenes.CanCreateScene);
-        popup.AddItem("Delete active Scene...", 4);
-        popup.SetItemDisabled(popup.ItemCount - 1, scenes.Count <= 1);
-        popup.AddSeparator("Cast");
-        popup.AddItem("Add Buddy...", 2);
-        AppendCastMenuItems(popup);
-        var overflowIds = new Dictionary<long, SceneId>();
-        long itemId = 100;
-        for (int index = 0; index < scenes.Count; index++)
-        {
-            if (index >= firstVisible && index < firstVisible + visibleCount)
-                continue;
-            if (overflowIds.Count == 0)
-                popup.AddSeparator("Switch to");
-            SceneDocument scene = scenes[index];
-            popup.AddItem(scene.Name, (int)itemId);
-            overflowIds.Add(itemId, scene.SceneId);
-            itemId++;
-        }
-        popup.IdPressed += id =>
-        {
-            if (id == 1)
-                OpenNameDialog(rename: true);
-            else if (id == 2)
-                OpenAddBuddyPicker();
-            else if (id == 3)
-                DuplicateActiveSceneMenuAsync();
-            else if (id == 4)
-                ConfirmDeleteActiveScene();
-            else if (id == 5)
-                RemoveFocusedCastMemberAsync();
-            else if (id >= FocusBuddyItemBase)
-                FocusCastMember((int)(id - FocusBuddyItemBase));
-            else if (overflowIds.TryGetValue(id, out SceneId sceneId))
-                SwitchToAsync(sceneId);
-        };
-        return more;
+        body.AddChild(heading);
+        blocker.Visible = true;
+        dialog.Visible = true;
+        return blocker;
     }
 
-    private Button CreateAddButton()
+    internal static HBoxContainer ModalActions(VBoxContainer body, string name)
     {
-        var add = new Button
+        var actions = new HBoxContainer
         {
-            Name = "SceneCreateButton",
-            Text = "+",
-            TooltipText = _scenes.CanCreateScene ? "Create a Scene." : "The Scene limit has been reached.",
-            Disabled = _sandbox.IsSceneSwitchInProgress || !_scenes.CanCreateScene,
-            FocusMode = Control.FocusModeEnum.All,
-            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(24), Win98ThemeFactory.Px(22)),
+            Name = name,
+            Alignment = BoxContainer.AlignmentMode.End,
         };
-        add.Pressed += () => OpenNameDialog(rename: false);
-        return add;
-    }
-
-    private void BuildNameDialog()
-    {
-        _nameDialog = new AcceptDialog
-        {
-            Name = "SceneNameDialog",
-            Title = "Scene name",
-            DialogText = "Enter a name with 1-64 visible characters.",
-            OkButtonText = "Create",
-            MinSize = new Vector2I(360, 150),
-            Theme = Win98ThemeFactory.Create(),
-        };
-        _nameInput = new LineEdit
-        {
-            Name = "SceneNameInput",
-            MaxLength = SceneDocument.MaximumNameLength,
-            CustomMinimumSize = new Vector2(320, Win98ThemeFactory.Px(24)),
-        };
-        _nameDialog.AddChild(_nameInput);
-        _nameDialog.RegisterTextEnter(_nameInput);
-        _nameDialog.Confirmed += SubmitNameAsync;
-        AddChild(_nameDialog);
+        actions.AddThemeConstantOverride("separation", Win98ThemeFactory.Gap);
+        body.AddChild(actions);
+        return actions;
     }
 
     private void OpenNameDialog(bool rename)
     {
         _renaming = rename;
-        _nameDialog.Title = rename ? "Rename Scene" : "Create Scene";
-        _nameDialog.OkButtonText = rename ? "Rename" : "Create";
-        _nameDialog.DialogText = "Enter a name with 1-64 visible characters.";
-        _nameInput.Text = rename ? _scenes.ActiveScene.Name : "New Scene";
-        _nameDialog.PopupCentered();
+        _nameBlocker = OpenShellModal(
+            "SceneNameDialog",
+            rename ? "Rename Scene" : "Create Scene",
+            new Vector2(360, 168),
+            out VBoxContainer body,
+            out Label message);
+        if (_nameBlocker is null)
+            return;
+
+        _nameMessage = message;
+        _nameMessage.Text = "Enter a name with 1-64 visible characters.";
+        _nameInput = new LineEdit
+        {
+            Name = "SceneNameInput",
+            MaxLength = SceneDocument.MaximumNameLength,
+            CustomMinimumSize = new Vector2(320, Win98ThemeFactory.Px(24)),
+            Text = rename ? _scenes.ActiveScene.Name : "New Scene",
+        };
+        _nameInput.TextSubmitted += _ => SubmitNameAsync();
+        body.AddChild(_nameInput);
+
+        HBoxContainer actions = ModalActions(body, "SceneNameActions");
+        _nameConfirm = Win98Dialog.Action(actions, rename ? "Rename" : "Create", SubmitNameAsync);
+        _nameConfirm.Name = "SceneNameConfirmButton";
+        Win98Dialog.Action(actions, "Cancel", () => _nameBlocker!.Visible = false).Name =
+            "SceneNameCancelButton";
         _nameInput.GrabFocus();
         _nameInput.SelectAll();
     }
 
     private async void SubmitNameAsync()
     {
+        if (_nameInput is null || !GodotObject.IsInstanceValid(_nameInput))
+            return;
         string name = _nameInput.Text;
         SceneLibraryResult result;
         try
@@ -272,13 +244,16 @@ public partial class SceneStripController : Node
         }
         catch (Exception exception)
         {
+            // The dialog stays open on a rejected name so the player can correct it in place.
             SetStatus(exception.Message);
-            _nameDialog.DialogText = exception.Message;
-            _nameDialog.PopupCentered();
+            if (_nameMessage is not null && GodotObject.IsInstanceValid(_nameMessage))
+                _nameMessage.Text = exception.Message;
             _nameInput.GrabFocus();
             return;
         }
 
+        if (_nameBlocker is not null && GodotObject.IsInstanceValid(_nameBlocker))
+            _nameBlocker.Visible = false;
         Rebuild();
         try
         {

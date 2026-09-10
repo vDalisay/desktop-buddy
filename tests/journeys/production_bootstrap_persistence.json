@@ -83,6 +83,7 @@
         { "predicate": "split_scene_progress", "equals": true },
         { "predicate": "scene_actor_count_matches", "equals": true },
         { "predicate": "scene_actor_bindings_match", "equals": true },
+        { "predicate": "scene_actors_fully_initialized", "equals": true },
         { "predicate": "scene_actors_share_player", "equals": true },
         { "predicate": "scene_actor_buddy_states_independent", "equals": true },
         { "predicate": "scene_actor_positions_distinct", "equals": true },
@@ -242,6 +243,8 @@
         { "predicate": "build_mode_pauses_and_places", "equals": true },
         { "predicate": "build_removal_picks_pointed_part", "equals": true },
         { "predicate": "build_commits_on_return_to_play", "equals": true },
+        { "predicate": "build_preview_right_of_list", "equals": true },
+        { "predicate": "build_surface_supports_buddy", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
     },

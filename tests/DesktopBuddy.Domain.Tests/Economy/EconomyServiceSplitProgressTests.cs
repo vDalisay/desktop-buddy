@@ -13,6 +13,14 @@ namespace DesktopBuddy.Domain.Tests.Economy;
 public sealed class EconomyServiceSplitProgressTests
 {
     [Fact]
+    public void Split_service_returns_no_feedback_without_falling_back_to_legacy_state()
+    {
+        var service = new EconomyService(CreatePlayer(initialBalance: 0), new ToolCatalogue([]));
+
+        Assert.Null(service.PollFeedback(1.0));
+    }
+
+    [Fact]
     public void Split_damage_uses_one_wallet_and_only_the_target_buddy_state()
     {
         PlayerProgressState player = CreatePlayer(initialBalance: 25_000);

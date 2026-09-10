@@ -51,6 +51,7 @@ public enum SandboxPartMaterial
 public sealed record SandboxPartDefinition(
     SemanticDefinitionId Id,
     string DisplayName,
+    string Description,
     SandboxPartShape Shape,
     SandboxPartMaterial Material,
     float Width,
@@ -71,6 +72,8 @@ public sealed record SandboxPartDefinition(
             problems.Add("Part definition requires a semantic ID.");
         if (string.IsNullOrWhiteSpace(DisplayName))
             problems.Add("Part definition requires a display name.");
+        if (string.IsNullOrWhiteSpace(Description))
+            problems.Add("Part definition requires a description for the build palette.");
         if (!IsExtent(Width) || !IsExtent(Height))
             problems.Add($"Part '{Id}' extents must be between {MinimumExtent} and {MaximumExtent} pixels.");
         if (Shape == SandboxPartShape.Circle && !Width.Equals(Height))

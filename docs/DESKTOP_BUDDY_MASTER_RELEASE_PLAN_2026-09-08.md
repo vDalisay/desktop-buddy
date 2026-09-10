@@ -1181,6 +1181,43 @@ Implement and hand off these tasks in order. A task is complete only when its na
 - Persist parts, transforms, overrides and links in the Scene sandbox document; reconstruct them on restart.
 - **Acceptance:** build and play the cart plus a hanging beam, edit while paused, duplicate/delete parts, switch Scenes and reload. Check constraint cleanup, invalid overrides and fixed-tick ownership. Advanced grouping/clipboard is Full Release work.
 
+##### NF-3T — Buddies must traverse what the player builds (owner requirement 2026-09-10)
+
+The owner built a floor-wide pile of Wood Beams and found the Buddy standing still against it
+instead of crossing it. Traversal was never written down as a requirement, so nothing in NF-3
+delivers it; this sub-packet records the requirement and what the investigation found.
+
+**Requirement.** WHEN a Buddy's committed walk meets built parts between it and its goal THEN it
+SHALL climb or step over them and continue, rather than treating the structure as a wall.
+
+**Why it does not work today** (traced 2026-09-10, no code changed):
+
+1. `SandboxPartBody` is a plain `RigidBody2D` on the loose-object layer. `AutonomousMotionComponent`
+   probes that layer already — `collision_mask = 4` on `LeftObstacleCast`/`RightObstacleCast` — so
+   the parts *are* seen. This is not a sensing gap.
+2. `ObstacleInCommittedPath` excludes only soccer balls and consumables, so every built part reads
+   as an obstacle. The walk goal aborts, `ObstructedTicks` accumulates, and at
+   `Profile.ObstacleGiveUpTicks` the planner turns the Buddy around. That is the "just stands
+   still" the owner saw.
+3. The one existing way past an obstacle is the obstacle hop, and it is trait-gated at
+   `BehaviorArbiterProfile.HopPropensityThreshold = 35` of a uniform 0–100 — roughly a third of
+   Buddies can never hop anything (DECISIONS 2026-07-20, "too random"). Even a Buddy that can hop
+   gets one impulse, which clears a single low object, not a stack.
+4. Locomotion has no ground model beyond a rectangle: `AutonomousMotionComponent.SetWalkableBounds`
+   takes a `Rect2` and uses it for wall clearance only. There is no notion of standing on anything
+   but the room floor, so a Buddy that did get on top of the pile has nothing holding it there and
+   `RecoveryComponent` returns it to its safe pose — the respawning the owner described.
+
+**What this needs.** A ground model rather than a floor line: a downward probe per foot, a step-up
+height budget, and `RecoveryComponent` accepting a resting surface above the floor as valid footing.
+The trait gate stays for the *decorative* hop; traversal must not be trait-gated, or a third of the
+cast could never leave a room they built. Sizing it as its own packet is deliberate — it touches
+locomotion, recovery and the arbiter, all of which are shared with the Initial Demo surface.
+
+**Ordering.** Not a blocker for the rest of NF-3 (placement, links, Properties, persistence), but it
+must land before NF-3 can be reported complete: a room the player can build but not walk through
+does not satisfy "build a physical cart" in spirit.
+
 #### NF-4 — Wire a working machine
 
 **Depends on:** NF-3. **Player result:** place devices and wire Button → Lamp, Button → Piston, Button → Timer → Piston and Button → Weapon Trigger → Pistol/Shotgun.

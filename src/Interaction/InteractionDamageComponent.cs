@@ -603,7 +603,8 @@ public partial class InteractionDamageComponent : Node
         ScoredImpactCount++;
 
         GrabState grab = Grab.CurrentGrab;
-        bool buddyPartGrabbed = grab.Active && grab.Target is PuppetPartBody;
+        bool buddyPartGrabbed = grab is { Active: true, Target: PuppetPartBody grabbed } &&
+            Buddy.Rig.OwnsPart(grabbed);
 
         var impact = new AcceptedImpact(
             accepted.SourceInteractionId,
@@ -710,7 +711,7 @@ public partial class InteractionDamageComponent : Node
             milli,
             acceptance.ConsciousnessAtAcceptance,
             Guarded: false,
-            grab.Active && grab.Target is PuppetPartBody,
+            grab is { Active: true, Target: PuppetPartBody grabbed } && Buddy.Rig.OwnsPart(grabbed),
             acceptance.KnockoutTriggered,
             NowSeconds,
             SwingEpoch: 0,

@@ -1,6 +1,7 @@
 using System;
 using DesktopBuddy.App;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Sandbox;
 using Godot;
 
 namespace DesktopBuddy.Buddy.Physics;
@@ -203,7 +204,8 @@ public partial class PuppetPartBody : RigidBody2D
             }
 
             if (colliderObject is not CollisionObject2D collider ||
-                (collider.CollisionLayer & CollisionLayers.RoomBounds) == 0)
+                (collider.CollisionLayer & CollisionLayers.RoomBounds) == 0 &&
+                colliderObject is not SandboxPartBody)
             {
                 continue;
             }

@@ -166,7 +166,9 @@ public sealed class EconomyService
 
     /// <summary>Returns a completed coalesced reward burst, or <c>null</c>.</summary>
     public RewardFeedback? PollFeedback(double now) =>
-        _playerProgress?.PollRewardFeedback(now) ?? RequireLegacyProgress().PollRewardFeedback(now);
+        _playerProgress is not null
+            ? _playerProgress.PollRewardFeedback(now)
+            : RequireLegacyProgress().PollRewardFeedback(now);
 
     /// <summary>Composition guard used while binding actor-local split progress.</summary>
     internal bool IsBackedBy(PlayerProgressState progress) =>

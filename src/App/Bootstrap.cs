@@ -348,7 +348,7 @@ public partial class Bootstrap : Node
             {
                 Name = nameof(DesktopBuddy.Scenes.SceneStripController),
             };
-            sceneStrip.Configure(sandbox, commandRegistrar);
+            sceneStrip.Configure(sandbox, commandRegistrar, saveRoot);
             AddChild(sceneStrip);
 
             var buildMode = new DesktopBuddy.Sandbox.BuildModeController

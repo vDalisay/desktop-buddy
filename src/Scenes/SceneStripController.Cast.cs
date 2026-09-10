@@ -24,7 +24,7 @@ public partial class SceneStripController
 
     private readonly List<CastChoice> _choices = [];
     private readonly Dictionary<Guid, string> _characterNames = [];
-    private AcceptDialog? _pickerDialog;
+    private Control? _pickerBlocker;
     private ItemList? _pickerList;
     private CanvasLayer? _previewLayer;
     private Label? _previewLabel;
@@ -115,8 +115,23 @@ public partial class SceneStripController
         foreach ((Guid characterId, string name) in _characterNames)
             _choices.Add(new CastChoice(default, characterId, $"{name} (new Buddy)"));
 
-        BuildPickerDialog();
-        _pickerList!.Clear();
+        _pickerBlocker = OpenShellModal(
+            "SceneAddBuddyDialog",
+            "Add Buddy",
+            new Vector2(400, 360),
+            out VBoxContainer body,
+            out Label message);
+        if (_pickerBlocker is null)
+            return;
+
+        message.Text = "Choose a Buddy or Character, then click in the room to place it.";
+        _pickerList = new ItemList
+        {
+            Name = "SceneAddBuddyList",
+            CustomMinimumSize = new Vector2(340, Win98ThemeFactory.Px(180)),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        body.AddChild(_pickerList);
         foreach (CastChoice choice in _choices)
             _pickerList.AddItem(choice.Label);
         if (_choices.Count == 0)
@@ -128,36 +143,20 @@ public partial class SceneStripController
         {
             _pickerList.Select(0);
         }
-        _pickerDialog!.PopupCentered();
-    }
-
-    private void BuildPickerDialog()
-    {
-        if (_pickerDialog is not null)
-            return;
-
-        _pickerDialog = new AcceptDialog
-        {
-            Name = "SceneAddBuddyDialog",
-            Title = "Add Buddy",
-            DialogText = "Choose a Buddy or Character, then click in the room to place it.",
-            OkButtonText = "Choose",
-            MinSize = new Vector2I(380, 320),
-            Theme = Win98ThemeFactory.Create(),
-        };
-        _pickerList = new ItemList
-        {
-            Name = "SceneAddBuddyList",
-            CustomMinimumSize = new Vector2(340, Win98ThemeFactory.Px(180)),
-        };
-        _pickerDialog.AddChild(_pickerList);
-        _pickerDialog.Confirmed += BeginPlacementFromPicker;
         _pickerList.ItemActivated += _ =>
         {
-            _pickerDialog.Hide();
+            _pickerBlocker!.Visible = false;
             BeginPlacementFromPicker();
         };
-        AddChild(_pickerDialog);
+
+        HBoxContainer actions = ModalActions(body, "SceneAddBuddyActions");
+        Win98Dialog.Action(actions, "Choose", () =>
+        {
+            _pickerBlocker!.Visible = false;
+            BeginPlacementFromPicker();
+        }).Name = "SceneAddBuddyChooseButton";
+        Win98Dialog.Action(actions, "Cancel", () => _pickerBlocker!.Visible = false).Name =
+            "SceneAddBuddyCancelButton";
     }
 
     private void BeginPlacementFromPicker()

@@ -20,13 +20,21 @@ public static class SandboxPartCatalogue
     /// <summary>Definitions in palette order.</summary>
     public static IReadOnlyList<SandboxPartDefinition> Definitions { get; } =
     [
-        new(WoodBeam, "Wood Beam", SandboxPartShape.Box, SandboxPartMaterial.Wood,
+        new(WoodBeam, "Wood Beam",
+            "A long plank. Light enough to shove, long enough to bridge a gap or make a ramp.",
+            SandboxPartShape.Box, SandboxPartMaterial.Wood,
             Width: 96.0f, Height: 16.0f, Mass: 6.0f, Bounce: 0.05f, Friction: 0.9f),
-        new(MetalBlock, "Metal Block", SandboxPartShape.Box, SandboxPartMaterial.Metal,
+        new(MetalBlock, "Metal Block",
+            "A heavy cube. Barely moves when hit, so it makes a solid base or a stubborn wall.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 32.0f, Height: 32.0f, Mass: 12.0f, Bounce: 0.02f, Friction: 0.7f),
-        new(MetalPlate, "Metal Plate", SandboxPartShape.Box, SandboxPartMaterial.Metal,
+        new(MetalPlate, "Metal Plate",
+            "A wide, thin sheet. The flattest thing you can stand on, and the best platform top.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 128.0f, Height: 8.0f, Mass: 9.0f, Bounce: 0.02f, Friction: 0.7f),
-        new(Wheel, "Wheel", SandboxPartShape.Circle, SandboxPartMaterial.Rubber,
+        new(Wheel, "Wheel",
+            "A grippy rubber disc. It rolls, so put two under a beam and you have a cart.",
+            SandboxPartShape.Circle, SandboxPartMaterial.Rubber,
             Width: 40.0f, Height: 40.0f, Mass: 3.0f, Bounce: 0.15f, Friction: 1.4f),
     ];
 

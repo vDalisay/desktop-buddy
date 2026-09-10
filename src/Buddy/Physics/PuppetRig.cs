@@ -83,6 +83,18 @@ public partial class PuppetRig : Node
         return _parts[index];
     }
 
+    public bool OwnsPart(PuppetPartBody? part)
+    {
+        if (part is null || !GodotObject.IsInstanceValid(part))
+            return false;
+        for (int index = 0; index < _parts.Length; index++)
+        {
+            if (ReferenceEquals(_parts[index], part))
+                return true;
+        }
+        return false;
+    }
+
     public bool AllBodiesFinite()
     {
         for (int index = 0; index < _parts.Length; index++)

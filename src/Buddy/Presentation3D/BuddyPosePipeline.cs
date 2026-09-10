@@ -112,7 +112,8 @@ public partial class BuddyPosePipeline : Node
         var inputs = new PoseModeInputs(
             Buddy.CurrentConsciousness == Consciousness.Unconscious,
             Buddy.Recovery.State.AssistanceActive,
-            Grab.CurrentGrab.Active && Grab.CurrentGrab.Target is PuppetPartBody,
+            Grab.CurrentGrab is { Active: true, Target: PuppetPartBody grabbed } &&
+                Buddy.Rig.OwnsPart(grabbed),
             Buddy.CurrentToolReactionIntent.Active,
             standing.IsStable,
             supportedLocomotion,

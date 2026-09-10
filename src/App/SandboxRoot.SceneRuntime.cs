@@ -157,7 +157,7 @@ public partial class SandboxRoot
         string suffix = $"{rosterIndex}_{binding.Placement.PlacementId.ToString()[..8]}";
         buddy.Name = $"SceneBuddy_{suffix}";
 
-        Vector2 world = ScenePlacementWorldPosition(binding.Placement.Position);
+        Vector2 world = ClampSceneBuddyOrigin(buddy, ScenePlacementWorldPosition(binding.Placement.Position));
         buddy.Position = world;
         // Recovery initializes inside BuddyRoot._Ready, so author its per-actor safe state before
         // entering the tree. This prevents two Buddies from sharing the legacy centre recovery pose.
@@ -236,7 +236,17 @@ public partial class SandboxRoot
         };
         AddChild(visual);
         TrackSpawnedSceneActorNode(visual);
+        ComposeSceneActorExpression(buddy, visual, damage, care, reaction, suffix);
         visual.Initialize();
+        // Same order as the authored actor: the presenter first, then the expressive chain that
+        // reads it. ActivityAnimator and the presenter reference each other, so both sides are
+        // wired before either initializes.
+        visual.PosePipeline!.Initialize();
+        visual.Facing!.Initialize();
+        visual.Activities!.Initialize();
+        visual.HeadLookAt!.Initialize();
+        visual.Face!.Initialize();
+        visual.ImpactVisualOffset!.Initialize();
         ApplySceneActorPresentationMode(buddy, visual, Mode == PresentationMode.Mii3D);
 
         if (_runContext?.Characters is { } characters && binding.Progress.BuddyProgress is { } buddyProgress)
@@ -262,6 +272,104 @@ public partial class SandboxRoot
             visual);
     }
 
+    /// <summary>
+    /// Builds the per-Buddy expressive chain a secondary actor needs to be alive rather than a
+    /// heap of physics bodies.
+    ///
+    /// <para>These six components are siblings of the authored Buddy in <c>sandbox.tscn</c>, so
+    /// they arrived for free on the compatibility actor and were simply missing on every actor
+    /// composed at runtime. Without them <see cref="BuddyVisualPresenter"/> degrades silently:
+    /// pose weight stays at zero, so the Buddy never stands, never faces, never walks, never
+    /// blinks and never reacts — it lies on the floor exactly where it was placed (owner report
+    /// 2026-09-10). Each actor owns its own chain; only the shared grab tether, cursor tools and
+    /// hit-lag are borrowed from the room.</para>
+    /// </summary>
+    private void ComposeSceneActorExpression(
+        BuddyRoot buddy,
+        BuddyVisualPresenter visual,
+        InteractionDamageComponent damage,
+        CareStrokeComponent care,
+        BuddyReactionComponent reaction,
+        string suffix)
+    {
+        var pose = new BuddyPosePipeline
+        {
+            Name = $"ScenePose_{suffix}",
+            Buddy = buddy,
+            Grab = Grab,
+            DamagePipeline = damage,
+            Profile = PosePipeline.Profile,
+        };
+        AddChild(pose);
+        TrackSpawnedSceneActorNode(pose);
+
+        var facing = new FacingController
+        {
+            Name = $"SceneFacing_{suffix}",
+            Buddy = buddy,
+            DamagePipeline = damage,
+            CareStroke = care,
+            CursorTools = CursorTools,
+            Profile = Facing.Profile,
+        };
+        AddChild(facing);
+        TrackSpawnedSceneActorNode(facing);
+
+        var activities = new ActivityAnimator
+        {
+            Name = $"SceneActivities_{suffix}",
+            Buddy = buddy,
+            Presenter = visual,
+            Profile = Activities.Profile,
+        };
+        AddChild(activities);
+        TrackSpawnedSceneActorNode(activities);
+
+        var lookAt = new HeadLookAtComponent
+        {
+            Name = $"SceneLookAt_{suffix}",
+            Buddy = buddy,
+            DamagePipeline = damage,
+            CareStroke = care,
+            CursorTools = CursorTools,
+            Activities = activities,
+            Reactions = reaction,
+            Profile = HeadLookAt.Profile,
+        };
+        AddChild(lookAt);
+        TrackSpawnedSceneActorNode(lookAt);
+
+        var face = new FaceCompositor
+        {
+            Name = $"SceneFace_{suffix}",
+            Buddy = buddy,
+            Reactions = reaction,
+            Activities = activities,
+            HeadLookAt = lookAt,
+            Profile = Face.Profile,
+            VisualProfile = Face.VisualProfile,
+        };
+        AddChild(face);
+        TrackSpawnedSceneActorNode(face);
+
+        // Hit-lag is a room-wide freeze, so it is shared; the tickle contact it reads is not.
+        var impact = new ImpactVisualOffsetComponent
+        {
+            Name = $"SceneImpact_{suffix}",
+            HitLag = SwingHitLag,
+            Care = care,
+        };
+        AddChild(impact);
+        TrackSpawnedSceneActorNode(impact);
+
+        visual.PosePipeline = pose;
+        visual.Facing = facing;
+        visual.Activities = activities;
+        visual.HeadLookAt = lookAt;
+        visual.Face = face;
+        visual.ImpactVisualOffset = impact;
+    }
+
     private void TrackSpawnedSceneActorNode(Node node) => _sceneSpawnedActorNodes.Add(node);
 
     /// <summary>
@@ -283,7 +391,7 @@ public partial class SandboxRoot
         CanonicalRoomPosition position,
         bool resetInitializedRig)
     {
-        Vector2 world = ScenePlacementWorldPosition(position);
+        Vector2 world = ClampSceneBuddyOrigin(buddy, ScenePlacementWorldPosition(position));
         buddy.Recovery.SafeBounds = Boundaries.InnerBounds;
         buddy.Recovery.SafePoseOrigin = world;
         buddy.AutonomousMotion.SetWalkableBounds(Boundaries.InnerBounds);
@@ -299,6 +407,23 @@ public partial class SandboxRoot
         return bounds.Position + new Vector2(
             bounds.Size.X * position.X,
             bounds.Size.Y * position.Y);
+    }
+
+    private Vector2 ClampSceneBuddyOrigin(BuddyRoot buddy, Vector2 origin)
+    {
+        Rect2 bounds = Boundaries.InnerBounds;
+        Vector2 minimum = bounds.Position;
+        Vector2 maximum = bounds.End;
+        foreach (PuppetPartDefinition part in buddy.Rig.Profile.Parts)
+        {
+            minimum.X = Mathf.Max(minimum.X, bounds.Position.X - part.RestPosition.X + part.Radius);
+            minimum.Y = Mathf.Max(minimum.Y, bounds.Position.Y - part.RestPosition.Y + part.Radius);
+            maximum.X = Mathf.Min(maximum.X, bounds.End.X - part.RestPosition.X - part.Radius);
+            maximum.Y = Mathf.Min(maximum.Y, bounds.End.Y - part.RestPosition.Y - part.Radius);
+        }
+        return new Vector2(
+            Mathf.Clamp(origin.X, minimum.X, maximum.X),
+            Mathf.Clamp(origin.Y, minimum.Y, maximum.Y));
     }
 
     private void OnSceneActorLayoutApplied(DesktopBuddy.Domain.Physics.RoomLayout _layout, Rect2 innerBounds)
