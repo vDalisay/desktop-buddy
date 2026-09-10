@@ -223,6 +223,24 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Hardened export could not load and run its embedded project; see $log" }
           "Hardened export loaded its embedded project and exited cleanly after 120 frames."
 
+          # The first run boots with no save, which is all this step used to prove. A NativeAOT
+          # build that cannot deserialize its own save reads the failure as corruption and aborts
+          # boot, so run again against the save the first run just wrote and require that it
+          # actually loaded. Booting from nothing is not evidence that an existing player can.
+          $reload = Join-Path $env:GITHUB_WORKSPACE "build/release-evidence/hardened-startup-reload.log"
+          $save = Join-Path $env:APPDATA "DesktopBuddy/progress.json"
+          if (-not (Test-Path $save)) { throw "First run wrote no progress.json; the reload check cannot prove anything." }
+          python devtools/verification/run_checked_process.py --timeout 60 --log $reload -- `
+            $exe --headless --quit-after 120
+          if ($LASTEXITCODE -ne 0) { throw "Hardened export failed to start with an existing save; see $reload" }
+          if (Get-ChildItem (Split-Path $save) -Filter "progress.json*corrupt*" -ErrorAction SilentlyContinue) {
+            throw "Hardened export quarantined its own save as corrupt; see $reload"
+          }
+          if (-not (Select-String -Path $reload -Pattern "progress=Loaded" -Quiet)) {
+            throw "Hardened export started but did not load the existing save; see $reload"
+          }
+          "Hardened export loaded an existing save without quarantining it."
+
       - name: Generate and verify candidate manifest
         shell: pwsh
         env:
