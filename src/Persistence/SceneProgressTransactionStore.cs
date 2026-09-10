@@ -8,6 +8,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Persistence;
+using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Domain.Work;
 
@@ -55,6 +56,17 @@ public sealed class SceneProgressTransactionStore
         IReadOnlyCollection<BuddyIdentityState> buddyIdentities,
         IReadOnlyList<SceneDocument> scenes,
         SceneId activeSceneId,
+        CancellationToken token = default) =>
+        await CommitAsync(player, work, buddyIdentities, scenes, sandboxes: null, activeSceneId, token)
+            .ConfigureAwait(false);
+
+    public async Task<SceneProgressCommitResult> CommitAsync(
+        PlayerProgressState player,
+        WorkProgressState work,
+        IReadOnlyCollection<BuddyIdentityState> buddyIdentities,
+        IReadOnlyList<SceneDocument> scenes,
+        IReadOnlyDictionary<SceneId, SandboxDocument>? sandboxes,
+        SceneId activeSceneId,
         CancellationToken token = default)
     {
         ArgumentNullException.ThrowIfNull(player);
@@ -67,7 +79,7 @@ public sealed class SceneProgressTransactionStore
         await PersistenceWork.Run(EnsureCurrentCommitPromoted, token).ConfigureAwait(false);
 
         long revision = ReadCurrentManifest()?.Revision + 1 ?? 0;
-        PreparedCommit prepared = Prepare(player, work, buddyIdentities, scenes, activeSceneId, revision);
+        PreparedCommit prepared = Prepare(player, work, buddyIdentities, scenes, sandboxes, activeSceneId, revision);
 
         // Prepare phase: no authoritative pointer changes here. A crash/failure leaves the previous
         // manifest and its canonical generation untouched; abandoned .next files are overwritten by
@@ -158,8 +170,20 @@ public sealed class SceneProgressTransactionStore
             buddyIds.Add(id);
         }
 
+        var sandboxes = new Dictionary<SceneId, SandboxDocument>();
+        foreach (SceneProgressSandboxCommit entry in manifest.Sandboxes)
+        {
+            token.ThrowIfCancellationRequested();
+            SceneId sceneId = SceneId.From(entry.SceneId);
+            string json = ReadCommitted(SandboxDocumentPath(sceneId), entry.Sha256);
+            SandboxDocumentDecodeResult decoded = SandboxSavePolicy.Decode(json);
+            if (decoded.Status != SaveDecodeStatus.Valid || decoded.Document is null)
+                throw new InvalidDataException($"Committed sandbox for Scene {entry.SceneId:N} is invalid: {decoded.Detail}");
+            sandboxes[sceneId] = decoded.Document;
+        }
+
         ValidateLoadedGraph(manifest, index, scenes, buddyIds);
-        return new SceneProgressLoadResult(player, work, buddies, scenes, index, manifest.Revision);
+        return new SceneProgressLoadResult(player, work, buddies, scenes, index, manifest.Revision, sandboxes);
     }
 
     private PreparedCommit Prepare(
@@ -167,6 +191,7 @@ public sealed class SceneProgressTransactionStore
         WorkProgressState work,
         IReadOnlyCollection<BuddyIdentityState> buddies,
         IReadOnlyList<SceneDocument> scenes,
+        IReadOnlyDictionary<SceneId, SandboxDocument>? sandboxes,
         SceneId activeSceneId,
         long revision)
     {
@@ -223,6 +248,21 @@ public sealed class SceneProgressTransactionStore
             sceneEntries.Add(new SceneProgressSceneCommit(scene.SceneId.Value, document.Sha256));
         }
 
+        var sandboxEntries = new List<SceneProgressSandboxCommit>();
+        if (sandboxes is not null)
+        {
+            foreach (SceneDocument scene in scenes)
+            {
+                if (!sandboxes.TryGetValue(scene.SceneId, out SandboxDocument? sandbox) || sandbox is null || sandbox.Count == 0)
+                    continue;
+                PreparedDocument document = PrepareDocument(
+                    SandboxDocumentPath(scene.SceneId),
+                    SandboxSavePolicy.Serialize(sandbox));
+                documents.Add(document);
+                sandboxEntries.Add(new SceneProgressSandboxCommit(scene.SceneId.Value, document.Sha256));
+            }
+        }
+
         var index = new SceneIndexSave
         {
             Revision = revision,
@@ -240,6 +280,7 @@ public sealed class SceneProgressTransactionStore
             SceneIndexSha256 = indexDocument.Sha256,
             Scenes = sceneEntries,
             Buddies = buddyEntries,
+            Sandboxes = sandboxEntries,
         };
         manifest.Validate();
         return new PreparedCommit(manifest, documents);
@@ -257,6 +298,8 @@ public sealed class SceneProgressTransactionStore
         Promote(SceneIndexPath(), manifest.SceneIndexSha256);
         foreach (SceneProgressSceneCommit scene in manifest.Scenes)
             Promote(SceneDocumentPath(SceneId.From(scene.SceneId)), scene.Sha256);
+        foreach (SceneProgressSandboxCommit sandbox in manifest.Sandboxes)
+            Promote(SandboxDocumentPath(SceneId.From(sandbox.SceneId)), sandbox.Sha256);
         foreach (SceneProgressBuddyCommit buddy in manifest.Buddies)
             Promote(BuddyIdentityPath(BuddyIdentityId.From(buddy.BuddyIdentityId)), buddy.Sha256);
     }
@@ -342,6 +385,7 @@ public sealed class SceneProgressTransactionStore
     private string WorkProgressPath() => ResolveRelative(SceneStoragePaths.WorkProgress);
     private string SceneIndexPath() => ResolveRelative(SceneStoragePaths.SceneIndex);
     private string SceneDocumentPath(SceneId id) => ResolveRelative(SceneStoragePaths.SceneDocument(id));
+    private string SandboxDocumentPath(SceneId id) => ResolveRelative(SceneStoragePaths.SandboxDocument(id));
     private string BuddyIdentityPath(BuddyIdentityId id) => ResolveRelative(SceneStoragePaths.BuddyIdentity(id));
 
     private string ResolveRelative(string relative)
@@ -399,9 +443,11 @@ public sealed record SceneProgressLoadResult(
     IReadOnlyList<BuddyIdentityState> BuddyIdentities,
     IReadOnlyList<SceneDocument> Scenes,
     SceneIndexSave Index,
-    long Revision);
+    long Revision,
+    IReadOnlyDictionary<SceneId, SandboxDocument>? Sandboxes = null);
 
 public sealed record SceneProgressSceneCommit(Guid SceneId, string Sha256);
+public sealed record SceneProgressSandboxCommit(Guid SceneId, string Sha256);
 public sealed record SceneProgressBuddyCommit(Guid BuddyIdentityId, string Sha256);
 
 public sealed record SceneProgressCommitManifest
@@ -414,6 +460,12 @@ public sealed record SceneProgressCommitManifest
     public string WorkSha256 { get; init; } = string.Empty;
     public string SceneIndexSha256 { get; init; } = string.Empty;
     public List<SceneProgressSceneCommit> Scenes { get; init; } = [];
+
+    /// <summary>
+    /// Systemic construction per Scene. Absent for generations committed before parts existed, and
+    /// for Scenes that have never held one, which both load as an empty room.
+    /// </summary>
+    public List<SceneProgressSandboxCommit> Sandboxes { get; init; } = [];
     public List<SceneProgressBuddyCommit> Buddies { get; init; } = [];
 
     public void Validate()

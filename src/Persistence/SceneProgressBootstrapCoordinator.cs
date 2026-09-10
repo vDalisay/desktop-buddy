@@ -150,5 +150,6 @@ public sealed class SceneProgressBootstrapCoordinator
             loaded.Scenes,
             SceneId.From(loaded.Index.ActiveSceneId),
             _transactions,
-            loaded.Revision);
+            loaded.Revision,
+            loaded.Sandboxes);
 }

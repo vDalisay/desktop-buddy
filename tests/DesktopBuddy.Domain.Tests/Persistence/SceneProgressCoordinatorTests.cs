@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
+using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Domain.Work;
 using DesktopBuddy.Persistence;
@@ -42,6 +43,71 @@ public sealed class SceneProgressCoordinatorTests
         Assert.Equal(5_000, loaded.Player.BalanceMilliCredits);
         Assert.Equal(125, loaded.Work.Lifetime.KeyboardPresses);
         Assert.Equal(25.0f, loaded.BuddyIdentities[0].Mood);
+    }
+
+    [Fact]
+    public async Task Built_parts_commit_with_the_Scene_and_come_back_on_load()
+    {
+        var files = new MemoryFiles();
+        SceneProgressCoordinator coordinator = Coordinator(files);
+        await coordinator.FlushAsync(force: true);
+
+        SandboxDocument sandbox = coordinator.ActiveSandbox;
+        SandboxPartId beam = sandbox
+            .Add(SandboxPartCatalogue.WoodBeam, new CanonicalRoomPosition(0.4f, 0.6f), 30.0f)
+            .Part!.PartId;
+        sandbox.Add(SandboxPartCatalogue.Wheel, new CanonicalRoomPosition(0.6f, 0.8f));
+        sandbox.SetOverrides(beam, new SandboxPartOverrides(MassScale: 2.0f, Frozen: true));
+
+        // Building marks the graph dirty exactly like a Buddy or wallet change does.
+        Assert.True(coordinator.IsDirty);
+        await coordinator.FlushAsync(force: true);
+        Assert.False(coordinator.IsDirty);
+
+        SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
+        SceneProgressCoordinator reloaded = CoordinatorFromLoaded(files, loaded);
+        SandboxDocument restored = reloaded.ActiveSandbox;
+
+        Assert.Equal(2, restored.Count);
+        Assert.True(restored.TryGet(beam, out PlacedSandboxPart? restoredBeam));
+        Assert.Equal(SandboxPartCatalogue.WoodBeam, restoredBeam!.DefinitionId);
+        Assert.Equal(30.0f, restoredBeam.RotationDegrees);
+        Assert.Equal(2.0f, restoredBeam.Overrides.MassScale);
+        Assert.True(restoredBeam.Overrides.Frozen);
+        Assert.False(reloaded.IsDirty);
+    }
+
+    [Fact]
+    public async Task Duplicating_a_Scene_copies_its_parts_and_deleting_one_drops_them()
+    {
+        var files = new MemoryFiles();
+        SceneProgressCoordinator coordinator = Coordinator(files);
+        await coordinator.FlushAsync(force: true);
+
+        SceneId sourceId = coordinator.ActiveSceneId;
+        coordinator.ActiveSandbox.Add(SandboxPartCatalogue.MetalPlate, new CanonicalRoomPosition(0.5f, 0.9f));
+
+        SceneLibraryResult duplicated = coordinator.DuplicateScene(sourceId);
+        Assert.True(duplicated.Succeeded);
+        SceneId copyId = duplicated.Scene!.SceneId;
+
+        SandboxDocument copy = coordinator.SandboxFor(copyId);
+        Assert.Single(copy.Parts);
+        Assert.NotEqual(coordinator.SandboxFor(sourceId).Parts[0].PartId, copy.Parts[0].PartId);
+
+        // Editing the copy leaves the original room alone.
+        copy.Remove(copy.Parts[0].PartId);
+        Assert.Single(coordinator.SandboxFor(sourceId).Parts);
+
+        await coordinator.FlushAsync(force: true);
+        Assert.True(coordinator.DeleteScene(copyId).Succeeded);
+        await coordinator.FlushAsync(force: true);
+
+        SceneProgressLoadResult loaded = await Store(files).LoadCommittedAsync(CashPerPain);
+        Assert.DoesNotContain(loaded.Scenes, scene => scene.SceneId == copyId);
+        Assert.NotNull(loaded.Sandboxes);
+        Assert.DoesNotContain(loaded.Sandboxes!, entry => entry.Key == copyId);
+        Assert.True(loaded.Sandboxes!.ContainsKey(sourceId));
     }
 
     [Fact]
@@ -306,7 +372,8 @@ public sealed class SceneProgressCoordinatorTests
             loaded.Scenes,
             SceneId.From(loaded.Index.ActiveSceneId),
             Store(files),
-            loaded.Revision);
+            loaded.Revision,
+            loaded.Sandboxes);
 
     private sealed class MemoryFiles : IAtomicSaveFileSystem
     {

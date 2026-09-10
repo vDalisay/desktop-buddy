@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
+using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.Domain.Scenes;
 using DesktopBuddy.Domain.Work;
 
@@ -30,6 +31,7 @@ public sealed partial class SceneProgressCoordinator
     private readonly SceneProgressTransactionStore _store;
     private readonly SceneLibraryState _scenes;
     private readonly Dictionary<BuddyIdentityId, BuddyIdentityState> _buddies = new();
+    private readonly Dictionary<SceneId, SandboxDocument> _sandboxes = new();
     private readonly Dictionary<BuddyIdentityId, long> _savedBuddyRevisions = new();
     private Task _activeFlush = Task.CompletedTask;
     private long _savedPlayerRevision;
@@ -38,6 +40,7 @@ public sealed partial class SceneProgressCoordinator
     private long _savedSceneRevision;
     private long _identityLibraryRevision;
     private long _savedIdentityLibraryRevision;
+    private long _savedSandboxRevision;
     private double _dirtyRunningSeconds;
 
     public SceneProgressCoordinator(
@@ -48,7 +51,8 @@ public sealed partial class SceneProgressCoordinator
         IEnumerable<SceneDocument> scenes,
         SceneId activeSceneId,
         SceneProgressTransactionStore store,
-        long committedRevision = -1)
+        long committedRevision = -1,
+        IReadOnlyDictionary<SceneId, SandboxDocument>? sandboxes = null)
     {
         if (!scope.IncludesScenes)
             throw new ArgumentException("Scene progress can only be composed for a Scene-enabled build scope.", nameof(scope));
@@ -72,8 +76,18 @@ public sealed partial class SceneProgressCoordinator
         _scenes = new SceneLibraryState(scope, sceneDocuments, activeSceneId);
         ValidateSceneBuddyReferences();
 
+        if (sandboxes is not null)
+        {
+            foreach ((SceneId sceneId, SandboxDocument document) in sandboxes)
+            {
+                if (_scenes.TryGet(sceneId, out _))
+                    _sandboxes[sceneId] = document;
+            }
+        }
+
         _savedPlayerRevision = Player.Revision;
         _savedWorkRevision = Work.Revision;
+        _savedSandboxRevision = SandboxRevision;
         foreach ((BuddyIdentityId id, BuddyIdentityState buddy) in _buddies)
             _savedBuddyRevisions[id] = buddy.Revision;
         LastCommittedRevision = committedRevision;
@@ -108,7 +122,8 @@ public sealed partial class SceneProgressCoordinator
             if (Player.Revision != Interlocked.Read(ref _savedPlayerRevision) ||
                 Work.Revision != Interlocked.Read(ref _savedWorkRevision) ||
                 _sceneRevision != Interlocked.Read(ref _savedSceneRevision) ||
-                _identityLibraryRevision != Interlocked.Read(ref _savedIdentityLibraryRevision))
+                _identityLibraryRevision != Interlocked.Read(ref _savedIdentityLibraryRevision) ||
+                SandboxRevision != Interlocked.Read(ref _savedSandboxRevision))
             {
                 return true;
             }
@@ -127,6 +142,36 @@ public sealed partial class SceneProgressCoordinator
                 }
             }
             return false;
+        }
+    }
+
+    /// <summary>
+    /// Systemic construction for one Scene, created empty on first use. Parts live in their own
+    /// per-Scene document, not in the Scene root, so construction can version itself separately.
+    /// </summary>
+    public SandboxDocument SandboxFor(SceneId sceneId)
+    {
+        if (!_scenes.TryGet(sceneId, out _))
+            throw new KeyNotFoundException($"Scene library has no Scene {sceneId}.");
+        if (!_sandboxes.TryGetValue(sceneId, out SandboxDocument? document))
+        {
+            document = new SandboxDocument();
+            _sandboxes[sceneId] = document;
+        }
+        return document;
+    }
+
+    public SandboxDocument ActiveSandbox => SandboxFor(ActiveSceneId);
+
+    /// <summary>Aggregate part-state revision, so any room's edit marks the graph dirty.</summary>
+    private long SandboxRevision
+    {
+        get
+        {
+            long total = 0;
+            foreach (SandboxDocument document in _sandboxes.Values)
+                total += document.Revision;
+            return total;
         }
     }
 
@@ -169,11 +214,25 @@ public sealed partial class SceneProgressCoordinator
     public SceneLibraryResult RenameScene(SceneId sceneId, string newName) =>
         TrackSceneMutation(_scenes.Rename(sceneId, newName));
 
-    public SceneLibraryResult DuplicateScene(SceneId sourceSceneId, string? newName = null) =>
-        TrackSceneMutation(_scenes.Duplicate(sourceSceneId, newName));
+    public SceneLibraryResult DuplicateScene(SceneId sourceSceneId, string? newName = null)
+    {
+        SceneLibraryResult result = TrackSceneMutation(_scenes.Duplicate(sourceSceneId, newName));
+        if (result.Succeeded && result.Scene is { } copy &&
+            _sandboxes.TryGetValue(sourceSceneId, out SandboxDocument? source))
+        {
+            // The copy gets its own parts at the same places, under their own identities.
+            _sandboxes[copy.SceneId] = source.CopyWithNewPartIds();
+        }
+        return result;
+    }
 
-    public SceneLibraryResult DeleteScene(SceneId sceneId) =>
-        TrackSceneMutation(_scenes.Delete(sceneId));
+    public SceneLibraryResult DeleteScene(SceneId sceneId)
+    {
+        SceneLibraryResult result = TrackSceneMutation(_scenes.Delete(sceneId));
+        if (result.Succeeded)
+            _sandboxes.Remove(sceneId);
+        return result;
+    }
 
     public SceneLibraryResult AddBuddyToScene(
         SceneId sceneId,
@@ -322,6 +381,7 @@ public sealed partial class SceneProgressCoordinator
                 captured.Work,
                 captured.Buddies,
                 captured.Scenes,
+                captured.Sandboxes,
                 captured.ActiveSceneId,
                 token).ConfigureAwait(false);
 
@@ -329,6 +389,7 @@ public sealed partial class SceneProgressCoordinator
             Interlocked.Exchange(ref _savedWorkRevision, captured.WorkRevision);
             Interlocked.Exchange(ref _savedSceneRevision, captured.SceneRevision);
             Interlocked.Exchange(ref _savedIdentityLibraryRevision, captured.IdentityLibraryRevision);
+            Interlocked.Exchange(ref _savedSandboxRevision, captured.SandboxRevision);
             lock (_sync)
             {
                 _savedBuddyRevisions.Clear();
@@ -357,6 +418,12 @@ public sealed partial class SceneProgressCoordinator
             .ToArray();
         SceneDocument[] scenes = _scenes.Scenes.ToArray();
         SceneId activeSceneId = _scenes.ActiveSceneId;
+        // Parts are value-copied for the same reason Buddy states are: the commit must not observe
+        // a room the player keeps editing while the write is in flight.
+        var sandboxCopies = new Dictionary<SceneId, SandboxDocument>(_sandboxes.Count);
+        foreach ((SceneId sceneId, SandboxDocument document) in _sandboxes)
+            sandboxCopies[sceneId] = new SandboxDocument(document.Parts, document.Revision);
+        long sandboxRevision = SandboxRevision;
 
         var playerCopy = new PlayerProgressState(Player.CashPerPain, playerSnapshot);
         var workCopy = new WorkProgressState(
@@ -382,7 +449,9 @@ public sealed partial class SceneProgressCoordinator
             workSnapshot.Revision,
             revisions,
             _sceneRevision,
-            _identityLibraryRevision);
+            _identityLibraryRevision,
+            sandboxCopies,
+            sandboxRevision);
     }
 
     private SceneLibraryResult TrackSceneMutation(SceneLibraryResult result)
@@ -423,5 +492,7 @@ public sealed partial class SceneProgressCoordinator
         long WorkRevision,
         IReadOnlyDictionary<BuddyIdentityId, long> BuddyRevisions,
         long SceneRevision,
-        long IdentityLibraryRevision);
+        long IdentityLibraryRevision,
+        IReadOnlyDictionary<SceneId, SandboxDocument> Sandboxes,
+        long SandboxRevision);
 }
