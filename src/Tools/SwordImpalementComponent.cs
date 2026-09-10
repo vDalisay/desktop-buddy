@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using DesktopBuddy.App;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
@@ -6,6 +8,7 @@ using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
+using DesktopBuddy.Scenes;
 using Godot;
 using NumericsVector2 = System.Numerics.Vector2;
 
@@ -104,6 +107,14 @@ public partial class SwordImpalementComponent : Node2D
     // itself built by DroppedToolInputBootstrap once the sandbox has finished composing, so
     // there is no scene-time node for an [Export] to point at.
     private InteractionDamageComponent _pipeline = null!;
+    private SandboxRoot? _sandbox;
+
+    /// <summary>
+    /// The Buddy this blade is in, which is whichever one the point actually entered. It falls back
+    /// to the authored Buddy on runs with no Scene roster.
+    /// </summary>
+    private BuddyRoot? _victimBuddy;
+    private InteractionDamageComponent? _victimPipeline;
     private LooseObjectVisual3D? _looseVisual;
     private BuddyRoot _buddy = null!;
     private CursorToolController _cursorTools = null!;
@@ -145,7 +156,8 @@ public partial class SwordImpalementComponent : Node2D
         DroppedToolInteractionComponent droppedTools,
         GrabTetherController grab,
         CursorToolVisual3D? visual = null,
-        LooseObjectVisual3D? looseVisual = null)
+        LooseObjectVisual3D? looseVisual = null,
+        SandboxRoot? sandbox = null)
     {
         if (!GodotObject.IsInstanceValid(pipeline) || !pipeline.IsInitialized ||
             !GodotObject.IsInstanceValid(buddy) ||
@@ -163,6 +175,7 @@ public partial class SwordImpalementComponent : Node2D
         _grab = grab;
         _visual = visual;
         _looseVisual = looseVisual;
+        _sandbox = sandbox;
         IsInitialized = true;
     }
 
@@ -228,21 +241,27 @@ public partial class SwordImpalementComponent : Node2D
         if (tipVelocity.Length() < MinimumEntrySpeed)
             return;
 
-        for (int index = 0; index < 6; index++)
+        // Any Buddy in the room can be run through, not only the first one.
+        foreach ((BuddyRoot candidate, InteractionDamageComponent pipeline) in Victims())
         {
-            if (!TryPart((BuddyPart)index, out PuppetPartBody? part))
-                continue;
+            for (int index = 0; index < 6; index++)
+            {
+                if (!TryPartOf(candidate, (BuddyPart)index, out PuppetPartBody? part))
+                    continue;
 
-            Vector2 toCentre = part!.GlobalPosition - tip;
-            if (toCentre.Length() > part.Radius * EntryDepthFraction)
-                continue;
+                Vector2 toCentre = part!.GlobalPosition - tip;
+                if (toCentre.Length() > part.Radius * EntryDepthFraction)
+                    continue;
 
-            // Travelling into the part, not away from it or across it.
-            if (tipVelocity.Normalized().Dot(toCentre.Normalized()) < 0.0f)
-                continue;
+                // Travelling into the part, not away from it or across it.
+                if (tipVelocity.Normalized().Dot(toCentre.Normalized()) < 0.0f)
+                    continue;
 
-            Enter((BuddyPartId)index, part, hilt, tip, blade);
-            return;
+                _victimBuddy = candidate;
+                _victimPipeline = pipeline;
+                Enter((BuddyPartId)index, part, hilt, tip, blade);
+                return;
+            }
         }
     }
 
@@ -261,7 +280,7 @@ public partial class SwordImpalementComponent : Node2D
         // the blade has been excepted from him since the moment it was wielded. Everything
         // downstream — the curve, the payout, harmful memory, and Gore Mode's wound — keys
         // off this one event exactly as it would off a bullet.
-        _pipeline.ApplyBlastImpulse(
+        (_victimPipeline ?? _pipeline).ApplyBlastImpulse(
             blade.InteractionId,
             ContentIds.ToolSword,
             (BuddyPart)(int)partId,
@@ -429,6 +448,8 @@ public partial class SwordImpalementComponent : Node2D
         blade.Freeze = false;
         blade.Sleeping = false;
         _embedded = null;
+        _victimBuddy = null;
+        _victimPipeline = null;
     }
 
     /// <summary>
@@ -441,28 +462,53 @@ public partial class SwordImpalementComponent : Node2D
         if (!GodotObject.IsInstanceValid(blade))
             return;
 
-        for (int index = 0; index < 6; index++)
+        // Every part of every Buddy: a wielded point must not shove anyone aside, and a blade run
+        // through one chest must not catch on another Buddy's arm on its way through.
+        foreach ((BuddyRoot candidate, InteractionDamageComponent _) in Victims())
         {
-            if (!TryPart((BuddyPart)index, out PuppetPartBody? part))
-                continue;
+            for (int index = 0; index < 6; index++)
+            {
+                if (!TryPartOf(candidate, (BuddyPart)index, out PuppetPartBody? part))
+                    continue;
 
-            if (except)
-                blade.AddCollisionExceptionWith(part);
-            else
-                blade.RemoveCollisionExceptionWith(part);
+                if (except)
+                    blade.AddCollisionExceptionWith(part);
+                else
+                    blade.RemoveCollisionExceptionWith(part);
+            }
         }
     }
 
-    private bool TryPart(BuddyPart part, out PuppetPartBody? body)
+    /// <summary>Parts of the Buddy the blade is in, or of the authored Buddy before it enters one.</summary>
+    private bool TryPart(BuddyPart part, out PuppetPartBody? body) =>
+        TryPartOf(_victimBuddy ?? _buddy, part, out body);
+
+    private static bool TryPartOf(BuddyRoot? buddy, BuddyPart part, out PuppetPartBody? body)
     {
         body = null;
-        if (!GodotObject.IsInstanceValid(_buddy) || !GodotObject.IsInstanceValid(_buddy.Rig) ||
-            !_buddy.Rig.IsInitialized)
+        if (!GodotObject.IsInstanceValid(buddy) || !GodotObject.IsInstanceValid(buddy!.Rig) ||
+            !buddy.Rig.IsInitialized)
         {
             return false;
         }
 
-        body = _buddy.Rig.GetPart((BuddyPartId)(int)part);
+        body = buddy.Rig.GetPart((BuddyPartId)(int)part);
         return GodotObject.IsInstanceValid(body);
+    }
+
+    /// <summary>The live cast with each actor's own damage pipeline, newest Scene roster first.</summary>
+    private IEnumerable<(BuddyRoot Buddy, InteractionDamageComponent Pipeline)> Victims()
+    {
+        if (GodotObject.IsInstanceValid(_sandbox) && _sandbox!.ActiveSceneRuntime is { Actors.Count: > 0 } runtime)
+        {
+            foreach (BuddyActorRuntime actor in runtime.Actors)
+            {
+                if (GodotObject.IsInstanceValid(actor.Buddy) && GodotObject.IsInstanceValid(actor.Damage))
+                    yield return (actor.Buddy, actor.Damage);
+            }
+            yield break;
+        }
+        if (GodotObject.IsInstanceValid(_buddy) && GodotObject.IsInstanceValid(_pipeline))
+            yield return (_buddy, _pipeline);
     }
 }

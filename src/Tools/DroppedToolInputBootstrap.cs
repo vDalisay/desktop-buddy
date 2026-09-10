@@ -133,7 +133,8 @@ public partial class DroppedToolInputBootstrap : Node
                 _droppedTools,
                 _sandbox.Grab,
                 _sandbox.CursorToolVisual,
-                _sandbox.LooseObjectVisual);
+                _sandbox.LooseObjectVisual,
+                _sandbox);
         }
 
         return true;
