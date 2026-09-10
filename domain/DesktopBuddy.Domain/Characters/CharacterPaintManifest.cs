@@ -8,12 +8,12 @@ public sealed record CharacterPaintManifest
 {
     public static CharacterPaintManifest Empty { get; } = new();
 
-    public string? Head { get; init; }
-    public string? Torso { get; init; }
-    public string? LeftHand { get; init; }
-    public string? RightHand { get; init; }
-    public string? LeftFoot { get; init; }
-    public string? RightFoot { get; init; }
+    public string? Head { get; set; }
+    public string? Torso { get; set; }
+    public string? LeftHand { get; set; }
+    public string? RightHand { get; set; }
+    public string? LeftFoot { get; set; }
+    public string? RightFoot { get; set; }
 
     public string? PathFor(PaintPart part) => part switch
     {

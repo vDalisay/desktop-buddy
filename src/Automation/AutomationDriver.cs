@@ -6,6 +6,7 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using Godot;
+using DesktopBuddy.Domain.Serialization;
 
 namespace DesktopBuddy.Automation;
 
@@ -38,7 +39,7 @@ public partial class AutomationDriver : Node
         Log.Info("Automation", "AutomationDriver active (development build).");
         if (_args.PromoteTrace is not null)
         {
-            InputTrace? trace = JsonSerializer.Deserialize<InputTrace>(File.ReadAllText(_args.PromoteTrace));
+            InputTrace? trace = JsonSerializer.Deserialize(File.ReadAllText(_args.PromoteTrace), DomainJsonContext.Default.InputTrace);
             if (trace is null) throw new InvalidDataException("Input trace is empty or invalid.");
             string output = TracePromoter.Promote(trace, Path.GetFileNameWithoutExtension(_args.JourneyOut!) ?? "TODO_trace_journey");
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_args.JourneyOut!))!);

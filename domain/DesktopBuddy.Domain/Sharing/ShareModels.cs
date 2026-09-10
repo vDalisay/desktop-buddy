@@ -40,20 +40,20 @@ public static class ShareContentTypes
 
 public sealed record Sha256FileEntry
 {
-    public string Path { get; init; } = string.Empty;
-    public string Sha256 { get; init; } = string.Empty;
-    public long EncodedBytes { get; init; }
+    public string Path { get; set; } = string.Empty;
+    public string Sha256 { get; set; } = string.Empty;
+    public long EncodedBytes { get; set; }
 }
 
 public sealed record ShareManifest
 {
-    public int SchemaVersion { get; init; }
-    public string ContentType { get; init; } = string.Empty;
-    public string FormatId { get; init; } = string.Empty;
-    public int MinimumAppContentVersion { get; init; }
-    public string CreatedWithAppVersion { get; init; } = string.Empty;
-    public string SourceId { get; init; } = string.Empty;
-    public List<Sha256FileEntry> Files { get; init; } = [];
+    public int SchemaVersion { get; set; }
+    public string ContentType { get; set; } = string.Empty;
+    public string FormatId { get; set; } = string.Empty;
+    public int MinimumAppContentVersion { get; set; }
+    public string CreatedWithAppVersion { get; set; } = string.Empty;
+    public string SourceId { get; set; } = string.Empty;
+    public List<Sha256FileEntry> Files { get; set; } = [];
 }
 
 public enum ShareValidationCode

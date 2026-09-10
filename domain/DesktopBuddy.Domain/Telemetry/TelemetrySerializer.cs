@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using DesktopBuddy.Domain.Serialization;
 
 namespace DesktopBuddy.Domain.Telemetry;
 
@@ -10,6 +11,7 @@ public static class TelemetrySerializer
     {
         WriteIndented = false,
         Converters = { new JsonStringEnumConverter(JsonNamingPolicy.CamelCase) },
+        TypeInfoResolver = DomainJsonContext.Default,
     };
 
     public static void WriteFrame(Stream stream, TelemetryFrame frame)

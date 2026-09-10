@@ -21,6 +21,7 @@ public static class WorkshopProvenanceStore
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        TypeInfoResolver = SharingJsonContext.Default,
     };
 
     public static WorkshopProvenance Create(

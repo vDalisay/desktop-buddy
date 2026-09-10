@@ -5,6 +5,7 @@ using System.Text.Json;
 using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Domain.Serialization;
 
 namespace DesktopBuddy.Domain.Persistence;
 
@@ -26,6 +27,7 @@ public static class ProgressSavePolicy
     private static readonly JsonSerializerOptions Options = new(JsonSerializerDefaults.Web)
     {
         WriteIndented = true,
+        TypeInfoResolver = DomainJsonContext.Default,
     };
 
     public static string Serialize(ProgressSave save)

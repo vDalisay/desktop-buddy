@@ -11,6 +11,7 @@ using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Domain.Presentation;
 using DesktopBuddy.Economy;
 using DesktopBuddy.Persistence.Characters;
+using DesktopBuddy.Serialization;
 
 namespace DesktopBuddy.CharacterEditor;
 
@@ -210,7 +211,7 @@ public sealed class CharacterEditorSession
             document.ExtensionData,
             StringComparer.Ordinal)
         {
-            [PaletteKey] = System.Text.Json.JsonSerializer.SerializeToElement(hexColors),
+            [PaletteKey] = System.Text.Json.JsonSerializer.SerializeToElement(hexColors, AppJsonContext.Default.IReadOnlyListString),
         };
         return document with { ExtensionData = extensionData };
     });

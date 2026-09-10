@@ -46,44 +46,44 @@ public interface IProgressStore
 
 public sealed record ProgressStatisticsSave
 {
-    public long ScoredImpacts { get; init; }
-    public long Knockouts { get; init; }
-    public long CareAwards { get; init; }
-    public long TrustResets { get; init; }
-    public long EarnedMilliCredits { get; init; }
-    public long SuccessfulCatches { get; init; }
-    public long TotalPainMilli { get; init; }
-    public long BestOneSecondMilliCredits { get; init; }
-    public long BestThreeSecondMilliCredits { get; init; }
-    public long BestTenSecondMilliCredits { get; init; }
-    public float HighestMood { get; init; }
-    public float LowestMood { get; init; }
-    public Dictionary<string, long> ToolUses { get; init; } = new(StringComparer.Ordinal);
-    public Dictionary<string, long> ToolPainMilli { get; init; } = new(StringComparer.Ordinal);
+    public long ScoredImpacts { get; set; }
+    public long Knockouts { get; set; }
+    public long CareAwards { get; set; }
+    public long TrustResets { get; set; }
+    public long EarnedMilliCredits { get; set; }
+    public long SuccessfulCatches { get; set; }
+    public long TotalPainMilli { get; set; }
+    public long BestOneSecondMilliCredits { get; set; }
+    public long BestThreeSecondMilliCredits { get; set; }
+    public long BestTenSecondMilliCredits { get; set; }
+    public float HighestMood { get; set; }
+    public float LowestMood { get; set; }
+    public Dictionary<string, long> ToolUses { get; set; } = new(StringComparer.Ordinal);
+    public Dictionary<string, long> ToolPainMilli { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed record CumulativeTimesSave
 {
-    public double RunSeconds { get; init; }
-    public double ActiveSeconds { get; init; }
-    public double HiddenSeconds { get; init; }
+    public double RunSeconds { get; set; }
+    public double ActiveSeconds { get; set; }
+    public double HiddenSeconds { get; set; }
 }
 
 public sealed record ProgressExtensionsSave
 {
-    public string? UnknownSelectedToolId { get; init; }
-    public List<string> UnknownContentIds { get; init; } = [];
-    public Dictionary<string, string> Values { get; init; } = new(StringComparer.Ordinal);
+    public string? UnknownSelectedToolId { get; set; }
+    public List<string> UnknownContentIds { get; set; } = [];
+    public Dictionary<string, string> Values { get; set; } = new(StringComparer.Ordinal);
 }
 
 public sealed record WorkProgressSave
 {
-    public long Revision { get; init; }
-    public long KeyboardPresses { get; init; }
-    public long MouseClicks { get; init; }
-    public List<string> ClaimedLifetimeMilestoneIds { get; init; } = [];
-    public bool FirstEntryGlassesGranted { get; init; }
-    public WorkSessionSave? ActiveSession { get; init; }
+    public long Revision { get; set; }
+    public long KeyboardPresses { get; set; }
+    public long MouseClicks { get; set; }
+    public List<string> ClaimedLifetimeMilestoneIds { get; set; } = [];
+    public bool FirstEntryGlassesGranted { get; set; }
+    public WorkSessionSave? ActiveSession { get; set; }
 
     public static WorkProgressSave FromSnapshot(in WorkProgressSnapshot snapshot) => new()
     {
@@ -107,10 +107,10 @@ public sealed record WorkProgressSave
 
 public sealed record WorkSessionSave
 {
-    public Guid SessionId { get; init; }
-    public long KeyboardPresses { get; init; }
-    public long MouseClicks { get; init; }
-    public List<string> EarnedRepeatPerSessionMilestoneIds { get; init; } = [];
+    public Guid SessionId { get; set; }
+    public long KeyboardPresses { get; set; }
+    public long MouseClicks { get; set; }
+    public List<string> EarnedRepeatPerSessionMilestoneIds { get; set; } = [];
 
     public static WorkSessionSave FromSnapshot(in WorkSessionSnapshot snapshot) => new()
     {
@@ -128,13 +128,13 @@ public sealed record WorkSessionSave
 
 public sealed record PlacedDecorationSave
 {
-    public Guid InstanceId { get; init; }
-    public string DefinitionId { get; init; } = string.Empty;
-    public float CanonicalX { get; init; }
-    public float CanonicalY { get; init; }
-    public int RotationDegrees { get; init; }
-    public DecorationRenderBand RenderBand { get; init; }
-    public long PurchasePriceMilliCredits { get; init; }
+    public Guid InstanceId { get; set; }
+    public string DefinitionId { get; set; } = string.Empty;
+    public float CanonicalX { get; set; }
+    public float CanonicalY { get; set; }
+    public int RotationDegrees { get; set; }
+    public DecorationRenderBand RenderBand { get; set; }
+    public long PurchasePriceMilliCredits { get; set; }
 
     public static PlacedDecorationSave FromPlaced(in PlacedDecoration placed) => new()
     {
@@ -158,13 +158,13 @@ public sealed record PlacedDecorationSave
 
 public sealed record EnvironmentProgressSave
 {
-    public long Revision { get; init; }
-    public int LayoutSchemaVersion { get; init; } = EnvironmentLayout.CurrentSchemaVersion;
-    public List<PlacedDecorationSave> PlacedDecorations { get; init; } = [];
+    public long Revision { get; set; }
+    public int LayoutSchemaVersion { get; set; } = EnvironmentLayout.CurrentSchemaVersion;
+    public List<PlacedDecorationSave> PlacedDecorations { get; set; } = [];
 
     /// <summary>Definition IDs the player owns but has not placed; one entry per owned copy. Older
     /// saves have none, which is correct: nothing had been banked before storage existed.</summary>
-    public List<string> OwnedUnplaced { get; init; } = [];
+    public List<string> OwnedUnplaced { get; set; } = [];
 
     public static EnvironmentProgressSave FromSnapshot(in EnvironmentProgressSnapshot snapshot) => new()
     {
@@ -191,10 +191,10 @@ public sealed record EnvironmentProgressSave
 
 public sealed record FunActivitySave
 {
-    public string ActivityId { get; init; } = ContentIds.FunCatch;
-    public int Drain { get; init; } = FunPreferences.Default.CatchDrain;
-    public float Interest { get; init; } = FunInterestModel.MaximumInterest;
-    public bool Bored { get; init; }
+    public string ActivityId { get; set; } = ContentIds.FunCatch;
+    public int Drain { get; set; } = FunPreferences.Default.CatchDrain;
+    public float Interest { get; set; } = FunInterestModel.MaximumInterest;
+    public bool Bored { get; set; }
 }
 
 /// <summary>Steam-Cloud-eligible semantic progress only (ARCHITECTURE §12).</summary>
@@ -205,25 +205,33 @@ public sealed record ProgressSave
     /// </summary>
     public const int CurrentSchemaVersion = 8;
 
-    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
-    public long Revision { get; init; }
-    public long BalanceMilliCredits { get; init; }
-    public List<string> UnlockedToolIds { get; init; } = [];
-    public string SelectedToolId { get; init; } = ContentIds.ToolGrab;
-    public Guid? ActiveCharacterId { get; init; }
-    public float Mood { get; init; }
-    public float Fullness { get; init; }
-    public List<string> HarmfulContentIds { get; init; } = [];
-    public int ObstacleHopPropensity { get; init; } = BuddyTraits.Default.ObstacleHopPropensity;
-    public List<FunActivitySave> FunActivities { get; init; } = [];
-    public ProgressStatisticsSave Statistics { get; init; } = new();
-    public CumulativeTimesSave Times { get; init; } = new();
-    public WorkProgressSave Work { get; init; } = new();
-    public EnvironmentProgressSave Environment { get; init; } = new();
-    public ProgressExtensionsSave Extensions { get; init; } = new();
+    /// <summary>
+    /// Explicit and attributed so the source generator deserializes through property setters
+    /// rather than binding init accessors as constructor parameters, which would discard every
+    /// initializer below for any field the JSON omits.
+    /// </summary>
+    [JsonConstructor]
+    public ProgressSave() { }
+
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+    public long Revision { get; set; }
+    public long BalanceMilliCredits { get; set; }
+    public List<string> UnlockedToolIds { get; set; } = [];
+    public string SelectedToolId { get; set; } = ContentIds.ToolGrab;
+    public Guid? ActiveCharacterId { get; set; }
+    public float Mood { get; set; }
+    public float Fullness { get; set; }
+    public List<string> HarmfulContentIds { get; set; } = [];
+    public int ObstacleHopPropensity { get; set; } = BuddyTraits.Default.ObstacleHopPropensity;
+    public List<FunActivitySave> FunActivities { get; set; } = [];
+    public ProgressStatisticsSave Statistics { get; set; } = new();
+    public CumulativeTimesSave Times { get; set; } = new();
+    public WorkProgressSave Work { get; set; } = new();
+    public EnvironmentProgressSave Environment { get; set; } = new();
+    public ProgressExtensionsSave Extensions { get; set; } = new();
 
     [JsonExtensionData]
-    public Dictionary<string, JsonElement>? UnknownFields { get; init; }
+    public Dictionary<string, JsonElement>? UnknownFields { get; set; }
 
     public static ProgressSave FromSnapshot(
         in ProgressSnapshot snapshot,
@@ -330,93 +338,93 @@ public sealed record LocalSettingsSave
 {
     public const int CurrentSchemaVersion = 1;
 
-    public int SchemaVersion { get; init; } = CurrentSchemaVersion;
-    public long Revision { get; init; }
-    public int WindowX { get; init; }
-    public int WindowY { get; init; }
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+    public long Revision { get; set; }
+    public int WindowX { get; set; }
+    public int WindowY { get; set; }
     // A first run opens at a comfortable working size rather than the old 480x360 postage stamp:
     // the Win98 shell, its menus and the tutorial window all need room to be legible.
-    public int WindowWidth { get; init; } = 1280;
-    public int WindowHeight { get; init; } = 940;
-    public int Monitor { get; init; }
-    public int Dpi { get; init; } = 96;
-    public int ZoomPercent { get; init; } = 100;
+    public int WindowWidth { get; set; } = 1280;
+    public int WindowHeight { get; set; } = 940;
+    public int Monitor { get; set; }
+    public int Dpi { get; set; } = 96;
+    public int ZoomPercent { get; set; } = 100;
 
     /// <summary>Interface and font scale: 100, 125, 150, 175, or 200 percent.</summary>
-    public int UiScalePercent { get; init; } = 100;
+    public int UiScalePercent { get; set; } = 100;
     /// <summary>
     /// A first launch starts at 80%, not full, so the sliders have somewhere to go up as well as
     /// down and an unattended desktop pet never opens at maximum volume.
     /// </summary>
-    public float MasterVolume { get; init; } = 0.8f;
-    public float SfxVolume { get; init; } = 0.8f;
-    public float UiVolume { get; init; } = 0.8f;
+    public float MasterVolume { get; set; } = 0.8f;
+    public float SfxVolume { get; set; } = 0.8f;
+    public float UiVolume { get; set; } = 0.8f;
 
     /// <summary>Foreground frame cap; zero leaves the cap to V-sync.</summary>
-    public int MaxFps { get; init; }
+    public int MaxFps { get; set; }
 
     /// <summary>Frame cap while hidden or throttled; zero uses the tuning profile's value.</summary>
-    public int BackgroundMaxFps { get; init; }
+    public int BackgroundMaxFps { get; set; }
 
     /// <summary>Hide the buddy while a full-screen application owns the foreground.</summary>
-    public bool HideForFullscreenApps { get; init; } = true;
+    public bool HideForFullscreenApps { get; set; } = true;
 
     /// <summary>"remember" (default), "work", or "play": which mode a launch starts in.</summary>
-    public string StartupInputMode { get; init; } = "remember";
+    public string StartupInputMode { get; set; } = "remember";
 
     /// <summary>Legacy broad Work-mode mute. Kept for existing users who explicitly chose it.</summary>
-    public bool MuteInWorkMode { get; init; } = true;
+    public bool MuteInWorkMode { get; set; } = true;
 
     /// <summary>Mute only Work Mode's mechanical typing feedback; other SFX remain audible.</summary>
-    public bool MuteWorkTyping { get; init; }
+    public bool MuteWorkTyping { get; set; }
 
     /// <summary>
     /// Aesthetic UI preference: keep the Win98 visual language but allow short modern easing for
     /// preview/category transitions. ReducedMotion always overrides this and removes the motion.
     /// Missing values in older settings files default to true through the property initializer.
     /// </summary>
-    public bool ModernUiMotion { get; init; } = true;
-    public bool ReducedMotion { get; init; }
-    public bool ScreenShake { get; init; } = true;
-    public bool ReducedParticles { get; init; }
-    public bool PhotosensitivitySafe { get; init; } = true;
+    public bool ModernUiMotion { get; set; } = true;
+    public bool ReducedMotion { get; set; }
+    public bool ScreenShake { get; set; } = true;
+    public bool ReducedParticles { get; set; }
+    public bool PhotosensitivitySafe { get; set; } = true;
 
     /// <summary>
     /// Gore Mode: piercing hits open bleeding wounds that stain the room. Off by default,
     /// like every other content-sensitivity default here — the player opts in. Builds that
     /// do not ship the feature ignore this value entirely rather than trusting the file.
     /// </summary>
-    public bool GoreEnabled { get; init; }
-    public int Msaa { get; init; } = 2;
-    public bool VSync { get; init; } = true;
-    public bool AlwaysOnTop { get; init; } = true;
-    public string GlobalHotkey { get; init; } = "Ctrl+Shift+B";
-    public bool LaunchWithWindows { get; init; }
-    public string LastInputMode { get; init; } = "work";
+    public bool GoreEnabled { get; set; }
+    public int Msaa { get; set; } = 2;
+    public bool VSync { get; set; } = true;
+    public bool AlwaysOnTop { get; set; } = true;
+    public string GlobalHotkey { get; set; } = "Ctrl+Shift+B";
+    public bool LaunchWithWindows { get; set; }
+    public string LastInputMode { get; set; } = "work";
 
     // Work Mode is a machine-local presentation. Zero width/height means use the default size.
-    public int WorkWindowX { get; init; }
-    public int WorkWindowY { get; init; }
-    public int WorkWindowWidth { get; init; }
-    public int WorkWindowHeight { get; init; }
-    public bool WorkPositionSet { get; init; }
-    public bool WorkAnimationsEnabled { get; init; } = true;
-    public bool WorkShowLifetimeCounter { get; init; }
+    public int WorkWindowX { get; set; }
+    public int WorkWindowY { get; set; }
+    public int WorkWindowWidth { get; set; }
+    public int WorkWindowHeight { get; set; }
+    public bool WorkPositionSet { get; set; }
+    public bool WorkAnimationsEnabled { get; set; } = true;
+    public bool WorkShowLifetimeCounter { get; set; }
 
     /// <summary>The CRT pass over Work Mode's buddy and PC. On by default: it is the look.</summary>
-    public bool WorkRetroFilter { get; init; } = true;
+    public bool WorkRetroFilter { get; set; } = true;
 
     // The player's interface palette, as "rrggbb" hex. Empty or unparseable values fall back to
     // the shipped grey/navy/black, so a hand-edited settings file cannot leave the UI unreadable.
-    public string UiFaceColor { get; init; } = "c0c0c0";
-    public string UiBarColor { get; init; } = "000080";
-    public string UiTextColor { get; init; } = "000000";
+    public string UiFaceColor { get; set; } = "c0c0c0";
+    public string UiBarColor { get; set; } = "000080";
+    public string UiTextColor { get; set; } = "000000";
 
     // Environment editor preferences are local UX state, not room progression. Reset Progress must
     // preserve them exactly like window placement and Work presentation preferences.
-    public bool EnvironmentSnapToGrid { get; init; }
-    public EnvironmentGridSize EnvironmentGridSize { get; init; } = EnvironmentGridSize.Medium;
+    public bool EnvironmentSnapToGrid { get; set; }
+    public EnvironmentGridSize EnvironmentGridSize { get; set; } = EnvironmentGridSize.Medium;
 
     [JsonExtensionData]
-    public Dictionary<string, JsonElement>? UnknownFields { get; init; }
+    public Dictionary<string, JsonElement>? UnknownFields { get; set; }
 }

@@ -38,6 +38,7 @@ public sealed class RoomPaintingLibraryStore
     {
         WriteIndented = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        TypeInfoResolver = SharingJsonContext.Default,
     };
 
     public RoomPaintingLibraryStore(string resolvedRoot)
