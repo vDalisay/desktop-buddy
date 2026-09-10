@@ -33,6 +33,12 @@ public partial class CursorToolController : Node2D
 {
     [Export] public Godot.Collections.Array<CursorToolProfile> Profiles { get; set; } = new();
     [Export] public InteractionDamageComponent Pipeline { get; set; } = null!;
+
+    /// <summary>
+    /// Optional multi-Buddy room, so a swing shoves whichever Buddy it connected with. Without it
+    /// the controller keeps using the one Buddy behind <see cref="Pipeline"/>.
+    /// </summary>
+    [Export] public SandboxRoot? Sandbox { get; set; }
     [Export] public BoundaryController Boundaries { get; set; } = null!;
 
     private CursorToolBody? _body;

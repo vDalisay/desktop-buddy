@@ -213,6 +213,9 @@ public partial class SandboxRoot : Node2D
         CursorGuns.ShotFired += OnGunShotFired;
         // Taking a detonated grenade out of the world also has to release the player's
         // grab and cancel a buddy interaction, so removal stays the root's job.
+        CursorTools.BindShoveRoom(this);
+        // The blast reaches whoever is standing in it, so the grenade needs the room, not one Buddy.
+        Grenades.Sandbox = this;
         Grenades.Initialize(RemoveLooseObject);
         GrenadeVisual.Initialize(Grenades.Profile);
         LooseObjectVisual.Initialize(Objects);

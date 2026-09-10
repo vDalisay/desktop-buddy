@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using DesktopBuddy.Buddy;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Domain.Scenes;
@@ -74,6 +75,27 @@ public partial class SandboxRoot
         await appearance.UseCharacterAsync(characterId, token);
         await scenes.FlushAsync(force: true, token);
         return true;
+    }
+
+    /// <summary>
+    /// Every Buddy that is physically in the room right now, each with its own damage pipeline.
+    /// Shared tools that must reach whoever they hit iterate this instead of the authored actor;
+    /// a run without a Scene roster yields that one Buddy, and an empty room yields nothing.
+    /// </summary>
+    public IEnumerable<(BuddyRoot Buddy, InteractionDamageComponent Damage)> LiveCast()
+    {
+        if (_sceneRuntime is not null)
+        {
+            foreach (BuddyActorRuntime actor in _sceneRuntime.Actors)
+            {
+                if (GodotObject.IsInstanceValid(actor.Buddy) && GodotObject.IsInstanceValid(actor.Damage))
+                    yield return (actor.Buddy, actor.Damage);
+            }
+            yield break;
+        }
+
+        if (GodotObject.IsInstanceValid(Buddy) && GodotObject.IsInstanceValid(Pipeline))
+            yield return (Buddy, Pipeline);
     }
 
     /// <summary>Focuses one placement of the active Scene. Returns false when it is not live.</summary>

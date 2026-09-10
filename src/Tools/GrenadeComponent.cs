@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Content;
@@ -30,6 +31,12 @@ public partial class GrenadeComponent : Node2D
     [Export] public PullbackLauncherComponent Launcher { get; set; } = null!;
     [Export] public BoundaryController Boundaries { get; set; } = null!;
     [Export] public GrenadeProfile Profile { get; set; } = null!;
+
+    /// <summary>
+    /// Optional multi-Buddy room. When present the blast reaches every Buddy standing in it; without
+    /// it the component keeps blasting the one Buddy behind <see cref="Pipeline"/>.
+    /// </summary>
+    [Export] public SandboxRoot? Sandbox { get; set; }
 
     private readonly PinBody[] _pins = new PinBody[GrenadeProfile.PinPoolCapacity];
     private readonly Dictionary<int, TrackedGrenadeState> _tracked = new();
@@ -292,6 +299,15 @@ public partial class GrenadeComponent : Node2D
         state.PreviousSpeed = body.LinearVelocity.Length();
     }
 
+    private IEnumerable<(BuddyRoot Buddy, InteractionDamageComponent Damage)> BlastTargets()
+    {
+        if (GodotObject.IsInstanceValid(Sandbox))
+            return Sandbox!.LiveCast();
+        return GodotObject.IsInstanceValid(Pipeline.Buddy)
+            ? [(Pipeline.Buddy, Pipeline)]
+            : [];
+    }
+
     private void Detonate(LooseObjectBody body)
     {
         Vector2 center = body.GlobalPosition;
@@ -300,26 +316,31 @@ public partial class GrenadeComponent : Node2D
         LastBlastScoredParts = 0;
         LastBlastPain = 0.0f;
 
-        IReadOnlyList<PuppetPartBody> parts = Pipeline.Buddy.Rig.Parts;
-        for (int index = 0; index < parts.Count; index++)
+        // A blast is a place, not a target: everyone standing in the radius is caught by it, each
+        // scoring through their own pipeline.
+        foreach ((BuddyRoot buddy, InteractionDamageComponent pipeline) in BlastTargets())
         {
-            PuppetPartBody part = parts[index];
-            float distance = Mathf.Max(
-                0.0f, center.DistanceTo(part.GlobalPosition) - part.Radius);
-            float impulse = Profile.EquivalentImpulseAtCenter * Profile.FalloffAt(distance);
-            if (impulse <= 0.0f)
-                continue;
-
-            float pain = Pipeline.ApplyBlastImpulse(
-                sourceId,
-                ContentIds.ToolGrenade,
-                (BuddyPart)(int)part.PartId,
-                impulse,
-                part.GlobalPosition);
-            if (pain > 0.0f)
+            IReadOnlyList<PuppetPartBody> parts = buddy.Rig.Parts;
+            for (int index = 0; index < parts.Count; index++)
             {
-                LastBlastScoredParts++;
-                LastBlastPain += pain;
+                PuppetPartBody part = parts[index];
+                float distance = Mathf.Max(
+                    0.0f, center.DistanceTo(part.GlobalPosition) - part.Radius);
+                float impulse = Profile.EquivalentImpulseAtCenter * Profile.FalloffAt(distance);
+                if (impulse <= 0.0f)
+                    continue;
+
+                float pain = pipeline.ApplyBlastImpulse(
+                    sourceId,
+                    ContentIds.ToolGrenade,
+                    (BuddyPart)(int)part.PartId,
+                    impulse,
+                    part.GlobalPosition);
+                if (pain > 0.0f)
+                {
+                    LastBlastScoredParts++;
+                    LastBlastPain += pain;
+                }
             }
         }
 
