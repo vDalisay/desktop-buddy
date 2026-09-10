@@ -12,11 +12,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-MARKER = "<!-- Desktop Buddy NativeAOT Initial Steam Demo spike -->"
+MARKER = "<!-- Desktop Buddy NativeAOT spike -->"
 BLOCK = r'''
 
-  <!-- Desktop Buddy NativeAOT Initial Steam Demo spike -->
-  <PropertyGroup Condition=" '$(GodotTargetPlatform)' != 'web' AND '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">
+  <!-- Desktop Buddy NativeAOT spike -->
+  <PropertyGroup Condition=" '$(GodotTargetPlatform)' != 'web' AND '$(DesktopBuddyNativeAot)' == 'true' ">
     <PublishAOT>true</PublishAOT>
     <DebugSymbols>false</DebugSymbols>
     <DebugType>none</DebugType>
@@ -24,11 +24,14 @@ BLOCK = r'''
   </PropertyGroup>
 
   <!--
-    Keep the first spike conservative. Godot and Desktop Buddy contain reflection-sensitive paths,
+    Keep the spike conservative. Godot and Desktop Buddy contain reflection-sensitive paths,
     so root the application assemblies first and prove compatibility before narrowing preservation.
     This still removes the normal project IL assembly from the exported player.
+
+    Selected by DesktopBuddyNativeAot rather than by a distribution scope: the Demo proved the
+    path, and the Full Release has to opt in explicitly rather than inherit it by accident.
   -->
-  <ItemGroup Condition=" '$(GodotTargetPlatform)' != 'web' AND '$(DesktopBuddyInitialSteamDemoScope)' == 'true' ">
+  <ItemGroup Condition=" '$(GodotTargetPlatform)' != 'web' AND '$(DesktopBuddyNativeAot)' == 'true' ">
     <TrimmerRootAssembly Include="GodotSharp" />
     <TrimmerRootAssembly Include="DesktopBuddy" />
     <TrimmerRootAssembly Include="DesktopBuddy.Domain" />
@@ -63,7 +66,7 @@ def check(root: Path) -> None:
     required = (
         MARKER,
         "<PublishAOT>true</PublishAOT>",
-        "'$(DesktopBuddyInitialSteamDemoScope)' == 'true'",
+        "'$(DesktopBuddyNativeAot)' == 'true'",
         '<TrimmerRootAssembly Include="GodotSharp" />',
         '<TrimmerRootAssembly Include="DesktopBuddy" />',
         '<TrimmerRootAssembly Include="DesktopBuddy.Domain" />',
@@ -83,12 +86,12 @@ def main() -> int:
 
     if args.check:
         check(root)
-        print("NativeAOT Initial Steam Demo spike configuration verified.")
+        print("NativeAOT spike configuration verified.")
         return 0
 
     changed = prepare(root)
     check(root)
-    print("Prepared NativeAOT Initial Steam Demo spike." if changed else "NativeAOT spike configuration already present.")
+    print("Prepared NativeAOT spike." if changed else "NativeAOT spike configuration already present.")
     return 0
 
 
