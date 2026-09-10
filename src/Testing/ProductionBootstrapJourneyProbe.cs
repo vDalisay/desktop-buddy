@@ -28,6 +28,10 @@ namespace DesktopBuddy.Testing;
 /// </summary>
 public static class ProductionBootstrapJourneyProbe
 {
+    private const string RestartRoomName = "Restart Room";
+    private const float RestartAnchorX = 0.25f;
+    private const float RestartAnchorY = 0.5f;
+
     public static async Task<bool> RunAsync(
         RunnerArguments args,
         SandboxRoot sandbox,
@@ -88,6 +92,12 @@ public static class ProductionBootstrapJourneyProbe
             bool changeLibrary = setup.ValueKind == JsonValueKind.Object &&
                 setup.TryGetProperty("change_scene_library", out JsonElement libraryElement) &&
                 libraryElement.ValueKind == JsonValueKind.True;
+            bool prepareRestart = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("prepare_restart_room", out JsonElement prepareElement) &&
+                prepareElement.ValueKind == JsonValueKind.True;
+            bool expectRestart = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("expect_restart_room", out JsonElement expectElement) &&
+                expectElement.ValueKind == JsonValueKind.True;
 
             SceneStripController? strip = sandbox.GetTree().Root.FindChild(
                 nameof(SceneStripController), recursive: true, owned: false) as SceneStripController;
@@ -185,14 +195,7 @@ public static class ProductionBootstrapJourneyProbe
 
                 // A painted background is the Scene-owned mutable asset the duplicate must copy
                 // rather than share.
-                var painted = new byte[EnvironmentCanvasPolicy.Bytes];
-                for (int index = 0; index < painted.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
-                {
-                    painted[index] = 12;
-                    painted[index + 1] = 34;
-                    painted[index + 2] = 56;
-                    painted[index + 3] = 255;
-                }
+                byte[] painted = FixturePaint();
                 await EnvironmentPaintStore.ForScene(files, userRoot, sourceId).SaveAsync(painted);
 
                 SceneId copyId = await strip.DuplicateActiveSceneAsync();
@@ -238,6 +241,55 @@ public static class ProductionBootstrapJourneyProbe
                 // Every teardown above freed its actors; the shared checks below must not read a
                 // roster from before the last deletion.
                 runtime = sandbox.ActiveSceneRuntime;
+            }
+
+            bool restartPrepared = !prepareRestart;
+            bool restartRestored = !expectRestart;
+
+            if (prepareRestart)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Restart phase requires Scene progress.");
+                if (strip is null)
+                    throw new InvalidOperationException("Restart phase requires the player-facing Scene strip.");
+
+                SceneLibraryResult renamed = scenes.RenameScene(scenes.ActiveSceneId, RestartRoomName);
+                BuddyIdentityId added = await strip.AddCastMemberAsync(
+                    default,
+                    characterId: null,
+                    label: "Restart Buddy",
+                    new CanonicalRoomPosition(RestartAnchorX, RestartAnchorY));
+                await EnvironmentPaintStore
+                    .ForScene(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"), scenes.ActiveSceneId)
+                    .SaveAsync(FixturePaint());
+                await scenes.FlushAsync(force: true);
+                runtime = sandbox.ActiveSceneRuntime;
+                restartPrepared = renamed.Succeeded && added.IsValid && !scenes.IsDirty &&
+                    runtime is not null && runtime.Actors.Count == 3;
+            }
+
+            if (expectRestart)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Restart phase requires Scene progress.");
+                SceneDocument active = scenes.ActiveScene;
+                Rect2 bounds = sandbox.Boundaries.InnerBounds;
+                byte[]? restoredPaint = EnvironmentPaintStore
+                    .ForScene(new CharacterFileSystem(), ProjectSettings.GlobalizePath("user://"), active.SceneId)
+                    .Load();
+
+                restartRestored = string.Equals(active.Name, RestartRoomName, StringComparison.Ordinal) &&
+                    runtime is not null &&
+                    runtime.Actors.Count == active.BuddyPlacements.Count &&
+                    active.BuddyPlacements.All(placement =>
+                        scenes.TryGetBuddy(placement.BuddyIdentityId, out BuddyIdentityState? identity) &&
+                        identity is not null &&
+                        runtime.Actors.Any(actor => actor.BuddyIdentityId == placement.BuddyIdentityId)) &&
+                    active.BuddyPlacements.Any(placement =>
+                        Mathf.IsEqualApprox(placement.Position.X, RestartAnchorX) &&
+                        Mathf.IsEqualApprox(placement.Position.Y, RestartAnchorY)) &&
+                    runtime.Actors.All(actor => bounds.HasPoint(actor.Buddy.Rig.Torso.GlobalPosition)) &&
+                    restoredPaint is not null && restoredPaint.AsSpan().SequenceEqual(FixturePaint());
             }
 
             bool actorCountMatches = expectedActorCount < 0 ||
@@ -324,6 +376,8 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_delete_switched_safely"] = deleteSwitchedSafely,
                 ["scene_delete_removed_assets"] = deleteRemovedAssets,
                 ["scene_last_scene_protected"] = lastSceneProtected,
+                ["scene_restart_prepared"] = restartPrepared,
+                ["scene_restart_restored"] = restartRestored,
             };
 
             if (phase.TryGetProperty("assertions", out JsonElement assertions) && assertions.ValueKind == JsonValueKind.Array)
@@ -356,6 +410,19 @@ public static class ProductionBootstrapJourneyProbe
         }
 
         return Finish(passed, null, null);
+
+        static byte[] FixturePaint()
+        {
+            var pixels = new byte[EnvironmentCanvasPolicy.Bytes];
+            for (int index = 0; index < pixels.Length; index += EnvironmentCanvasPolicy.BytesPerPixel)
+            {
+                pixels[index] = 12;
+                pixels[index + 1] = 34;
+                pixels[index + 2] = 56;
+                pixels[index + 3] = 255;
+            }
+            return pixels;
+        }
 
         static int SceneIndexOf(SceneProgressCoordinator scenes, SceneId sceneId)
         {

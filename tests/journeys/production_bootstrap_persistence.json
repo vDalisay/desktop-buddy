@@ -167,6 +167,44 @@
       ]
     },
     {
+      "id": "next_fest_restart_room_setup",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "scene_upgraded",
+        "prepare_restart_room": true,
+        "expected_work_keyboard": 77
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "scene_restart_prepared", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
+      "id": "next_fest_restart_room_restored",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "preserve",
+        "expect_restart_room": true,
+        "expected_work_keyboard": 77,
+        "expected_actor_count": 3
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_restart_restored", "equals": true },
+        { "predicate": "scene_actor_count_matches", "equals": true },
+        { "predicate": "scene_actor_bindings_match", "equals": true },
+        { "predicate": "scene_actor_buddy_states_independent", "equals": true },
+        { "predicate": "scene_actors_share_player", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
       "id": "next_fest_malformed_manifest_refusal",
       "build_scope": "next_fest",
       "expected_exit": 3,
