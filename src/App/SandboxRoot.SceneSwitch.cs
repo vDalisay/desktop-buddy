@@ -85,14 +85,6 @@ public partial class SandboxRoot
                 scenes.ActiveSceneId,
                 exception.Message);
         }
-        if (targetBindings.Count == 0)
-        {
-            return new SceneRuntimeSwitchResult(
-                SceneRuntimeSwitchStatus.InvalidTarget,
-                scenes.ActiveSceneId,
-                "The staged compatibility runtime requires at least one Buddy in the target Scene.");
-        }
-
         CharacterSelectionRuntime? characterRuntime =
             GetNodeOrNull<CharacterSelectionRuntime>(nameof(CharacterSelectionRuntime));
         if (characterRuntime is null || !characterRuntime.IsInitialized)
@@ -135,9 +127,16 @@ public partial class SandboxRoot
             ComposeSceneRuntimeAfterSwitch(targetBindings);
             transaction.CompleteStep(SceneSwitchStep.InstantiateTargetRuntime);
 
-            await characterRuntime.RebindSceneCompatibilityActorAsync(
-                targetBindings.OrderedBindings[0],
-                token);
+            if (targetBindings.Count > 0)
+            {
+                await characterRuntime.RebindSceneCompatibilityActorAsync(
+                    targetBindings.OrderedBindings[0],
+                    token);
+            }
+            else
+            {
+                characterRuntime.ClearSceneCompatibilityActor();
+            }
             await EnsureSecondarySceneAppearancesLoadedAsync(token);
             transaction.CompleteStep(SceneSwitchStep.ApplyAppearanceAndPaint);
 
@@ -244,14 +243,20 @@ public partial class SandboxRoot
 
     private void ComposeSceneRuntimeAfterSwitch(SceneProgressBindingRegistry bindings)
     {
-        if (bindings.Count == 0)
-            throw new InvalidOperationException("Target Scene has no Buddy roster to compose.");
         if (_sceneRuntime is not null || _sceneSpawnedActorNodes.Count != 0 ||
             _sceneSpawnedAppearanceRuntimes.Count != 0)
         {
             throw new InvalidOperationException("Another Scene runtime is still live during target composition.");
         }
 
+        if (bindings.Count == 0)
+        {
+            SetAuthoredSceneActorActive(false);
+            _sceneRuntime = new SceneRuntimeHost(bindings, []);
+            return;
+        }
+
+        SetAuthoredSceneActorActive(true);
         var actors = new List<BuddyActorRuntime>(bindings.Count)
         {
             RebindAuthoredSceneActor(bindings.OrderedBindings[0]),
@@ -308,9 +313,16 @@ public partial class SandboxRoot
 
             SceneProgressBindingRegistry outgoingBindings = scenes.CreateActiveBindings();
             ComposeSceneRuntimeAfterSwitch(outgoingBindings);
-            await characterRuntime.RebindSceneCompatibilityActorAsync(
-                outgoingBindings.OrderedBindings[0],
-                CancellationToken.None);
+            if (outgoingBindings.Count > 0)
+            {
+                await characterRuntime.RebindSceneCompatibilityActorAsync(
+                    outgoingBindings.OrderedBindings[0],
+                    CancellationToken.None);
+            }
+            else
+            {
+                characterRuntime.ClearSceneCompatibilityActor();
+            }
             await EnsureSecondarySceneAppearancesLoadedAsync(CancellationToken.None);
             ResetPresentationInterpolation();
             await scenes.FlushAsync(force: true, CancellationToken.None);

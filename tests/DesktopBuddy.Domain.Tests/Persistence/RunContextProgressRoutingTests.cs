@@ -64,6 +64,13 @@ public sealed class RunContextProgressRoutingTests
         Assert.True(context.ActiveBuddyProgress.IsSplit);
         Assert.Same(buddy, context.ActiveBuddyProgress.BuddyProgress);
         Assert.IsType<SceneRunProgressPersistence>(context.RunProgressPersistence);
+
+        SceneLibraryResult empty = scenes.CreateScene("Empty");
+        Assert.True(empty.Succeeded);
+        Assert.True(scenes.SwitchScene(empty.Scene!.SceneId).Succeeded);
+        Assert.Empty(scenes.CreateActiveBindings().OrderedBindings);
+        Assert.Same(player, context.ActiveBuddyProgress.PlayerProgress);
+        Assert.Same(buddy, context.ActiveBuddyProgress.BuddyProgress);
     }
 
     [Fact]

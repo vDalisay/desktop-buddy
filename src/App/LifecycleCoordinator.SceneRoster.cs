@@ -19,6 +19,12 @@ public partial class LifecycleCoordinator
         Func<IReadOnlyList<BuddyRuntimeProgressBinding>>? provider) =>
         _activeBuddyProgressProvider = provider;
 
+    private bool HasActiveBuddy()
+    {
+        EnsureSceneRosterProvider();
+        return _activeBuddyProgressProvider is null || _activeBuddyProgressProvider().Count > 0;
+    }
+
     private void ApplyAdditionalActiveBuddyLifecycle(
         double elapsed,
         HungerActivity hungerActivity,

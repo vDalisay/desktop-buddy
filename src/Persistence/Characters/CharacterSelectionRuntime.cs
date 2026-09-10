@@ -87,17 +87,14 @@ public partial class CharacterSelectionRuntime : Node
             // for the first actor in active Scene order. Reserved migration IDs must never choose the
             // actor: a newly-authored Scene can legitimately put any persistent Buddy first.
             SceneProgressBindingRegistry activeBindings = scenes.CreateActiveBindings();
-            if (activeBindings.Count == 0)
+            if (activeBindings.Count > 0)
             {
-                throw new InvalidOperationException(
-                    "Character selection requires at least one Buddy placement in the active Scene.");
+                SceneBuddyProgressBinding compatibilityActor = activeBindings.OrderedBindings[0];
+                _sceneSelectionBinding = new SceneCharacterSelectionBinding(
+                    scenes,
+                    compatibilityActor.Placement.BuddyIdentityId,
+                    _context.CharacterSelection);
             }
-
-            SceneBuddyProgressBinding compatibilityActor = activeBindings.OrderedBindings[0];
-            _sceneSelectionBinding = new SceneCharacterSelectionBinding(
-                scenes,
-                compatibilityActor.Placement.BuddyIdentityId,
-                _context.CharacterSelection);
             _coordinator = new CharacterSelectionCoordinator(
                 _context.Characters,
                 _context.CharacterSelection,

@@ -82,9 +82,6 @@ public static class ProductionBootstrapJourneyProbe
                 switchElement.ValueKind == JsonValueKind.True;
 
             SceneRuntimeHost? runtime = sandbox.ActiveSceneRuntime;
-            BuddyIdentityId outgoingFirstIdentity = runtime is { Actors.Count: > 0 }
-                ? runtime.Actors[0].BuddyIdentityId
-                : default;
             SceneId outgoingSceneId = context.SceneProgress?.ActiveSceneId ?? default;
             BuddyActorRuntime[] outgoingSecondaryActors = runtime is null
                 ? []
@@ -92,9 +89,9 @@ public static class ProductionBootstrapJourneyProbe
 
             bool sceneSwitchSucceeded = !switchToOtherScene;
             bool sceneSwitchRuntimeMatches = !switchToOtherScene;
-            bool sceneSwitchFirstIdentityChanged = !switchToOtherScene;
             bool sceneSwitchSecondaryTeardown = !switchToOtherScene;
             bool sceneSwitchCommitted = !switchToOtherScene;
+            bool sceneSwitchTargetEmpty = !switchToOtherScene;
 
             if (switchToOtherScene)
             {
@@ -109,12 +106,14 @@ public static class ProductionBootstrapJourneyProbe
                 sceneSwitchRuntimeMatches = runtime is not null &&
                     runtime.Scene.SceneId == target.SceneId &&
                     runtime.ProgressBindings?.Scene.SceneId == target.SceneId;
-                sceneSwitchFirstIdentityChanged = runtime is { Actors.Count: > 0 } &&
-                    runtime.Actors[0].BuddyIdentityId != outgoingFirstIdentity;
                 sceneSwitchSecondaryTeardown = outgoingSecondaryActors.All(actor =>
                     !GodotObject.IsInstanceValid(actor.Buddy) || !actor.Buddy.IsInsideTree());
                 sceneSwitchCommitted = switchResult.Succeeded && !scenes.IsDirty &&
                     outgoingSceneId != scenes.ActiveSceneId;
+                sceneSwitchTargetEmpty = runtime is { Actors.Count: 0 } &&
+                    sandbox.Buddy.Rig.Parts.All(part =>
+                        part.Freeze && part.CollisionLayer == 0 && part.CollisionMask == 0 && !part.Visible) &&
+                    !sandbox.VisualPresenter.Visible;
             }
 
             bool actorCountMatches = expectedActorCount < 0 ||
@@ -190,9 +189,9 @@ public static class ProductionBootstrapJourneyProbe
                 ["character_selection_matches_first_actor"] = characterSelectionMatchesFirstActor,
                 ["scene_switch_succeeded"] = sceneSwitchSucceeded,
                 ["scene_switch_runtime_matches_target"] = sceneSwitchRuntimeMatches,
-                ["scene_switch_first_identity_changed"] = sceneSwitchFirstIdentityChanged,
                 ["scene_switch_outgoing_secondary_torn_down"] = sceneSwitchSecondaryTeardown,
                 ["scene_switch_committed"] = sceneSwitchCommitted,
+                ["scene_switch_target_empty"] = sceneSwitchTargetEmpty,
             };
 
             if (phase.TryGetProperty("assertions", out JsonElement assertions) && assertions.ValueKind == JsonValueKind.Array)

@@ -375,10 +375,13 @@ public partial class SandboxRoot : Node2D
         // every contact this tick was scored against.
         Grenades.PhysicsTick();
         FireSprayer.PhysicsTick();
-        Pipeline.SetFireUnconsciousness(FireSprayer.FullBodyBurnKnockoutActive);
-        // Burning is an immediate hazard in its own right (RAGDOLL §4 priority 3): one
-        // snapshot bool, and the existing ladder does the panic and the drop.
-        Buddy.Arbiter.SetStatusHazard(FireSprayer.IsBurning, FireSprayer.HazardFleeDirection);
+        if (_sceneRuntime is null || _sceneRuntime.Actors.Count > 0)
+        {
+            Pipeline.SetFireUnconsciousness(FireSprayer.FullBodyBurnKnockoutActive);
+            // Burning is an immediate hazard in its own right (RAGDOLL §4 priority 3): one
+            // snapshot bool, and the existing ladder does the panic and the drop.
+            Buddy.Arbiter.SetStatusHazard(FireSprayer.IsBurning, FireSprayer.HazardFleeDirection);
+        }
         FireVisual.PhysicsTick();
         FireVisualLegacy.PhysicsTick();
         SprayerVisual.PhysicsTick();
@@ -653,9 +656,10 @@ public partial class SandboxRoot : Node2D
 
     private void RefreshWorkModeHitRegions()
     {
+        bool hasAuthoredBuddy = _sceneRuntime is null || _sceneRuntime.Actors.Count > 0;
         double zoom = Shell.EffectiveZoom;
         IReadOnlyList<PuppetPartBody> parts = Buddy.Rig.Parts;
-        for (int index = 0; index < parts.Count; index++)
+        for (int index = 0; hasAuthoredBuddy && index < parts.Count; index++)
         {
             PuppetPartBody part = parts[index];
             float diameter = part.Radius * 2.0f;
@@ -675,13 +679,13 @@ public partial class SandboxRoot : Node2D
         if (_overlayWorkModeHitRegions.Count == 0)
         {
             Shell.UpdateWorkModeHitRegions(
-                _buddyWorkModeWorldRegions,
-                _buddyWorkModeHitRegions);
+                hasAuthoredBuddy ? _buddyWorkModeWorldRegions : [],
+                hasAuthoredBuddy ? _buddyWorkModeHitRegions : []);
             return;
         }
 
-        var world = new List<Rect2>(_buddyWorkModeWorldRegions);
-        var client = new List<Rect2I>(_buddyWorkModeHitRegions);
+        var world = hasAuthoredBuddy ? new List<Rect2>(_buddyWorkModeWorldRegions) : [];
+        var client = hasAuthoredBuddy ? new List<Rect2I>(_buddyWorkModeHitRegions) : [];
         Transform2D canvas = GetViewport().GetCanvasTransform().AffineInverse();
         foreach (Rect2 overlay in _overlayWorkModeHitRegions)
         {
@@ -869,10 +873,13 @@ public partial class SandboxRoot : Node2D
     public void SetPresentationMode(PresentationMode mode)
     {
         Mode = mode;
-        bool show3D = mode == PresentationMode.Mii3D;
+        bool hasAuthoredBuddy = _sceneRuntime is null || _sceneRuntime.Actors.Count > 0;
+        if (!hasAuthoredBuddy)
+            SetAuthoredSceneActorActive(false);
+        bool show3D = hasAuthoredBuddy && mode == PresentationMode.Mii3D;
         foreach (PuppetPartBody part in Buddy.Rig.Parts)
         {
-            part.Visible = !show3D;
+            part.Visible = hasAuthoredBuddy && !show3D;
         }
 
         VisualPresenter.Visible = show3D;

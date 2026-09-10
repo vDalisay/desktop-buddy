@@ -279,15 +279,20 @@ public partial class LifecycleCoordinator : Node
 
     private void ApplyAcceptedSpan(double elapsed)
     {
-        _progress.DriftMood(elapsed);
-        _progress.RechargeFun(elapsed);
-        long milliCredits = _income.Accrue(_progress.Mood, elapsed);
+        bool hasActiveBuddy = HasActiveBuddy();
+        if (hasActiveBuddy)
+        {
+            _progress.DriftMood(elapsed);
+            _progress.RechargeFun(elapsed);
+        }
+        long milliCredits = _income.Accrue(hasActiveBuddy ? _progress.Mood : 0.0f, elapsed);
         _economy.DepositPassive(milliCredits);
         bool hidden = AccruesAsHidden;
         bool active = !hidden && _activeInteraction();
         bool workMode = _isWorkMode?.Invoke() ?? false;
         HungerActivity hungerActivity = HungerActivityPolicy.Classify(hidden, workMode, active);
-        _progress.DrainHunger(elapsed, hungerActivity);
+        if (hasActiveBuddy)
+            _progress.DrainHunger(elapsed, hungerActivity);
         ApplyAdditionalActiveBuddyLifecycle(elapsed, hungerActivity, workMode);
         _progress.AccrueTime(
             elapsed,

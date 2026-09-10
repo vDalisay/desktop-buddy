@@ -84,8 +84,10 @@ public partial class SandboxRoot
         SceneProgressBindingRegistry bindings = sceneProgress.CreateActiveBindings();
         if (bindings.Count == 0)
         {
-            throw new InvalidOperationException(
-                "The current Sandbox compatibility surface requires at least one Buddy placement in an active Scene.");
+            SetAuthoredSceneActorActive(false);
+            _sceneRuntime = new SceneRuntimeHost(bindings, []);
+            Boundaries.LayoutApplied += OnSceneActorLayoutApplied;
+            return;
         }
 
         var actors = new List<BuddyActorRuntime>(bindings.Count);
@@ -125,6 +127,19 @@ public partial class SandboxRoot
             ToolReactions,
             Reactions,
             VisualPresenter);
+    }
+
+    private void SetAuthoredSceneActorActive(bool active)
+    {
+        bool show3D = active && Mode == PresentationMode.Mii3D;
+        foreach (PuppetPartBody part in Buddy.Rig.Parts)
+        {
+            part.Freeze = !active;
+            part.CollisionLayer = active ? CollisionLayers.BuddyParts : 0;
+            part.CollisionMask = active ? CollisionLayers.MaskBuddyParts : 0;
+            part.Visible = active && !show3D;
+        }
+        VisualPresenter.Visible = show3D;
     }
 
     private BuddyActorRuntime ComposeAdditionalSceneActor(

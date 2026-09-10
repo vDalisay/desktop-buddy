@@ -61,13 +61,13 @@ public sealed record RunContext(
                 return new BuddyRuntimeProgressBinding(Progress);
 
             SceneProgressBindingRegistry bindings = SceneProgress.CreateActiveBindings();
-            if (bindings.Count == 0)
-            {
-                throw new InvalidOperationException(
-                    "A singular compatibility consumer requested an active Buddy, but the active Scene has no Buddy placements.");
-            }
+            if (bindings.Count > 0)
+                return bindings.OrderedBindings[0].Progress;
 
-            return bindings.OrderedBindings[0].Progress;
+            var buddies = SceneProgress.BuddyIdentities();
+            if (buddies.Count == 0)
+                throw new InvalidOperationException("Scene progress requires a Buddy identity for compatibility composition.");
+            return new BuddyRuntimeProgressBinding(new BuddyProgressCoordinator(SceneProgress.Player, buddies[0]));
         }
     }
 

@@ -8,6 +8,12 @@ namespace DesktopBuddy.Persistence.Characters;
 
 public partial class CharacterSelectionRuntime
 {
+    public void ClearSceneCompatibilityActor()
+    {
+        _sceneSelectionBinding?.Dispose();
+        _sceneSelectionBinding = null;
+    }
+
     /// <summary>
     /// Rebinds the existing single-rig Character compatibility surface to the target Scene's first
     /// actor. Selection state is a presentation observable in Scene mode, so it adopts the target

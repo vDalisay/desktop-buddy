@@ -101,7 +101,7 @@
         "switch_to_other_scene": true,
         "expected_wallet_milli": 123000,
         "expected_work_keyboard": 77,
-        "expected_actor_count": 1
+        "expected_actor_count": 0
       },
       "assertions": [
         { "predicate": "sandbox_composed", "equals": true },
@@ -109,13 +109,12 @@
         { "predicate": "split_scene_progress", "equals": true },
         { "predicate": "scene_switch_succeeded", "equals": true },
         { "predicate": "scene_switch_runtime_matches_target", "equals": true },
-        { "predicate": "scene_switch_first_identity_changed", "equals": true },
         { "predicate": "scene_switch_outgoing_secondary_torn_down", "equals": true },
         { "predicate": "scene_switch_committed", "equals": true },
+        { "predicate": "scene_switch_target_empty", "equals": true },
         { "predicate": "scene_actor_count_matches", "equals": true },
         { "predicate": "scene_actor_bindings_match", "equals": true },
         { "predicate": "scene_actors_share_player", "equals": true },
-        { "predicate": "character_selection_matches_first_actor", "equals": true },
         { "predicate": "wallet_preserved", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
