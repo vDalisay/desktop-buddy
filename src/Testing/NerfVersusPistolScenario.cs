@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
@@ -67,7 +68,8 @@ public sealed class NerfVersusPistolScenario : IScenario
             lab.Pipeline.SelectedTool == ToolId.NerfBlaster &&
             gun.IsActive &&
             gun.ActiveContentId == ContentIds.ToolNerfBlaster;
-        GunProfile nerf = gun.ActiveProfile!;
+        GunProfile nerf = gun.ActiveProfile ??
+            throw new InvalidOperationException("The lab never drew its Nerf Blaster.");
 
         await M4ObjectScenarioSupport.SendKey(tree, Key.J);
         await M4ObjectScenarioSupport.WaitFor(tree, () =>
@@ -76,7 +78,8 @@ public sealed class NerfVersusPistolScenario : IScenario
             lab.Pipeline.SelectedTool == ToolId.Pistol &&
             gun.IsActive &&
             gun.ActiveContentId == ContentIds.ToolPistol;
-        GunProfile pistol = gun.ActiveProfile!;
+        GunProfile pistol = gun.ActiveProfile ??
+            throw new InvalidOperationException("The lab never drew its pistol.");
 
         checks.Add(new StartupCheck(
             "both_guns_are_selectable_in_the_lab",
@@ -247,8 +250,15 @@ public sealed class NerfVersusPistolScenario : IScenario
             sadGun.MoveCursor(sadLab.Boundaries.InnerBounds.GetCenter());
             await Tick(tree);
             await M4ObjectScenarioSupport.SendKey(tree, Key.J);
-            await Tick(tree);
-            GunProfile sadPistol = sadGun.ActiveProfile!;
+            // A gun is drawn on the component's physics tick, not on the key press, so one
+            // tick is not enough to guarantee it is in hand. Both selections above already
+            // wait for the drawn content id; this one did not, and a loaded runner slipped
+            // past it and handed FirePointBlank a null profile.
+            await M4ObjectScenarioSupport.WaitFor(tree, () =>
+                sadLab.Pipeline.SelectedTool == ToolId.Pistol &&
+                sadGun.ActiveContentId == ContentIds.ToolPistol, 30);
+            GunProfile sadPistol = sadGun.ActiveProfile ??
+                throw new InvalidOperationException("The sad-face lab never drew its pistol.");
             Shot sadShot = default;
             int sadAttempts = 0;
             for (; sadAttempts < VolleyShots && !sadShot.SawSadFace; sadAttempts++)
