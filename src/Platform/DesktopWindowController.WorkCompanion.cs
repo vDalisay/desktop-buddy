@@ -219,6 +219,18 @@ public partial class DesktopWindowController
             size);
     }
 
+    /// <summary>
+    /// The companion centred on the monitor it would normally open on. This is the recovery
+    /// placement: a player who dragged the companion until only its transparent corner hung on
+    /// screen had nothing left to grab, so Settings offers a way back to the middle.
+    /// </summary>
+    public Rect2I CentredWorkCompanionRect(Vector2I size)
+    {
+        Rect2I usable = UsableMonitorRect;
+        return RecoverWorkCompanionRect(new Rect2I(
+            usable.Position + ((usable.Size - size) / 2), size));
+    }
+
     public Rect2I DefaultWorkCompanionRect(Vector2I size, int inset = 12)
     {
         Rect2I usable = UsableMonitorRect;

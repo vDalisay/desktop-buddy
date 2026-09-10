@@ -284,6 +284,17 @@ public sealed class WorkModeResilienceScenario : IScenario
                         requestedWorkSize,
                 $"normal={sandbox.Window.CompactRect} workSaved=" +
                 $"{savedSettings.WorkWindowWidth}x{savedSettings.WorkWindowHeight}"));
+
+            // The recovery route for a companion dragged until only its transparent corner is
+            // left on screen: Settings puts it back in the middle at its default size.
+            await sandbox.Shell.ResetWorkPlacementAsync(WorkCompanionView.PreferredSize);
+            Rect2I afterReset = sandbox.Shell.ResolveInitialWorkCompanionRect(
+                WorkCompanionView.PreferredSize);
+            Rect2I centred = sandbox.Window.CentredWorkCompanionRect(WorkCompanionView.PreferredSize);
+            checks.Add(new StartupCheck(
+                "work_reset_recentres_next_entry",
+                afterReset == centred && afterReset.Size == WorkCompanionView.PreferredSize,
+                $"afterReset={afterReset} centred={centred} requested={requestedWorkSize}"));
         }
         finally
         {

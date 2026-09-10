@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using DesktopBuddy.Domain.Work;
 
 namespace DesktopBuddy.Work;
@@ -9,6 +10,14 @@ namespace DesktopBuddy.Work;
 /// <summary>
 /// Windows low-level hook adapter for Work Mode. It intentionally discards key identity
 /// immediately after repeat suppression and never logs or persists raw input.
+///
+/// <para>The hooks live on a dedicated thread with its own message pump, never on Godot's main
+/// thread. A WH_KEYBOARD_LL/WH_MOUSE_LL callback is delivered on the thread that installed it,
+/// and Windows blocks the originating input event until that thread's pump dispatches it — so
+/// hooks installed from the frame loop made every keystroke and mouse move on the whole desktop
+/// wait behind a rendered frame, and dropped out entirely on a frame over LowLevelHooksTimeout
+/// (owner report 2026-09-10). This thread does nothing but pump, so callbacks return in
+/// microseconds regardless of the frame rate.</para>
 /// </summary>
 public sealed class WindowsWorkActivitySource : IWorkActivitySource
 {
@@ -22,12 +31,17 @@ public sealed class WindowsWorkActivitySource : IWorkActivitySource
     private const int WmRButtonDown = 0x0204;
     private const int WmMButtonDown = 0x0207;
 
+    private const int WmQuit = 0x0012;
+
     private readonly object _sync = new();
     private readonly HashSet<uint> _pressedKeys = [];
     private readonly HookProc _keyboardProc;
     private readonly HookProc _mouseProc;
     private nint _keyboardHook;
     private nint _mouseHook;
+    private Thread? _pump;
+    private uint _pumpThreadId;
+    private WorkActivitySourceResult _startResult;
     private bool _disposed;
 
     public WindowsWorkActivitySource()
@@ -37,7 +51,7 @@ public sealed class WindowsWorkActivitySource : IWorkActivitySource
     }
 
     public event Action<WorkActivityKind>? Activity;
-    public bool IsRunning => _keyboardHook != 0 && _mouseHook != 0;
+    public bool IsRunning => _pump is { IsAlive: true } && _keyboardHook != 0 && _mouseHook != 0;
 
     public WorkActivitySourceResult Start()
     {
@@ -48,27 +62,88 @@ public sealed class WindowsWorkActivitySource : IWorkActivitySource
             return WorkActivitySourceResult.Failed("Global Work activity capture is only available on Windows.");
 
         Stop();
+        // Deliberately not disposed: on the timeout path below the pump thread may still be
+        // holding it, and disposing it out from under that thread is a crash, not a cleanup.
+        var ready = new ManualResetEventSlim(false);
+        _pump = new Thread(() => PumpHooks(ready))
+        {
+            IsBackground = true,
+            Name = "WorkActivityHooks",
+        };
+        _pump.Start();
+        // The hooks are installed on the pump thread, so entry has to wait for its verdict.
+        // Bounded: a thread that cannot report in a second is a failure worth reporting.
+        if (!ready.Wait(TimeSpan.FromSeconds(1.0)))
+        {
+            Stop();
+            return WorkActivitySourceResult.Failed("Work activity hook thread did not start.");
+        }
+
+        if (!_startResult.Success)
+            Stop();
+        return _startResult;
+    }
+
+    /// <summary>
+    /// Owns the hooks for their whole lifetime: Windows requires the installing thread to keep
+    /// pumping messages, and only that thread may unhook them.
+    /// </summary>
+    private void PumpHooks(ManualResetEventSlim ready)
+    {
+        _pumpThreadId = GetCurrentThreadId();
         nint module = GetCurrentModuleHandle();
         _keyboardHook = SetWindowsHookEx(WhKeyboardLl, _keyboardProc, module, 0);
         if (_keyboardHook == 0)
         {
-            int error = Marshal.GetLastWin32Error();
-            Stop();
-            return WorkActivitySourceResult.Failed($"Keyboard activity hook could not start (Win32 {error}).");
+            _startResult = WorkActivitySourceResult.Failed(
+                $"Keyboard activity hook could not start (Win32 {Marshal.GetLastWin32Error()}).");
+            ready.Set();
+            return;
         }
 
         _mouseHook = SetWindowsHookEx(WhMouseLl, _mouseProc, module, 0);
         if (_mouseHook == 0)
         {
-            int error = Marshal.GetLastWin32Error();
-            Stop();
-            return WorkActivitySourceResult.Failed($"Mouse activity hook could not start (Win32 {error}).");
+            _startResult = WorkActivitySourceResult.Failed(
+                $"Mouse activity hook could not start (Win32 {Marshal.GetLastWin32Error()}).");
+            ready.Set();
+            return;
         }
 
-        return WorkActivitySourceResult.Started;
+        _startResult = WorkActivitySourceResult.Started;
+        ready.Set();
+
+        while (GetMessage(out MSG message, 0, 0, 0) > 0)
+        {
+            TranslateMessage(ref message);
+            DispatchMessage(ref message);
+        }
+
+        Unhook();
     }
 
     public void Stop()
+    {
+        Thread? pump = _pump;
+        _pump = null;
+        if (pump is not null)
+        {
+            if (_pumpThreadId != 0)
+                PostThreadMessage(_pumpThreadId, WmQuit, 0, 0);
+            if (!pump.Join(TimeSpan.FromSeconds(2.0)))
+                Unhook();
+            _pumpThreadId = 0;
+        }
+        else
+        {
+            Unhook();
+        }
+
+        lock (_sync)
+            _pressedKeys.Clear();
+    }
+
+    private void Unhook()
     {
         if (_keyboardHook != 0)
         {
@@ -80,8 +155,6 @@ public sealed class WindowsWorkActivitySource : IWorkActivitySource
             UnhookWindowsHookEx(_mouseHook);
             _mouseHook = 0;
         }
-        lock (_sync)
-            _pressedKeys.Clear();
     }
 
     public void Dispose()
@@ -164,4 +237,33 @@ public sealed class WindowsWorkActivitySource : IWorkActivitySource
 
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern nint GetModuleHandle(string? moduleName);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MSG
+    {
+        public nint Hwnd;
+        public uint Message;
+        public nuint WParam;
+        public nint LParam;
+        public uint Time;
+        public int PointX;
+        public int PointY;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern int GetMessage(out MSG message, nint window, uint filterMin, uint filterMax);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool TranslateMessage(ref MSG message);
+
+    [DllImport("user32.dll")]
+    private static extern nint DispatchMessage(ref MSG message);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool PostThreadMessage(uint threadId, uint message, nuint wParam, nint lParam);
 }
