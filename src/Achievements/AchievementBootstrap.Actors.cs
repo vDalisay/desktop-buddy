@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using DesktopBuddy.Buddy;
 using DesktopBuddy.Interaction;
-using DesktopBuddy.Scenes;
 using Godot;
 
 namespace DesktopBuddy.Achievements;
@@ -26,7 +25,7 @@ public partial class AchievementBootstrap
         if (!GodotObject.IsInstanceValid(_sandbox))
             return;
 
-        foreach ((InteractionDamageComponent damage, BuddyRoot buddy) in ObservedActors())
+        foreach ((BuddyRoot buddy, InteractionDamageComponent damage) in _sandbox.LiveCast())
         {
             damage.ImpactAccepted += OnImpactAccepted;
             damage.ImpactAccepted += OnBankShotImpact;
@@ -67,17 +66,5 @@ public partial class AchievementBootstrap
         _actorObserversWired = false;
     }
 
-    /// <summary>The live cast, or the single authored Buddy on a run without a Scene roster.</summary>
-    private IEnumerable<(InteractionDamageComponent Damage, BuddyRoot Buddy)> ObservedActors()
-    {
-        if (_sandbox.ActiveSceneRuntime is { } runtime && runtime.Actors.Count > 0)
-        {
-            foreach (BuddyActorRuntime actor in runtime.Actors)
-                yield return (actor.Damage, actor.Buddy);
-            yield break;
-        }
 
-        if (GodotObject.IsInstanceValid(_sandbox.Pipeline) && GodotObject.IsInstanceValid(_sandbox.Buddy))
-            yield return (_sandbox.Pipeline, _sandbox.Buddy);
-    }
 }

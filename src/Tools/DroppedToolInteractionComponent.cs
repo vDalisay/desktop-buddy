@@ -7,7 +7,6 @@ using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
-using DesktopBuddy.Scenes;
 using Godot;
 
 namespace DesktopBuddy.Tools;
@@ -302,13 +301,10 @@ public partial class DroppedToolInteractionComponent : Node2D
 
     private IEnumerable<BuddyRoot> Buddies()
     {
-        if (GodotObject.IsInstanceValid(_sandbox) && _sandbox!.ActiveSceneRuntime is { Actors.Count: > 0 } runtime)
+        if (GodotObject.IsInstanceValid(_sandbox))
         {
-            foreach (BuddyActorRuntime actor in runtime.Actors)
-            {
-                if (GodotObject.IsInstanceValid(actor.Buddy))
-                    yield return actor.Buddy;
-            }
+            foreach ((BuddyRoot buddy, InteractionDamageComponent _) in _sandbox!.LiveCast())
+                yield return buddy;
             yield break;
         }
         if (GodotObject.IsInstanceValid(_buddy))

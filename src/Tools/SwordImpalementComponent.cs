@@ -8,7 +8,6 @@ using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Grab;
 using DesktopBuddy.Interaction;
-using DesktopBuddy.Scenes;
 using Godot;
 using NumericsVector2 = System.Numerics.Vector2;
 
@@ -496,19 +495,13 @@ public partial class SwordImpalementComponent : Node2D
         return GodotObject.IsInstanceValid(body);
     }
 
-    /// <summary>The live cast with each actor's own damage pipeline, newest Scene roster first.</summary>
+    /// <summary>Everyone the point could go into: the live cast, or the one authored Buddy.</summary>
     private IEnumerable<(BuddyRoot Buddy, InteractionDamageComponent Pipeline)> Victims()
     {
-        if (GodotObject.IsInstanceValid(_sandbox) && _sandbox!.ActiveSceneRuntime is { Actors.Count: > 0 } runtime)
-        {
-            foreach (BuddyActorRuntime actor in runtime.Actors)
-            {
-                if (GodotObject.IsInstanceValid(actor.Buddy) && GodotObject.IsInstanceValid(actor.Damage))
-                    yield return (actor.Buddy, actor.Damage);
-            }
-            yield break;
-        }
-        if (GodotObject.IsInstanceValid(_buddy) && GodotObject.IsInstanceValid(_pipeline))
-            yield return (_buddy, _pipeline);
+        if (GodotObject.IsInstanceValid(_sandbox))
+            return _sandbox!.LiveCast();
+        return GodotObject.IsInstanceValid(_buddy) && GodotObject.IsInstanceValid(_pipeline)
+            ? [(_buddy, _pipeline)]
+            : [];
     }
 }
