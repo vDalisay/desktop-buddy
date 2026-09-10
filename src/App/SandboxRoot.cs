@@ -40,10 +40,8 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class SandboxRoot : Node2D
 {
-    private readonly Rect2I[] _buddyWorkModeHitRegions =
-        new Rect2I[PuppetRigProfile.RequiredPartCount];
-    private readonly Rect2[] _buddyWorkModeWorldRegions =
-        new Rect2[PuppetRigProfile.RequiredPartCount];
+    private readonly List<Rect2I> _buddyWorkModeHitRegions = [];
+    private readonly List<Rect2> _buddyWorkModeWorldRegions = [];
     private IReadOnlyList<Rect2> _overlayWorkModeHitRegions = [];
 
     private LooseObjectBody? _shownGrenade;
@@ -656,36 +654,40 @@ public partial class SandboxRoot : Node2D
 
     private void RefreshWorkModeHitRegions()
     {
-        bool hasAuthoredBuddy = _sceneRuntime is null || _sceneRuntime.Actors.Count > 0;
         double zoom = Shell.EffectiveZoom;
-        IReadOnlyList<PuppetPartBody> parts = Buddy.Rig.Parts;
-        for (int index = 0; hasAuthoredBuddy && index < parts.Count; index++)
+        _buddyWorkModeWorldRegions.Clear();
+        _buddyWorkModeHitRegions.Clear();
+
+        // Every Buddy in the room stays clickable in Work Mode, not just the first one.
+        foreach (BuddyRoot buddy in WorkModeRegionBuddies())
         {
-            PuppetPartBody part = parts[index];
-            float diameter = part.Radius * 2.0f;
-            _buddyWorkModeWorldRegions[index] = new Rect2(
-                part.GlobalPosition - Vector2.One * part.Radius,
-                Vector2.One * diameter);
-            PixelRect projected = SandboxProjection.SandboxRectToClient(
-                part.GlobalPosition.X - part.Radius,
-                part.GlobalPosition.Y - part.Radius,
-                diameter,
-                diameter,
-                zoom);
-            _buddyWorkModeHitRegions[index] =
-                new Rect2I(projected.X, projected.Y, projected.Width, projected.Height);
+            IReadOnlyList<PuppetPartBody> parts = buddy.Rig.Parts;
+            for (int index = 0; index < parts.Count; index++)
+            {
+                PuppetPartBody part = parts[index];
+                float diameter = part.Radius * 2.0f;
+                _buddyWorkModeWorldRegions.Add(new Rect2(
+                    part.GlobalPosition - Vector2.One * part.Radius,
+                    Vector2.One * diameter));
+                PixelRect projected = SandboxProjection.SandboxRectToClient(
+                    part.GlobalPosition.X - part.Radius,
+                    part.GlobalPosition.Y - part.Radius,
+                    diameter,
+                    diameter,
+                    zoom);
+                _buddyWorkModeHitRegions.Add(
+                    new Rect2I(projected.X, projected.Y, projected.Width, projected.Height));
+            }
         }
 
         if (_overlayWorkModeHitRegions.Count == 0)
         {
-            Shell.UpdateWorkModeHitRegions(
-                hasAuthoredBuddy ? _buddyWorkModeWorldRegions : [],
-                hasAuthoredBuddy ? _buddyWorkModeHitRegions : []);
+            Shell.UpdateWorkModeHitRegions(_buddyWorkModeWorldRegions, _buddyWorkModeHitRegions);
             return;
         }
 
-        var world = hasAuthoredBuddy ? new List<Rect2>(_buddyWorkModeWorldRegions) : [];
-        var client = hasAuthoredBuddy ? new List<Rect2I>(_buddyWorkModeHitRegions) : [];
+        var world = new List<Rect2>(_buddyWorkModeWorldRegions);
+        var client = new List<Rect2I>(_buddyWorkModeHitRegions);
         Transform2D canvas = GetViewport().GetCanvasTransform().AffineInverse();
         foreach (Rect2 overlay in _overlayWorkModeHitRegions)
         {
@@ -695,6 +697,20 @@ public partial class SandboxRoot : Node2D
                 (Vector2I)overlay.Size.Ceil()));
         }
         Shell.UpdateWorkModeHitRegions(world, client);
+    }
+
+    private IEnumerable<BuddyRoot> WorkModeRegionBuddies()
+    {
+        if (_sceneRuntime is null)
+        {
+            yield return Buddy;
+            yield break;
+        }
+        foreach (Scenes.BuddyActorRuntime actor in _sceneRuntime.Actors)
+        {
+            if (GodotObject.IsInstanceValid(actor.Buddy))
+                yield return actor.Buddy;
+        }
     }
 
     /// <summary>
