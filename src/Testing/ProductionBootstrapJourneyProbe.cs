@@ -10,6 +10,8 @@ using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
 using DesktopBuddy.Domain.Characters;
+using DesktopBuddy.Domain.Sandbox;
+using DesktopBuddy.Sandbox;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Persistence.Characters;
 using DesktopBuddy.Domain.Persistence;
@@ -97,6 +99,12 @@ public static class ProductionBootstrapJourneyProbe
             bool customizeFocused = setup.ValueKind == JsonValueKind.Object &&
                 setup.TryGetProperty("customize_focused_buddy", out JsonElement customizeElement) &&
                 customizeElement.ValueKind == JsonValueKind.True;
+            bool buildRoom = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("build_room", out JsonElement buildElement) &&
+                buildElement.ValueKind == JsonValueKind.True;
+            bool expectBuiltRoom = setup.ValueKind == JsonValueKind.Object &&
+                setup.TryGetProperty("expect_built_room", out JsonElement builtElement) &&
+                builtElement.ValueKind == JsonValueKind.True;
             bool prepareRestart = setup.ValueKind == JsonValueKind.Object &&
                 setup.TryGetProperty("prepare_restart_room", out JsonElement prepareElement) &&
                 prepareElement.ValueKind == JsonValueKind.True;
@@ -313,6 +321,60 @@ public static class ProductionBootstrapJourneyProbe
                     !scenes.IsDirty;
             }
 
+            bool buildModePausesAndPlaces = !buildRoom;
+            bool buildRemovalPicksThePartUnderThePointer = !buildRoom;
+            bool buildCommitsOnReturnToPlay = !buildRoom;
+            bool builtRoomRestored = !expectBuiltRoom;
+
+            if (buildRoom)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Build phase requires Scene progress.");
+                BuildModeController build = sandbox.GetTree().Root.FindChild(
+                        nameof(BuildModeController), recursive: true, owned: false) as BuildModeController
+                    ?? throw new InvalidOperationException("Build phase requires the player-facing Build controls.");
+
+                Rect2 bounds = sandbox.Boundaries.InnerBounds;
+                Vector2 beamPoint = bounds.Position + bounds.Size * new Vector2(0.35f, 0.7f);
+                Vector2 wheelPoint = bounds.Position + bounds.Size * new Vector2(0.65f, 0.7f);
+
+                build.Toggle();
+                bool entered = build.IsActive &&
+                    sandbox.Lifecycle.PauseCoordinator.Contains(GameplayPauseReason.BuildMode);
+
+                build.SelectPart(SandboxPartCatalogue.WoodBeam);
+                build.PlaceSelectedPartAt(beamPoint);
+                build.SelectPart(SandboxPartCatalogue.Wheel);
+                build.PlaceSelectedPartAt(wheelPoint);
+
+                buildModePausesAndPlaces = entered &&
+                    scenes.ActiveSandbox.Count == 2 &&
+                    sandbox.BuiltParts.Count == 2 &&
+                    scenes.ActiveSandbox.Parts.All(part => sandbox.BuiltParts.ContainsKey(part.PartId));
+
+                // Right-clicking a part removes that part, not merely the last one placed.
+                build.RemovePartAt(wheelPoint);
+                buildRemovalPicksThePartUnderThePointer =
+                    scenes.ActiveSandbox.Count == 1 &&
+                    sandbox.BuiltParts.Count == 1 &&
+                    scenes.ActiveSandbox.Parts[0].DefinitionId == SandboxPartCatalogue.WoodBeam;
+
+                await build.LeaveAsync();
+                buildCommitsOnReturnToPlay = !build.IsActive &&
+                    !sandbox.Lifecycle.PauseCoordinator.Contains(GameplayPauseReason.BuildMode) &&
+                    !scenes.IsDirty;
+            }
+
+            if (expectBuiltRoom)
+            {
+                SceneProgressCoordinator scenes = context.SceneProgress
+                    ?? throw new InvalidOperationException("Built-room phase requires Scene progress.");
+                builtRoomRestored = scenes.ActiveSandbox.Count == 1 &&
+                    scenes.ActiveSandbox.Parts[0].DefinitionId == SandboxPartCatalogue.WoodBeam &&
+                    sandbox.BuiltParts.Count == 1 &&
+                    sandbox.BuiltParts.ContainsKey(scenes.ActiveSandbox.Parts[0].PartId);
+            }
+
             bool restartPrepared = !prepareRestart;
             bool restartRestored = !expectRestart;
 
@@ -450,6 +512,10 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_delete_removed_assets"] = deleteRemovedAssets,
                 ["scene_last_scene_protected"] = lastSceneProtected,
                 ["scene_focused_customization_targets_selection"] = focusedCustomizationTargetsSelection,
+                ["build_mode_pauses_and_places"] = buildModePausesAndPlaces,
+                ["build_removal_picks_pointed_part"] = buildRemovalPicksThePartUnderThePointer,
+                ["build_commits_on_return_to_play"] = buildCommitsOnReturnToPlay,
+                ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,
             };

@@ -228,6 +228,41 @@
       ]
     },
     {
+      "id": "next_fest_build_room",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "scene_upgraded",
+        "build_room": true,
+        "expected_work_keyboard": 77
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "build_mode_pauses_and_places", "equals": true },
+        { "predicate": "build_removal_picks_pointed_part", "equals": true },
+        { "predicate": "build_commits_on_return_to_play", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
+      "id": "next_fest_built_room_restored",
+      "build_scope": "next_fest",
+      "expected_exit": 0,
+      "setup": {
+        "precondition": "preserve",
+        "expect_built_room": true,
+        "expected_work_keyboard": 77
+      },
+      "assertions": [
+        { "predicate": "sandbox_composed", "equals": true },
+        { "predicate": "tag_next_fest", "equals": true },
+        { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "built_room_restored", "equals": true },
+        { "predicate": "work_preserved", "equals": true }
+      ]
+    },
+    {
       "id": "next_fest_malformed_manifest_refusal",
       "build_scope": "next_fest",
       "expected_exit": 3,

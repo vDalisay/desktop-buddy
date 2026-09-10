@@ -10,6 +10,7 @@ public enum GameplayPauseReason
     Suspended,
     CharacterEditor,
     SteamOverlay,
+    BuildMode,
 }
 
 /// <summary>

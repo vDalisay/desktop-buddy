@@ -87,6 +87,7 @@ public partial class SandboxRoot
             SetAuthoredSceneActorActive(false);
             _sceneRuntime = new SceneRuntimeHost(bindings, []);
             OnSceneRuntimeComposed();
+            ComposeBuiltParts();
             Boundaries.LayoutApplied += OnSceneActorLayoutApplied;
             return;
         }
@@ -103,6 +104,7 @@ public partial class SandboxRoot
 
         _sceneRuntime = new SceneRuntimeHost(bindings, actors);
         OnSceneRuntimeComposed();
+        ComposeBuiltParts();
         Boundaries.LayoutApplied += OnSceneActorLayoutApplied;
     }
 

@@ -132,6 +132,7 @@ public partial class SandboxRoot
             transaction.CompleteStep(SceneSwitchStep.ResolveModalState);
 
             CaptureActiveSceneBuddyAnchors(scenes);
+            CaptureBuiltPartAnchors(scenes);
             transaction.CompleteStep(SceneSwitchStep.CaptureBuddyAnchors);
 
             await scenes.FlushAsync(force: true, token);
@@ -267,6 +268,7 @@ public partial class SandboxRoot
         }
         _sceneSpawnedActorNodes.Clear();
         _sceneSpawnedAppearanceRuntimes.Clear();
+        ClearBuiltParts();
     }
 
     private void ComposeSceneRuntimeAfterSwitch(SceneProgressBindingRegistry bindings)
@@ -282,6 +284,7 @@ public partial class SandboxRoot
             SetAuthoredSceneActorActive(false);
             _sceneRuntime = new SceneRuntimeHost(bindings, []);
             OnSceneRuntimeComposed();
+            ComposeBuiltParts();
             return;
         }
 
@@ -294,6 +297,7 @@ public partial class SandboxRoot
             actors.Add(ComposeAdditionalSceneActor(bindings.OrderedBindings[index], index));
         _sceneRuntime = new SceneRuntimeHost(bindings, actors);
         OnSceneRuntimeComposed();
+        ComposeBuiltParts();
     }
 
     private BuddyActorRuntime RebindAuthoredSceneActor(SceneBuddyProgressBinding binding)

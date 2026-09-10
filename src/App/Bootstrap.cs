@@ -350,6 +350,13 @@ public partial class Bootstrap : Node
             };
             sceneStrip.Configure(sandbox, commandRegistrar);
             AddChild(sceneStrip);
+
+            var buildMode = new DesktopBuddy.Sandbox.BuildModeController
+            {
+                Name = nameof(DesktopBuddy.Sandbox.BuildModeController),
+            };
+            buildMode.Configure(sandbox, commandRegistrar);
+            AddChild(buildMode);
         }
 
         TutorialStepIds.Active = DemoScope.TutorialSteps;

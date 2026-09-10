@@ -6,6 +6,8 @@ public static class TopLevelCommandIds
     public const int DecorateRoomOrder = 100;
     public const string BuddyStudio = "command.buddy_studio";
     public const int BuddyStudioOrder = 200;
+    public const string BuildMode = "command.build_mode";
+    public const int BuildModeOrder = 250;
     public const string Workshop = "command.workshop";
     public const int WorkshopOrder = 300;
 }
