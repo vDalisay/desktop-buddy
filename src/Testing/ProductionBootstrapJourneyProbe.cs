@@ -172,6 +172,8 @@ public static class ProductionBootstrapJourneyProbe
                 ["tag_next_fest"] = DemoScope.IsSteamDemo && DemoScope.IsNextFestDemo && DemoScope.IncludesScenes,
                 ["split_scene_progress"] = context.SceneProgress is not null && context.UsesSplitSceneProgress,
                 ["legacy_scene_progress"] = context.SceneProgress is null && !context.UsesSplitSceneProgress,
+                ["scene_strip_composed"] = sandbox.GetTree().Root.FindChild(
+                    nameof(SceneStripController), recursive: true, owned: false) is SceneStripController,
                 ["scene_manifest_exists"] = System.IO.File.Exists(Path.Combine(saveRoot, SceneProgressTransactionStore.ManifestFileName)),
                 ["wallet_preserved"] = expectedWallet < 0 || context.PlayerProgress.BalanceMilliCredits == expectedWallet,
                 ["work_preserved"] = expectedKeyboard < 0 ||

@@ -47,6 +47,7 @@ public partial class Win98CommandBarBootstrap : Node
     private Button _legacyModeButton = null!;
     private IDisposable? _paintBuddyRegistration;
     private HBoxContainer _commandRow = null!;
+    private Control? _sceneStrip;
     /// <summary>Insertion point for right-docked commands: they go in front of this gutter.</summary>
     private Control _rightGutter = null!;
     private Label _balance = null!;
@@ -148,6 +149,20 @@ public partial class Win98CommandBarBootstrap : Node
             isEnabled);
     }
 
+    /// <summary>Hosts the Scene feature's compact tab strip without giving it shell ownership.</summary>
+    public void SetSceneStrip(Control? strip)
+    {
+        if (ReferenceEquals(_sceneStrip, strip))
+            return;
+
+        if (GodotObject.IsInstanceValid(_commandRow) && GodotObject.IsInstanceValid(_sceneStrip) &&
+            _sceneStrip!.GetParent() == _commandRow)
+            _commandRow.RemoveChild(_sceneStrip);
+
+        _sceneStrip = strip;
+        AttachSceneStrip();
+    }
+
     private void TryCompose()
     {
         _uiRoot = FindControl("CharacterEditorUiRoot");
@@ -234,6 +249,7 @@ public partial class Win98CommandBarBootstrap : Node
             OpenEditor);
 
         _modeButton = AddMenuCommand(_commandRow, "Work", "Switch between Play and Work input modes.", ToggleMode);
+        AttachSceneStrip();
 
         // Stable node names so contextual Help and the tutorial spotlight can address the strip.
         _shopButton.Name = "Win98ShopCommand";
@@ -336,6 +352,21 @@ public partial class Win98CommandBarBootstrap : Node
         _flyoutPin = new Win98PinnablePanel { Name = "InventoryPinController" };
         AddChild(_flyoutPin);
         _flyoutPin.Configure(_flyout, new Vector2I(520, 600), "InventoryWindow");
+    }
+
+    private void AttachSceneStrip()
+    {
+        if (!GodotObject.IsInstanceValid(_sceneStrip) || !GodotObject.IsInstanceValid(_commandRow) ||
+            !GodotObject.IsInstanceValid(_modeButton))
+            return;
+
+        Node? parent = _sceneStrip!.GetParent();
+        if (parent != _commandRow)
+        {
+            parent?.RemoveChild(_sceneStrip);
+            _commandRow.AddChild(_sceneStrip);
+        }
+        _commandRow.MoveChild(_sceneStrip, _modeButton.GetIndex());
     }
 
     private static Button AddMenuCommand(Control parent, string text, string tooltip, Action action)

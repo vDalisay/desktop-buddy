@@ -17,6 +17,7 @@
         { "predicate": "sandbox_composed", "equals": true },
         { "predicate": "tag_next_fest", "equals": true },
         { "predicate": "split_scene_progress", "equals": true },
+        { "predicate": "scene_strip_composed", "equals": true },
         { "predicate": "scene_manifest_exists", "equals": true },
         { "predicate": "wallet_preserved", "equals": true },
         { "predicate": "work_preserved", "equals": true },

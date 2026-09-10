@@ -342,6 +342,16 @@ public partial class Bootstrap : Node
 
         AddChild(sandbox);
 
+        if (sceneProgress is not null && commandRegistrar is not null)
+        {
+            var sceneStrip = new DesktopBuddy.Scenes.SceneStripController
+            {
+                Name = nameof(DesktopBuddy.Scenes.SceneStripController),
+            };
+            sceneStrip.Configure(sandbox, commandRegistrar);
+            AddChild(sceneStrip);
+        }
+
         TutorialStepIds.Active = DemoScope.TutorialSteps;
         if (TutorialStepIds.Active.Count < TutorialStepIds.Ordered.Count)
         {
