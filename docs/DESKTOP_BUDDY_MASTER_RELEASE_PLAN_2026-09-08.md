@@ -2,7 +2,8 @@
 
 Status: **SOLE AUTHORITATIVE PLANNING SOURCE**  
 Recorded: 2026-09-08  
-Branch: `plan/three-build-release-scope`  
+Branch: `feature/master-release-plan-2026-09-08`
+Last implementation-queue update: 2026-09-10
 Base lineage: current `main` after `9adfbcb5a3e32aa50fe88da5fe4b772e7ec64eb8`
 
 This document is the single current source of truth for the planned **Initial Steam Demo**, **Steam Next Fest Demo**, and **Full Release** of Desktop Buddy.
@@ -16,6 +17,12 @@ When this document conflicts with another planning, roadmap, audit, source-align
 Older documents remain valuable research, audit evidence, implementation detail, and historical context. They are intentionally preserved unchanged. Do not edit an older source merely to make it agree with this master plan.
 
 The detailed subsystem documents may still supply implementation detail where this master does not override them. A later explicit owner decision may supersede this master and should then be folded into a new revision of this file rather than creating another competing master plan.
+
+## Active implementation direction
+
+The current implementation queue is in [Phase 1](#current-implementation-queue--owner-steering-2026-09-10). The next deliverable is **NF-1: Scene strip and cast management**. It must end with a player creating, populating, switching and reopening Scenes through normal game controls.
+
+Implementation progress is measured by usable player behavior. Tests, journeys and CI prove that behavior; they are not standalone milestones. Do not add another foundation layer while the next listed player operation can be built with the existing Scene, persistence, runtime and semantic-content seams.
 
 ---
 
@@ -1081,29 +1088,171 @@ Current direction:
 
 Do not begin broad systemic features in a way that destabilizes the Initial Demo release candidate.
 
-## Phase 1 — Next Fest foundations
+## Phase 1 — Next Fest implementation
 
-1. add explicit `IsSteamDemo` / `IsNextFestDemo` / `IsFullRelease` policy and a separate Next Fest export preset;
-2. add build-scope truth-table tests for Initial / Next Fest / Full / itch / untagged fallback;
-3. introduce provider-qualified stable IDs, registries and capability/exposure seams needed by systemic/Creator/UGC work;
-4. split/facade account state from Buddy identity state with deterministic migration;
-5. productionize multi-Buddy runtime;
-6. implement Scene documents/runtime/tabs and Initial Demo migration;
-7. make Paint Background/Environment/Room Decorator Scene-owned and expose Room Decorator in Next Fest;
-8. port/re-audit the 24-achievement baseline against current main;
-9. implement systemic entity registry and Build/Edit;
-10. implement Next Fest parts/constraints/Properties;
-11. implement devices/signals and gravity controls;
-12. implement Wood/Metal breakage and Buddy structural integrity/repair;
-13. implement local Blueprints;
-14. implement Creator Studio Lite: Prop, Gun, Sword, Explosive;
-15. add the lightweight status-effect seam and selected Next Fest effects where stable;
-16. add Blueprint/Creator Workshop package types only after their local validators are stable;
-17. run performance/UX/marketing/RC gates for Next Fest.
+The build-scope policy/preset, semantic IDs/capability registry, split progress model, migration/transaction recovery and Scene document/runtime foundations already exist on this branch. Keep them stable and use them to deliver the remaining player-facing work:
 
-Status effects are secondary to Scenes, multi-Buddy, construction, Blueprints and Creator Studio Lite; do not let optional effect polish hold the event build hostage.
+1. ship Scene and cast controls over the existing Scene runtime;
+2. make every active Buddy independently targetable, customizable and selectable for Work;
+3. ship Build/Edit with the first construction parts, constraints and bounded Properties;
+4. ship devices/signals and per-Scene gravity controls;
+5. ship Wood/Metal durability plus Buddy structural damage and recovery;
+6. ship local Blueprint save/library/place;
+7. ship Creator Studio Lite with all four promised templates;
+8. share stable Blueprint/Creator formats through the existing safe Workshop path;
+9. finish achievements, selected lightweight effects and onboarding against the implemented systems;
+10. run the RC gates on the resulting playable build.
 
-### Progress audit and immediate steering (2026-09-09)
+Status effects remain secondary to Scenes, multi-Buddy, construction, Blueprints and Creator Studio Lite. Do not let optional effect polish hold the event build hostage.
+
+### Current implementation queue — owner steering, 2026-09-10
+
+This queue supersedes the **immediate work ordering** in the historical audits below. The owner asked for concrete functionality implementation rather than continued test/CI expansion. Product scope in sections 2–7 is unchanged. Start the next implementation with **NF-1**; each packet must leave a usable in-game operation, its persistence/failure handling, and the relevant checks together.
+
+Source baseline inspected: local branch `feature/master-release-plan-2026-09-08` at `36f99afc`. This is a source inventory, not a new runtime acceptance claim or a claim about current remote CI.
+
+**Already present; extend rather than rebuild:**
+
+- Build policy/export profiles, semantic IDs/capability registry, split account/Buddy/Work persistence, migration and transaction recovery.
+- `SceneProgressCoordinator` exposes Scene create/rename/duplicate/delete and roster operations. `SandboxRoot.SceneRuntime` composes additional actors; `SandboxRoot.SceneSwitch` implements transactional runtime switching; environment/appearance rebind paths exist.
+- Switching currently has a verification caller in `ProductionBootstrapJourneyProbe`, but no player-facing Scene strip/cast controller was found. The runtime still rejects an empty roster and retains the first authored actor as a compatibility target.
+- The achievement catalogue/adapters and production-bootstrap journey/probe already exist. Their existence does not establish complete attribution, interactive acceptance, or live Steam acceptance.
+- No corresponding production Build/Edit, Blueprint or Creator workspace was found in this source inventory.
+
+**Work rule:** finish a playable slice before expanding its infrastructure. Tests are acceptance work inside that slice. Add a CI change only when an existing job cannot run a required check, or to repair a concrete failure/trigger-policy violation. Do not reopen completed persistence fixes or build another general verification framework. Existing failing safety checks must be fixed before the affected functionality is handed off; pending external Steam/Windows release evidence does not prevent local Next Fest feature development.
+
+```text
+NF-1 Scenes/cast
+  -> NF-2 independent Buddies
+      -> NF-3 Build/Edit + construction
+          -> NF-4 devices/signals
+          -> NF-5 break/repair
+          -> NF-6 Blueprints (after NF-4)
+          -> NF-7 Creator Prop
+              -> NF-8 Creator Gun/Sword/Explosive
+NF-6 + NF-8 -> NF-9 Workshop sharing
+NF-1 through NF-8 -> NF-10 effects/onboarding/RC
+```
+
+After NF-3, NF-4, NF-5 and NF-7 may proceed independently where their touched files do not overlap. NF-6 waits for the device graph it must serialize. NF-9 waits for the local Blueprint and Creator formats it must treat as hostile input.
+
+#### NF-1 — Scene strip and cast management (next)
+
+**Player result:** create a second named Scene, add owned Buddies, place them, switch rooms, and return after restart to the saved cast and room.
+
+- Wire a Win98 Scene strip and compact Scene menu to the existing coordinator and `SwitchSceneAsync`: create, rename, duplicate, confirmed delete, active-tab state and overflow. Apply the existing Next Fest 10-Scene policy; hide the surface in Initial Demo/itch/fallback. Tab reordering remains deferred unless it is effectively free.
+- Add the initial cast commands under the Scene menu: **Add Buddy...** and **Remove Focused Buddy**. Add Buddy browses existing Buddy identities and owned Character appearances. It can create/register a new Buddy identity from a chosen Character using the existing new-Buddy defaults, or reuse an existing identity to preserve that Buddy's state across Scenes. It previews the chosen Buddy at the pointer and commits a safe position on click. Reject adding an identity already present in that Scene. Removing a placement must preserve the Buddy identity and local Character/paint library.
+- Complete empty-Scene composition so creating a room or removing its last Buddy does not require a hidden replacement Buddy or fail on the compatibility actor. Replace singular assumptions only where this flow reaches them. The authored Buddy scene may remain the implementation source for the first actor, but it must no longer imply that every active Scene contains one.
+- Finish duplication of Scene-owned background/decor assets as well as document state. The duplicate keeps the same Buddy identity references but receives new Scene/placement identities and independent mutable room assets. Bind Paint Background and Room Decorator to the active Scene.
+- Show busy/save/load failures in the initiating UI; keep the old Scene usable on failure. Resolve active editors through their existing save/discard behavior before switching.
+- **Reuse:** `domain/.../Scenes/SceneLibraryState.cs`, `src/Persistence/SceneProgressCoordinator.cs`, existing Scene runtime/switch and Environment rebind code. Keep UI composition focused; do not grow `SandboxRoot` into the Scene library UI.
+- **Acceptance:** perform create → add/place → decorate/paint → duplicate → switch → rename/delete → restart from actual controls, including an empty Scene. Changes in one room must not alter the other's copied background/layout. Promote that interaction into the existing journey system and cover transaction failures in existing tests.
+
+##### NF-1 implementation tasks
+
+Implement and hand off these tasks in order. A task is complete only when its named controls work in a normal Next Fest build.
+
+1. **NF-1A — Open and switch.** Add the Scene strip from the existing Play chrome. WHEN the player clicks another Scene tab THEN the game SHALL run the existing safe switch transaction, show that tab as active only after success, and leave the current Scene active if save/load/composition fails. Empty target Scenes SHALL be valid.
+2. **NF-1B — Create and name.** Add `+` and Rename with the 1–64 visible-character validation already enforced by `SceneDocument`. WHEN the player creates a Scene THEN the game SHALL add an empty named room without changing another Scene. The new tab SHALL be visible immediately and use the normal tab action for switching. WHEN ten Scenes already exist in Next Fest THEN the game SHALL disable creation and explain the limit.
+3. **NF-1C — Create/add, place and remove Buddies.** Add the Scene menu commands, local-library picker and pointer placement preview. WHEN an owned Character has no Buddy identity and the player chooses it as a new Buddy THEN the game SHALL create/register an identity with clean authored Buddy defaults and bind that appearance. WHEN placement is confirmed THEN the game SHALL add the selected identity at a safe canonical anchor and compose it into the active runtime. WHEN the focused Buddy is removed THEN the game SHALL remove only that placement and keep its identity, Character and paint files. Removing the final Buddy SHALL leave a usable empty room. A missing/deleted Character reference SHALL fall back visibly and preserve the unresolved reference for recovery.
+4. **NF-1D — Duplicate and delete.** WHEN a Scene is duplicated THEN the game SHALL create a new adjacent Scene with copied room state, copied Buddy references, new Scene/placement IDs and independent mutable background/decor files. WHEN deletion is confirmed THEN the game SHALL delete that Scene, choose the adjacent surviving Scene if needed, and switch safely. The last Scene SHALL not be deletable.
+5. **NF-1E — Restore.** WHEN the game restarts THEN it SHALL reopen the committed active Scene with its name, environment and complete cast at safe anchors. WHEN a switch or commit fails THEN it SHALL surface an actionable error and retain the last committed usable Scene.
+
+**NF-1 handoff:** report which controls are usable, which player operation remains unavailable, and which external release evidence remains. Do not report Scene persistence or runtime composition alone as NF-1 completion.
+
+#### NF-2 — Every Buddy is independently usable
+
+**Depends on:** NF-1. **Player result:** interact with any cast member, customize the intended Buddy, and take the selected Buddy into Work Mode.
+
+- Route grab, care, projectiles, melee, explosions, damage/recovery and ropes to the actor that was actually hit. Trace shared tool callers through `SceneRuntimeHost.TryResolveActor`; remove first-actor attribution assumptions in those routes.
+- Route Buddy Studio/Paint Buddy selection and save/apply to the intended identity. Keep each actor's appearance, hunger, mood and damage independent.
+- Bind Work focus to the selected Buddy; suspend the remaining Play actors and restore the room/input on return. Keep wallet, tool ownership and Work rewards shared.
+- Attach/detach achievement observers with actor lifecycle so switching/removing actors neither drops qualifying actions nor duplicates credit. Preserve approved qualification semantics.
+- **Acceptance:** with several visually distinct Buddies, hit/feed/customize each, enter Work with a non-first Buddy, return, switch and restart. Verify correct actor state and one shared reward ledger. Use targeted actor-routing coverage plus the playable journey.
+
+#### NF-3 — Build a physical cart
+
+**Depends on:** NF-1–2. **Player result:** enter Build/Edit, place a Wood Beam and Wheels, connect passive Hinges, then press Play and move the cart.
+
+- Implement the Build/Edit entry, selection, move/rotate, freeze/unfreeze, duplicate/delete, Properties, Escape and safe Pause/Play transition.
+- Register and render Wood Beam, Metal Block/Plate and Wheel as trusted systemic entities with Scene-owned semantic state and one routed fixed tick.
+- Implement Rope/World Anchor, Weld and passive Hinge creation/removal. Show valid endpoints and reject invalid links without leaving partial constraints.
+- Expose bounded Mass, Bounce, Gravity Scale and Frozen overrides; restore canonical defaults without mutating shared definitions.
+- Persist parts, transforms, overrides and links in the Scene sandbox document; reconstruct them on restart.
+- **Acceptance:** build and play the cart plus a hanging beam, edit while paused, duplicate/delete parts, switch Scenes and reload. Check constraint cleanup, invalid overrides and fixed-tick ownership. Advanced grouping/clipboard is Full Release work.
+
+#### NF-4 — Wire a working machine
+
+**Depends on:** NF-3. **Player result:** place devices and wire Button → Lamp, Button → Piston, Button → Timer → Piston and Button → Weapon Trigger → Pistol/Shotgun.
+
+- Implement visible device placement, typed ports, wire creation/removal and signal-state feedback.
+- Route the two-phase signal queue, timer scheduling, piston motion and weapon adapter through the existing authoritative tick, with bounded work and cleanup on deletion.
+- Add Shotgun cadence/spread/knockback overrides through typed Properties, preserving the canonical reward envelope.
+- Add Scene-owned Normal/Low/Zero Gravity controls and restore them when switching rooms.
+- **Acceptance:** operate all four chains, remove a live connection/device, switch/reload the machine, and reject invalid connections/cycle overload safely. No general behavior-graph editor is required for this packet.
+
+#### NF-5 — Break and repair
+
+**Depends on:** NF-3; integrate weapon-device damage from NF-4 when available. **Player result:** break an authored Wood structure, damage a Buddy part, and restore the Buddy with Repair Kit or free System Restore.
+
+- Add Wood/Metal material behavior, bounded durability and one authored Wood breakage path with correct constraint cleanup and bounded debris.
+- Add per-part Healthy/Damaged/Critical integrity feedback separately from pain, mood and gore. Integrate existing damage sources and approved Repair Kit rules.
+- Implement free System Restore and safe persistence/recovery of structural state. No physical limb detachment in Next Fest.
+- **Acceptance:** damage → break/repair → save/switch/restart leaves no dangling links, stuck Buddy state or repeatable reward exploit.
+
+#### NF-6 — Save and reuse a Blueprint
+
+**Depends on:** NF-3–4; preserve NF-5 state only where the durable schema permits it. **Player result:** select a contraption, name/save it, find it in a local library and place another copy in a different Scene.
+
+- Add the selection flow needed to capture a compatible subgraph, including an explicit handling/diagnostic path for links outside the selection.
+- Serialize semantic definitions, relative transforms, overrides, internal constraints and wires. Validate on both save and spawn; remap instance identities on placement.
+- Implement local library browsing, placement preview/confirm, and actionable missing/invalid-content messages. Keep local count free of a five-slot cap.
+- **Acceptance:** save the NF-4 timer machine, restart, place two independent copies and operate both. A malformed or missing-dependency graph must not partially spawn or corrupt the Scene.
+
+#### NF-7 — Creator Lite: paint and spawn a Prop
+
+**Depends on:** NF-3 and the local semantic compiler. **Player result:** New Item → Simple Prop → name → Paint → Properties → Test Spawn → Save Locally → use after restart.
+
+- Build the actual Creator workspace and local item library. Reuse raster/history/palette mechanics without Buddy body mapping.
+- Compile a bounded trusted collision shape and typed physics/material defaults; render pixels through the trusted item presentation seam.
+- Make Test Spawn and normal placement use the same validated definition path. Surface validation errors in the editor and preserve the working copy on failed save.
+- **Acceptance:** draw an asymmetric Prop, change its mass/bounce, test it, save/reopen and place it in a Scene. Reject invalid dimensions/bytes/properties without creating runtime content.
+
+#### NF-8 — Creator Lite: Gun, Sword and Explosive
+
+**Depends on:** NF-7 and applicable weapon/damage seams from NF-4–5. **Player result:** create and actually use one item from each remaining beginner template.
+
+- **Gun:** Grip/Muzzle markers, bounded cadence/spread/recoil/knockback, trusted projectile/effect choice and Test Fire.
+- **Sword:** Grip plus finite Blade/Sharp region, bounded sharp-contact behavior and usable melee interaction.
+- **Explosive:** bounded fuse/radius/force, trusted damage/effect profile and budgeted detonation.
+- Add template-specific marker editing, diagnostics and local save/reopen; use shared semantic capabilities in both tests and normal play.
+- **Acceptance:** paint, configure, test, save, restart and use all three items; invalid markers and values fail before spawn. Prop-only completion does not satisfy Creator Lite.
+
+#### NF-9 — Share the new creations
+
+**Depends on:** NF-6 and NF-8 stable local schemas/validators. **Player result:** publish a Blueprint/Creator item, import a validated local copy, and explicitly place/use it offline.
+
+- Define exact versioned package whitelists and compatibility for these approved types; connect preview/staging/publish and download/import UI to the existing Workshop service.
+- Snapshot and validate hostile bytes, preserve provenance separately, and retain last-known-good content when updates fail. Show missing/incompatible content with an actionable diagnosis.
+- **Acceptance:** exercise publish/import with the directory emulator, explicit placement and offline restart; add hostile-input checks for the new formats. Record actual live Steam/two-account publication as an external release gate until performed.
+
+#### NF-10 — Secondary effects and Next Fest completion
+
+**Depends on:** the playable NF-1–8 pillars; NF-9 remains the sharing track.
+
+- Integrate the section 3.15 effect set through existing damage/drive/gravity/recovery systems, with visible duration/removal feedback and a trusted compatible delivery route. Retain existing Burning; do not rewrite it for uniformity.
+- Connect the completed systems to concise Next Fest teaching: create a Scene/cast, build a machine, save a Blueprint and author an item. Initial Demo teaching remains scoped to its own features.
+- Finish outstanding achievement qualification/attribution against the approved 24-rule baseline, including actual new-system actions. Resolve any unclear baseline rule from owner-authorized sources before implementing it.
+- **Acceptance:** one first-session journey reaches the major creative operations without debug commands; effects expire/recover without stuck state. Secondary effects must not postpone the core creative pillars.
+- Run the existing full RC/migration/performance/accessibility checks against the resulting build. Treat this as release acceptance of implemented functionality, not another feature-infrastructure phase.
+
+#### How to report remaining work
+
+For each NF packet report **usable behavior implemented**, **functional gaps still open**, and **verification/external gates** separately. A domain type, test count or green workflow alone does not complete a player feature. Name the next missing in-game action in the handoff. Do not default back to adding tests/CI when the next functional packet is ready to implement.
+
+### Historical progress audit (2026-09-09)
+
+The following audit and merge/CI observations describe their named historical heads. They are retained as evidence, not the current implementation queue; some stated gaps have since received source implementations as recorded above.
 
 Audited implementation head: `0db908b49699d61c4717e9b05bbb52ef8608dbd6` on `feature/master-release-plan-2026-09-08`, after fetching origin. The branch contains 188 commits across 132 changed files relative to `origin/main`. This is an implementation-progress audit, not player acceptance or a complete line-by-line correctness review.
 
@@ -1119,7 +1268,7 @@ Audited implementation head: `0db908b49699d61c4717e9b05bbb52ef8608dbd6` on `feat
 
 **Verification actually observed:** [CI run 34318934403](https://github.com/vDalisay/desktop-buddy/actions/runs/34318934403) built the solution, passed all **1,753 managed tests** and the binary guard. [Achievement Build Scope run 34318934405](https://github.com/vDalisay/desktop-buddy/actions/runs/34318934405) passed. `CI / build-test` was skipped because this was a push. There is no open PR for this branch, and no new Godot scenarios/journeys accompany its production Scene or achievement wiring. This audit did not run interactive or live Steam checks.
 
-**Next work, before adding more systems:**
+**Historical next-work recommendation (superseded by the 2026-09-10 queue):**
 
 1. Close the runtime verification gap: add/run Godot journeys through production Bootstrap for Initial save migration, committed restart, malformed/incomplete generation refusal/recovery, purchases/Work/character/background persistence and transactional reset. Prove Initial Demo refuses upgraded saves without modifying semantic files. Exercise the Initial and Next Fest build tags explicitly; untagged single-Buddy fixtures cannot prove these routes.
 2. Finish the planned Scene/cast vertical slice before extending achievements or starting Build/Edit. Remove the reserved-primary assumptions through actual roster composition and target ownership; verify independent actors, shared wallet, inactive-Scene suspension, Work focus, environment rebind and repeated switching/restart. Do not count managed library operations as shipped Scene UI.
@@ -1161,23 +1310,29 @@ Evidence: the audit examined `9094f33e`; the follow-up was refreshed after fetch
 
 ## Phase 2 — Full Release breadth
 
-On the same architecture:
+Implement these as extensions of the playable Next Fest packets. Each row names a concrete operation and inherits the relevant persistence, validation and interactive/automated acceptance requirements above. Candidate features in section 4 remain candidates; this breakdown does not silently promote them to launch requirements.
 
-- remove artificial demo product caps where hardware/storage permits;
-- broaden Scene/cast management;
-- broaden editor/construction/constraints/properties/devices/materials;
-- deepen structural/destruction features only where safe;
-- build full Creator Studio and behavior graph/content packs;
-- broaden safe Workshop ecosystem;
-- expand Environment/functional furniture;
-- expand Buddy Studio/custom cosmetics;
-- add Potion Shop;
-- add selected additional status effects;
-- add interactive accessories/gadgets;
-- add local voice personalization;
-- add original contextual helper if retained;
-- recalibrate full-game economy/progression;
-- run migration/performance/accessibility/content/full RC pass.
+| Order / packet | Concrete implementation deliverable | Acceptance example / dependency |
+|---|---|---|
+| FR-1 — Larger Scene/cast libraries | Remove the Next Fest 10-Scene entitlement restriction in Full; make overflow/library navigation usable at larger counts while retaining measured runtime safety limits. | Create an eleventh Scene, locate/switch it, reopen older Next Fest content, and add owned Buddies without a fixed four-Buddy cap. Extends NF-1–2. |
+| FR-2 — Faster building | Add multi-select/marquee, copy/paste, grid/snap and editor-command undo/redo; add grouping where it improves those operations. | Select a machine, copy it, snap it into place, undo/delete/redo without altering the original or trying to rewind live physics. Extends NF-3/6. |
+| FR-3 — Useful construction breadth | Deliver selected section 4.3–4.6 parts/constraints/materials/devices as complete place → configure → operate → save flows. Choose an authored mechanism for each addition; do not implement every candidate as a generic registry exercise. | A chosen Spring/Slider/motor or sensor must enable a working mechanism that the Next Fest vocabulary cannot express, and survive Blueprint save/reload. Specific candidate selection is still pending; do not invent a mandatory catalogue. |
+| FR-4 — Full Creator authoring | Extend the existing workspace with approved additional templates, typed ports, finite event/condition/action editing, diagnostics and a safe test loop. Add local packs and dependency/version handling around working items. | Author a signal-driven item with a timed action, test/save it, reuse it from a pack and receive useful diagnostics for a missing dependency or over-budget graph. Extends NF-7–8; no scripting/runtime privileges. |
+| FR-5 — Scene and pack sharing | Add validated complete-Scene/content-pack export/import and explicit local activation after the formats above stabilize. | Share a furnished Scene containing cast references and compatible creations; import offline, show missing-content placeholders, and restore references when dependencies become available. Extends NF-9; live Steam remains a separate acceptance gate. |
+| FR-6 — Functional furniture | Expand the Scene-owned catalogue with selected authored sit/rest/watch/toggle/use interactions. | Place and use a chosen furniture item, then move/remove it while occupied; Buddy safely recovers and the layout survives restart. Exact furniture selection follows approved content definitions. |
+| FR-7 — Full Buddy Studio | Expose finished Tops/Shoes/Accessories and implement approved painted cosmetic templates, local library, anchored deformation and validated sharing through Browse/Equip/My Creations/Create-Edit/Shared flows. | Create a cosmetic, equip it on the intended Buddy, reopen/edit it and import a shared copy while preserving visual-only physics separation. |
+| FR-8 — Potion Shop | Connect a small approved effect catalogue to purchase/use UI, clear durations/stacking, effect removal/recovery and the shared economy. | Buy/use an approved potion, observe its effect and expiration, restart/reset safely, and verify no repeated reward exploit or appearance-document mutation. Extends NF-10; use approved values rather than inventing prices/durations. |
+| FR-9 — Full progression and onboarding | Reconcile unlock/pricing/reward rules with the expanded playable catalogue, explain the new workflows, and preserve qualified achievements into Full Steam reconciliation. | Upgrade a Next Fest save, retain creations/progress, use the new systems and reconcile qualifying achievements under the full AppID without duplicate rewards. Balance values require the documented tuning/owner process. |
+
+**Conditional follow-ons, not blockers for the packets above:**
+
+- Physical detachment: only after every absent-limb path listed in section 4.7 is supported; the deliverable is detach → interact → reattach/System Restore → restart safely.
+- Additional effects/gadgets: select a useful approved interaction first, then implement its delivery, feedback and clean removal; no catalogue-padding framework.
+- Local voice: if retained, record → preview/normalize → assign an authored reaction → hear it → delete it, with bounded private local storage and no Workshop microphone upload.
+- Original contextual helper: if retained, teach a concrete expanded workflow and allow dismissal; avoid adding a separate helper platform.
+- Broader room physics: if retained, expose a bounded useful control, save it per Scene, and restore normal simulation without slowing UI/platform callbacks.
+
+Full RC closes migration, performance, accessibility, content and installed/live-platform evidence for these implemented operations. It does not replace their implementation or turn the optional candidates into launch promises.
 
 ---
 
