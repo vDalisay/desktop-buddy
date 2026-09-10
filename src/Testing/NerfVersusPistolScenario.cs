@@ -451,7 +451,13 @@ public sealed class NerfVersusPistolScenario : IScenario
                 room, target, radius + 40.0f + profile.MuzzleOffsetPx);
             await SelectAndAim(tree, lab, gun, tool, cursor, direction);
 
-            muzzle = gun.Cursor + (gun.AimForward * gun.ActiveProfile!.MuzzleOffsetPx);
+            // A stand-off derived from a head near a wall can land outside the play area,
+            // and a cursor that never entered the room holsters the gun: there is no muzzle
+            // to measure from. That is bad geometry like any other, so re-derive and retry.
+            if (gun.ActiveProfile is null)
+                continue;
+
+            muzzle = gun.Cursor + (gun.AimForward * profile.MuzzleOffsetPx);
             toHead = lab.Buddy.Rig.Head.GlobalPosition - muzzle;
             aimError = toHead.Length() > 0.01f
                 ? gun.AimForward.Dot(toHead.Normalized())

@@ -106,7 +106,7 @@ public partial class Bootstrap : Node
             return;
         }
 
-        var host = packed.Instantiate<TestRunner>();
+        var host = SceneInstantiation.Instantiate<TestRunner>(packed);
         host.Configure(args);
         AddChild(host);
     }
@@ -164,7 +164,7 @@ public partial class Bootstrap : Node
             return;
         }
 
-        var sandbox = packed.Instantiate<SandboxRoot>();
+        var sandbox = SceneInstantiation.Instantiate<SandboxRoot>(packed);
         double cashPerPain = sandbox.Pipeline.RequirePainProfile().CashPerPain;
         bool browser = OperatingSystem.IsBrowser();
         string progressPath = ProjectSettings.GlobalizePath("user://progress.json");

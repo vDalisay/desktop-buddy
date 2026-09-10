@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DesktopBuddy.App;
 using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.CharacterEditor.BuddyStudio;
@@ -493,7 +494,7 @@ public partial class BuddyVisualRigView
         GeneratedBuddyCosmeticResource resource = visual.GeneratedResource ?? throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has no trusted generated resource.");
         if (!GodotObject.IsInstanceValid(resource.MeshScene) || !GodotObject.IsInstanceValid(resource.AlbedoTexture))
             throw new InvalidOperationException($"Generated visual '{visual.CosmeticId}' has missing imported assets.");
-        Node scene = resource.MeshScene!.Instantiate();
+        Node scene = SceneInstantiation.Instantiate<Node>(resource.MeshScene!);
         if (scene is not Node3D scene3D)
         {
             scene.QueueFree();
