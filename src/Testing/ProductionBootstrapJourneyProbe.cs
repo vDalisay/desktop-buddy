@@ -174,6 +174,9 @@ public static class ProductionBootstrapJourneyProbe
                 ["legacy_scene_progress"] = context.SceneProgress is null && !context.UsesSplitSceneProgress,
                 ["scene_strip_composed"] = sandbox.GetTree().Root.FindChild(
                     nameof(SceneStripController), recursive: true, owned: false) is SceneStripController,
+                ["scene_management_controls"] = sandbox.GetTree().Root.FindChild(
+                    "SceneCreateButton", recursive: true, owned: false) is Button &&
+                    sandbox.GetTree().Root.FindChild("SceneMenu", recursive: true, owned: false) is MenuButton,
                 ["scene_manifest_exists"] = System.IO.File.Exists(Path.Combine(saveRoot, SceneProgressTransactionStore.ManifestFileName)),
                 ["wallet_preserved"] = expectedWallet < 0 || context.PlayerProgress.BalanceMilliCredits == expectedWallet,
                 ["work_preserved"] = expectedKeyboard < 0 ||

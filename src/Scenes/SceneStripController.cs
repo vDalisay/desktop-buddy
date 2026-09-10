@@ -21,9 +21,12 @@ public partial class SceneStripController : Node
     private Win98CommandBarBootstrap _commandBar = null!;
     private Win98WindowFrame? _frame;
     private HBoxContainer _strip = null!;
+    private AcceptDialog _nameDialog = null!;
+    private LineEdit _nameInput = null!;
     private SceneId _knownActive;
     private bool _knownBusy;
     private bool _configured;
+    private bool _renaming;
 
     public void Configure(SandboxRoot sandbox, Win98CommandBarBootstrap commandBar)
     {
@@ -49,6 +52,7 @@ public partial class SceneStripController : Node
         };
         _strip.AddThemeConstantOverride("separation", Win98ThemeFactory.Px(2));
         _commandBar.SetSceneStrip(_strip);
+        BuildNameDialog();
         Rebuild();
     }
 
@@ -114,8 +118,8 @@ public partial class SceneStripController : Node
         for (int index = firstVisible; index < firstVisible + visibleCount; index++)
             _strip.AddChild(CreateTab(scenes[index]));
 
-        if (scenes.Count > visibleCount)
-            _strip.AddChild(CreateOverflow(scenes, firstVisible, visibleCount));
+        _strip.AddChild(CreateSceneMenu(scenes, firstVisible, visibleCount));
+        _strip.AddChild(CreateAddButton());
     }
 
     private Button CreateTab(SceneDocument scene)
@@ -143,25 +147,28 @@ public partial class SceneStripController : Node
         return button;
     }
 
-    private MenuButton CreateOverflow(IReadOnlyList<SceneDocument> scenes, int firstVisible, int visibleCount)
+    private MenuButton CreateSceneMenu(IReadOnlyList<SceneDocument> scenes, int firstVisible, int visibleCount)
     {
         var more = new MenuButton
         {
-            Name = "SceneTabOverflow",
-            Text = "Scenes ▾",
-            TooltipText = "Show the remaining Scenes.",
+            Name = "SceneMenu",
+            Text = "Scene ▾",
+            TooltipText = "Manage Scenes and show hidden tabs.",
             Disabled = _sandbox.IsSceneSwitchInProgress,
             FocusMode = Control.FocusModeEnum.All,
             CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(78), Win98ThemeFactory.Px(22)),
         };
         PopupMenu popup = more.GetPopup();
         Win98MenuStyle.Apply(popup);
+        popup.AddItem("Rename active Scene...", 1);
         var overflowIds = new Dictionary<long, SceneId>();
-        long itemId = 1;
+        long itemId = 100;
         for (int index = 0; index < scenes.Count; index++)
         {
             if (index >= firstVisible && index < firstVisible + visibleCount)
                 continue;
+            if (overflowIds.Count == 0)
+                popup.AddSeparator("Switch to");
             SceneDocument scene = scenes[index];
             popup.AddItem(scene.Name, (int)itemId);
             overflowIds.Add(itemId, scene.SceneId);
@@ -169,10 +176,95 @@ public partial class SceneStripController : Node
         }
         popup.IdPressed += id =>
         {
-            if (overflowIds.TryGetValue(id, out SceneId sceneId))
+            if (id == 1)
+                OpenNameDialog(rename: true);
+            else if (overflowIds.TryGetValue(id, out SceneId sceneId))
                 SwitchToAsync(sceneId);
         };
         return more;
+    }
+
+    private Button CreateAddButton()
+    {
+        var add = new Button
+        {
+            Name = "SceneCreateButton",
+            Text = "+",
+            TooltipText = _scenes.CanCreateScene ? "Create a Scene." : "The Scene limit has been reached.",
+            Disabled = _sandbox.IsSceneSwitchInProgress || !_scenes.CanCreateScene,
+            FocusMode = Control.FocusModeEnum.All,
+            CustomMinimumSize = new Vector2(Win98ThemeFactory.Px(24), Win98ThemeFactory.Px(22)),
+        };
+        add.Pressed += () => OpenNameDialog(rename: false);
+        return add;
+    }
+
+    private void BuildNameDialog()
+    {
+        _nameDialog = new AcceptDialog
+        {
+            Name = "SceneNameDialog",
+            Title = "Scene name",
+            DialogText = "Enter a name with 1-64 visible characters.",
+            OkButtonText = "Create",
+            MinSize = new Vector2I(360, 150),
+            Theme = Win98ThemeFactory.Create(),
+        };
+        _nameInput = new LineEdit
+        {
+            Name = "SceneNameInput",
+            MaxLength = SceneDocument.MaximumNameLength,
+            CustomMinimumSize = new Vector2(320, Win98ThemeFactory.Px(24)),
+        };
+        _nameDialog.AddChild(_nameInput);
+        _nameDialog.RegisterTextEnter(_nameInput);
+        _nameDialog.Confirmed += SubmitNameAsync;
+        AddChild(_nameDialog);
+    }
+
+    private void OpenNameDialog(bool rename)
+    {
+        _renaming = rename;
+        _nameDialog.Title = rename ? "Rename Scene" : "Create Scene";
+        _nameDialog.OkButtonText = rename ? "Rename" : "Create";
+        _nameDialog.DialogText = "Enter a name with 1-64 visible characters.";
+        _nameInput.Text = rename ? _scenes.ActiveScene.Name : "New Scene";
+        _nameDialog.PopupCentered();
+        _nameInput.GrabFocus();
+        _nameInput.SelectAll();
+    }
+
+    private async void SubmitNameAsync()
+    {
+        string name = _nameInput.Text;
+        SceneLibraryResult result;
+        try
+        {
+            result = _renaming
+                ? _scenes.RenameScene(_scenes.ActiveSceneId, name)
+                : _scenes.CreateScene(name);
+            if (!result.Succeeded && result.Status != SceneLibraryStatus.NoChange)
+                throw new InvalidOperationException($"Scene change failed: {result.Status}.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus(exception.Message);
+            _nameDialog.DialogText = exception.Message;
+            _nameDialog.PopupCentered();
+            _nameInput.GrabFocus();
+            return;
+        }
+
+        Rebuild();
+        try
+        {
+            await _scenes.FlushAsync(force: true);
+            SetStatus(_renaming ? $"Renamed Scene to {name}." : $"Created Scene: {name}.");
+        }
+        catch (Exception exception)
+        {
+            SetStatus($"Scene changed but could not be saved: {exception.Message}");
+        }
     }
 
     private async void SwitchToAsync(SceneId sceneId)
