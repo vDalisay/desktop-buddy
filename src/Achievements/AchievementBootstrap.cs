@@ -59,7 +59,7 @@ public sealed partial class AchievementBootstrap : Node
         if (_coordinator is null)
             throw new InvalidOperationException("AchievementBootstrap was not configured.");
 
-        _sandbox.Pipeline.ImpactAccepted += OnImpactAccepted;
+        WireActorObservers();
         _coordinator.Store.Qualified += OnQualified;
         EvaluateDurableState();
 
@@ -79,8 +79,7 @@ public sealed partial class AchievementBootstrap : Node
     {
         if (_coordinator is null)
             return;
-        if (GodotObject.IsInstanceValid(_sandbox) && GodotObject.IsInstanceValid(_sandbox.Pipeline))
-            _sandbox.Pipeline.ImpactAccepted -= OnImpactAccepted;
+        StopObservingActors();
         _coordinator.Store.Qualified -= OnQualified;
     }
 

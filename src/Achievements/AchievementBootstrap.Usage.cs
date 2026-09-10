@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using DesktopBuddy.Buddy;
 using DesktopBuddy.Domain.Achievements;
+using DesktopBuddy.Domain.Scenes;
+using DesktopBuddy.Scenes;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Interaction;
 using DesktopBuddy.Objects;
@@ -29,6 +32,8 @@ public sealed partial class AchievementBootstrap
     private int _observedLaunchCount;
     private int _observedRopeAttachCount;
     private double _airborneSeconds;
+    private Dictionary<BuddyPlacementId, double> _previousAirborneSeconds = [];
+    private Dictionary<BuddyPlacementId, double> _airborneActorSeconds = [];
 
     public override void _EnterTree()
     {
@@ -40,10 +45,7 @@ public sealed partial class AchievementBootstrap
         _sandbox.Grenades.PinPulled += OnUsageGrenadePinPulled;
         _sandbox.FireSprayer.SprayingChanged += OnUsageSprayingChanged;
         _sandbox.FireSprayer.Ignited += OnIgnited;
-        _sandbox.Pipeline.CareMoodChanged += OnCareMoodChanged;
-        _sandbox.Pipeline.ImpactAccepted += OnBankShotImpact;
         _sandbox.Grab.Grabbed += OnGrabbed;
-        _sandbox.Buddy.ObjectInteraction.ConsumeSucceeded += OnCareItemTaken;
 
         _observedPunchCount = _sandbox.CursorTools.PunchCount;
         _observedLaunchCount = _sandbox.Launcher.LaunchCount;
@@ -265,23 +267,54 @@ public sealed partial class AchievementBootstrap
             _sandbox.Lifecycle.PauseCoordinator.IsPaused || _sandbox.Lifecycle.IsEditorModeActive)
         {
             _airborneSeconds = 0.0;
+            _previousAirborneSeconds.Clear();
             return;
         }
 
         Rect2 bounds = _sandbox.Boundaries.InnerBounds;
         float floor = bounds.End.Y;
-        foreach (var part in _sandbox.Buddy.Rig.Parts)
+        double step = Math.Max(0.0, delta);
+        double longestAirborne = 0.0;
+        _airborneActorSeconds.Clear();
+
+        // Any cast member can earn this, and each keeps its own flight timer so two Buddies taking
+        // turns in the air cannot add up to one long flight.
+        foreach ((BuddyPlacementId placementId, BuddyRoot buddy) in AirborneCandidates())
         {
-            if (part.GlobalPosition.Y + part.Radius >= floor - AirborneFloorClearancePixels ||
-                part.GetCollidingBodies().Count > 0)
+            bool airborne = true;
+            foreach (var part in buddy.Rig.Parts)
             {
-                _airborneSeconds = 0.0;
-                return;
+                if (part.GlobalPosition.Y + part.Radius >= floor - AirborneFloorClearancePixels ||
+                    part.GetCollidingBodies().Count > 0)
+                {
+                    airborne = false;
+                    break;
+                }
             }
+
+            if (!airborne)
+                continue;
+            _previousAirborneSeconds.TryGetValue(placementId, out double carried);
+            double seconds = carried + step;
+            _airborneActorSeconds[placementId] = seconds;
+            longestAirborne = Math.Max(longestAirborne, seconds);
         }
 
-        _airborneSeconds += Math.Max(0.0, delta);
-        _coordinator.RecordAirborneSeconds(_airborneSeconds);
+        (_previousAirborneSeconds, _airborneActorSeconds) = (_airborneActorSeconds, _previousAirborneSeconds);
+        _airborneSeconds = longestAirborne;
+        if (longestAirborne > 0.0)
+            _coordinator.RecordAirborneSeconds(longestAirborne);
+
+        IEnumerable<(BuddyPlacementId PlacementId, BuddyRoot Buddy)> AirborneCandidates()
+        {
+            if (_sandbox.ActiveSceneRuntime is { } runtime && runtime.Actors.Count > 0)
+            {
+                foreach (BuddyActorRuntime actor in runtime.Actors)
+                    yield return (actor.PlacementId, actor.Buddy);
+                yield break;
+            }
+            yield return (default, _sandbox.Buddy);
+        }
     }
 
     private void UnwireUsageObservers()
@@ -305,22 +338,13 @@ public sealed partial class AchievementBootstrap
             _sandbox.FireSprayer.SprayingChanged -= OnUsageSprayingChanged;
             _sandbox.FireSprayer.Ignited -= OnIgnited;
         }
-        if (GodotObject.IsInstanceValid(_sandbox.Pipeline))
-        {
-            _sandbox.Pipeline.CareMoodChanged -= OnCareMoodChanged;
-            _sandbox.Pipeline.ImpactAccepted -= OnBankShotImpact;
-        }
         if (GodotObject.IsInstanceValid(_sandbox.Grab))
             _sandbox.Grab.Grabbed -= OnGrabbed;
-        if (GodotObject.IsInstanceValid(_sandbox.Buddy) &&
-            GodotObject.IsInstanceValid(_sandbox.Buddy.ObjectInteraction))
-        {
-            _sandbox.Buddy.ObjectInteraction.ConsumeSucceeded -= OnCareItemTaken;
-        }
 
         _baseballPreviousVelocityX.Clear();
         _confirmedBaseballRicochets.Clear();
         _airborneSeconds = 0.0;
+        _previousAirborneSeconds.Clear();
         _usageObserversWired = false;
     }
 }

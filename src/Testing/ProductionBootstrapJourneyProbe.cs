@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using DesktopBuddy.Achievements;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
@@ -146,6 +147,7 @@ public static class ProductionBootstrapJourneyProbe
             bool castCommitted = !changeCast;
             bool focusFollowsSelection = !changeCast;
             bool focusRecoversAfterRemoval = !changeCast;
+            bool achievementObserversFollowRoster = !changeCast;
 
             if (changeCast)
             {
@@ -191,6 +193,11 @@ public static class ProductionBootstrapJourneyProbe
                 castIdentityPreserved = scenes.TryGetBuddy(added, out BuddyIdentityState? keptBuddy) &&
                     keptBuddy is not null;
                 castCommitted = !scenes.IsDirty;
+                // Qualifying actions must keep being observed on exactly the live cast.
+                achievementObserversFollowRoster = sandbox.GetTree().Root.FindChild(
+                        nameof(AchievementBootstrap), recursive: true, owned: false) is AchievementBootstrap achievements &&
+                    runtime is not null &&
+                    achievements.ObservedActorCount == runtime.Actors.Count;
                 focusRecoversAfterRemoval = sandbox.FocusedActor is not null &&
                     sandbox.FocusedActor.BuddyIdentityId != added &&
                     runtime is not null &&
@@ -430,6 +437,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["scene_cast_committed"] = castCommitted,
                 ["scene_focus_follows_selection"] = focusFollowsSelection,
                 ["scene_focus_recovers_after_removal"] = focusRecoversAfterRemoval,
+                ["scene_achievement_observers_follow_roster"] = achievementObserversFollowRoster,
                 ["scene_duplicate_independent"] = duplicateIsIndependent,
                 ["scene_duplicate_copied_background"] = duplicateCopiedBackground,
                 ["scene_delete_switched_safely"] = deleteSwitchedSafely,

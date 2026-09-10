@@ -25,6 +25,12 @@ public partial class SandboxRoot
     public event Action<BuddyActorRuntime?>? FocusedActorChanged;
 
     /// <summary>
+    /// Raised after the active Scene's live cast is composed or recomposed. Observers that bind to
+    /// per-Buddy components must re-attach here; the previous actors are already gone.
+    /// </summary>
+    public event Action? SceneRosterChanged;
+
+    /// <summary>
     /// The Character worn by the focused Buddy in a Scene run, so customization and Work follow the
     /// selected cast member instead of the one compatibility selection. Null outside Scene runs.
     /// </summary>
@@ -103,6 +109,7 @@ public partial class SandboxRoot
         }
 
         EnsureFocusedActor();
+        SceneRosterChanged?.Invoke();
     }
 
     /// <summary>
