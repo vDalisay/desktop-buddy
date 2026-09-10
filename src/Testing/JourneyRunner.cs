@@ -3109,9 +3109,16 @@ public partial class JourneyRunner : Node
             await ToSignal(GetTree(), SceneTree.SignalName.PhysicsFrame);
 
         state["glove_selected"] = lab.Pipeline.SelectedTool == DesktopBuddy.Domain.Tools.ToolId.BoxingGlove;
+        // Only a scored impact pays: RewardLedger.Accept is reached from nowhere else, and
+        // it is the sole path that credits a reward. The balance itself is deliberately not
+        // compared, because passive income accrues on a real-time clock (RAGDOLL 8.3) and
+        // deposits whole milli-credits into the same balance while these frames run. On a
+        // loaded runner the wait crosses a milli-credit boundary and an exact-equality check
+        // fails for income that has nothing to do with drawing a tool.
         state["tool_activation_does_not_pay"] =
-            lab.Pipeline.BalanceMilliCredits == balanceBeforeSelection &&
             lab.Pipeline.ScoredImpactCount == scoredBeforeSelection;
+        Log.Info("Journey", $"M3 activation balance {balanceBeforeSelection}->{lab.Pipeline.BalanceMilliCredits} " +
+            $"scored {scoredBeforeSelection}->{lab.Pipeline.ScoredImpactCount}");
 
         Vector2 previous = new(32.0f, lab.Buddy.Rig.Head.GlobalPosition.Y);
         await MovePointerAsync(previous, Vector2.Zero);
