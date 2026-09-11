@@ -101,6 +101,17 @@ public partial class SandboxRoot
         return hits;
     }
 
+    /// <summary>The room's dropped-tool transactions, once the input bridge has attached them.</summary>
+    public Tools.DroppedToolInteractionComponent? DroppedTools =>
+        GetNodeOrNull<Tools.DroppedToolInteractionComponent>(nameof(Tools.DroppedToolInteractionComponent));
+
+    /// <summary>
+    /// The world form of a tool a placement holds: what a tool looks like, weighs and collides as
+    /// when it is lying in the room (owner 2026-09-12). Null for every part that is not a tool.
+    /// </summary>
+    public Tools.CursorToolProfile? ToolWorldForm(string? toolContentId) =>
+        SandboxToolParts.ToolOf(toolContentId) is { } tool ? Tools.ToolWorldForms.For(CursorTools, tool) : null;
+
     private SandboxPartBody? SpawnBuiltPart(PlacedSandboxPart part)
     {
         ArgumentNullException.ThrowIfNull(part);
@@ -113,7 +124,7 @@ public partial class SandboxRoot
         RemoveBuiltPart(part.PartId);
         EnsurePartVisual();
         var body = new SandboxPartBody { Name = $"SandboxPart_{part.PartId.ToString()[..8]}" };
-        body.Configure(part, definition);
+        body.Configure(part, definition, ToolWorldForm(part.Overrides.Tool));
         body.Position = ScenePlacementWorldPosition(part.Position);
         AddChild(body);
         _builtParts[part.PartId] = body;

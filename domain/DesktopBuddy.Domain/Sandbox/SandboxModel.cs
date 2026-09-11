@@ -112,7 +112,8 @@ public readonly record struct SandboxPartOverrides(
     float? PistonPush = null,
     float? TimerSeconds = null,
     float? Length = null,
-    float? Thickness = null)
+    float? Thickness = null,
+    string? Tool = null)
 {
     /// <summary>A resizable part's length (its unrotated width), in pixels.</summary>
     public const float MinimumLength = 16.0f;
@@ -140,7 +141,8 @@ public readonly record struct SandboxPartOverrides(
     public static SandboxPartOverrides None => default;
 
     public bool HasAny => MassScale.HasValue || Bounce.HasValue || GravityScale.HasValue || Frozen ||
-        PistonPush.HasValue || TimerSeconds.HasValue || Length.HasValue || Thickness.HasValue;
+        PistonPush.HasValue || TimerSeconds.HasValue || Length.HasValue || Thickness.HasValue ||
+        Tool is not null;
 
     /// <summary>Clamps every present value into its allowed band; out-of-band input never throws.</summary>
     public SandboxPartOverrides Clamped() => new(
@@ -151,7 +153,9 @@ public readonly record struct SandboxPartOverrides(
         Clamp(PistonPush, MinimumPistonPush, MaximumPistonPush),
         Clamp(TimerSeconds, MinimumTimerSeconds, MaximumTimerSeconds),
         Clamp(Length, MinimumLength, MaximumLength),
-        Clamp(Thickness, MinimumThickness, MaximumThickness));
+        Clamp(Thickness, MinimumThickness, MaximumThickness),
+        // A placement may only name a tool this build can put in a room; anything else is no tool.
+        SandboxToolParts.Contains(Tool) ? Tool : null);
 
     /// <summary>
     /// The part as this placement makes it: a resizable part at its own length and thickness, its

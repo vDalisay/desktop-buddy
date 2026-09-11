@@ -118,6 +118,13 @@ public partial class SandboxPartPreview : Control
         Stage(SandboxPaletteModels.ForPart(definition), demo, () => Show(definition));
     }
 
+    /// <summary>A tool as it lies in the room. Click it to hear it land, as a knock on a part does.</summary>
+    public void ShowTool(Tools.CursorToolProfile profile)
+    {
+        _knock = MetalKnocks;
+        Stage(SandboxPaletteModels.ForTool(profile), Demo.Knock, () => ShowTool(profile));
+    }
+
     public void ShowLink(SandboxLinkKind kind, float strength, float elasticity, float stiffness)
     {
         _strength = strength;

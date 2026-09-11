@@ -112,7 +112,9 @@ public partial class SandboxPartVisual3D : Node3D
 
     private Node3D Adopt(SandboxPartBody body)
     {
-        Node3D node = SandboxPartLook.Build(body.Definition);
+        Node3D node = body.ToolProfile is { } tool
+            ? SandboxPartLook.BuildTool(tool)
+            : SandboxPartLook.Build(body.Definition);
         node.Name = body.Name;
         AddChild(node);
         _drawn[body] = node;

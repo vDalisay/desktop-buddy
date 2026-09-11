@@ -80,7 +80,7 @@ public partial class DroppedToolInteractionComponent : Node2D
 
         if (!cursorHeld)
         {
-            profile = FindDropForm(_pipeline.SelectedTool);
+            profile = ToolWorldForms.DropForm(_pipeline.SelectedTool);
             heldBody = null;
             if (profile is null || worldPosition is null)
                 return false;
@@ -130,47 +130,6 @@ public partial class DroppedToolInteractionComponent : Node2D
         return false;
     }
 
-    /// <summary>
-    /// World forms for the tools that have no cursor-tethered body of their own. They are
-    /// authored resources like every other tool profile; nothing here spawns them as cursor
-    /// tools, so the gun keeps being drawn and aimed by its own component while equipped.
-    /// </summary>
-    private static readonly string[] DropFormPaths =
-    {
-        "res://data/tools/drop_form_pistol.tres",
-        "res://data/tools/drop_form_shotgun.tres",
-        "res://data/tools/drop_form_nerf_blaster.tres",
-        "res://data/tools/drop_form_fire_sprayer.tres",
-        "res://data/tools/drop_form_tickle.tres",
-    };
-
-    private CursorToolProfile[]? _dropForms;
-
-    private CursorToolProfile? FindDropForm(ToolId tool)
-    {
-        if (_dropForms is null)
-        {
-            var forms = new System.Collections.Generic.List<CursorToolProfile>(DropFormPaths.Length);
-            foreach (string path in DropFormPaths)
-            {
-                if (GD.Load(path) is CursorToolProfile form && GodotObject.IsInstanceValid(form))
-                    forms.Add(form);
-                else
-                    GD.PushWarning($"Drop form missing or malformed: {path}");
-            }
-
-            _dropForms = forms.ToArray();
-        }
-
-        foreach (CursorToolProfile form in _dropForms)
-        {
-            if (GodotObject.IsInstanceValid(form) && form.Tool == tool)
-                return form;
-        }
-
-        return null;
-    }
-
     /// <summary>Finds the nearest eligible dropped tool under one double-click and re-equips it.</summary>
     public bool TryReequipAt(Vector2 world)
     {
@@ -206,7 +165,48 @@ public partial class DroppedToolInteractionComponent : Node2D
                 nearest = candidate;
             }
         }
-        return nearest is not null && TryReequip(nearest);
+        if (nearest is not null && TryReequip(nearest))
+            return true;
+        // A tool standing in a built room is a part, not a loose body: picking it up takes it out
+        // of the room the player built and puts it in their hand (owner 2026-09-12).
+        return TryTakeToolPart(world);
+    }
+
+    /// <summary>
+    /// Picks up a tool that is standing in the room as a built part. The part leaves the Scene's
+    /// document, so the room the player saved is the room they will get back; what they are now
+    /// holding is the tool itself.
+    /// </summary>
+    public bool TryTakeToolPart(Vector2 world)
+    {
+        RequireInitialized();
+        if (_sandbox is null || !GodotObject.IsInstanceValid(_sandbox) || _sandbox.SceneProgress is not { } scenes)
+            return false;
+
+        foreach (Domain.Sandbox.SandboxPartId partId in _sandbox.PickBuiltPartsAt(world))
+        {
+            if (!scenes.ActiveSandbox.TryGet(partId, out Domain.Sandbox.PlacedSandboxPart? part) || part is null ||
+                Domain.Sandbox.SandboxToolParts.ToolOf(part.Overrides.Tool) is not { } tool)
+            {
+                continue;
+            }
+
+            // Taking a tool out of a room you built is taking the tool: while everything is free
+            // (see EconomyService.EverythingIsFree) that also settles owning it.
+            string contentId = ContentIds.ForTool(tool);
+            if (!_pipeline.ProgressBinding.IsToolUnlocked(contentId) && Economy.EconomyService.EverythingIsFree)
+                _sandbox.Economy.Unlock(contentId);
+            if (!_pipeline.ProgressBinding.IsToolUnlocked(contentId))
+                return false;
+
+            _pipeline.SelectTool(tool);
+            if (_pipeline.SelectedTool != tool)
+                return false;
+            scenes.ActiveSandbox.Remove(partId);
+            _sandbox.RemoveBuiltPartBody(partId);
+            return true;
+        }
+        return false;
     }
 
     /// <summary>

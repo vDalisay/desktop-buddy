@@ -7,6 +7,7 @@ using DesktopBuddy.App;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Sandbox;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Persistence;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -196,7 +197,17 @@ public partial class BuildModeController : Node
     /// <summary>Selects one palette part by definition, as clicking its row does.</summary>
     public bool SelectPart(SemanticDefinitionId definitionId)
     {
-        int index = _entries.FindIndex(entry => entry.Part?.Id == definitionId);
+        int index = _entries.FindIndex(entry => entry.Part?.Id == definitionId && Available(entry));
+        if (index < 0)
+            return false;
+        SelectEntry(index);
+        return true;
+    }
+
+    /// <summary>Selects the palette row for one tool, as clicking it does; false when it has none.</summary>
+    public bool SelectToolPart(ToolId tool)
+    {
+        int index = _entries.FindIndex(entry => entry.HeldTool == tool && Available(entry));
         if (index < 0)
             return false;
         SelectEntry(index);
@@ -209,7 +220,11 @@ public partial class BuildModeController : Node
             return;
 
         SandboxDocument document = _scenes.ActiveSandbox;
-        SandboxEditResult added = document.Add(definition.Id, ToCanonical(world));
+        // A tool row places the one Tool part, holding the tool the row names.
+        SandboxPartOverrides overrides = CurrentEntry()?.HeldTool is { } held
+            ? new SandboxPartOverrides(Tool: ContentIds.ForTool(held))
+            : SandboxPartOverrides.None;
+        SandboxEditResult added = document.Add(definition.Id, ToCanonical(world), 0.0f, overrides);
 
         if (!added.Succeeded)
         {

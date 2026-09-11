@@ -21,6 +21,7 @@ public sealed record PlacedSandboxPartSave
     public bool Frozen { get; set; }
     public float? PistonPush { get; set; }
     public float? TimerSeconds { get; set; }
+    public string? Tool { get; set; }
     public float? Length { get; set; }
     public float? Thickness { get; set; }
 
@@ -40,6 +41,7 @@ public sealed record PlacedSandboxPartSave
             Frozen = part.Overrides.Frozen,
             PistonPush = part.Overrides.PistonPush,
             TimerSeconds = part.Overrides.TimerSeconds,
+            Tool = part.Overrides.Tool,
             Length = part.Overrides.Length,
             Thickness = part.Overrides.Thickness,
         };
@@ -50,7 +52,7 @@ public sealed record PlacedSandboxPartSave
         SemanticDefinitionId.Parse(DefinitionId),
         new CanonicalRoomPosition(CanonicalX, CanonicalY),
         PlacedSandboxPart.NormalizeRotation(RotationDegrees),
-        new SandboxPartOverrides(MassScale, Bounce, GravityScale, Frozen, PistonPush, TimerSeconds, Length, Thickness).Clamped());
+        new SandboxPartOverrides(MassScale, Bounce, GravityScale, Frozen, PistonPush, TimerSeconds, Length, Thickness, Tool).Clamped());
 }
 
 public sealed record SandboxLinkSave
@@ -163,7 +165,7 @@ public sealed record SandboxDocumentSave
     /// length and thickness, link strength/stretch/stiffness and wire colours. An older room simply
     /// has none.
     /// </summary>
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public long Revision { get; set; }

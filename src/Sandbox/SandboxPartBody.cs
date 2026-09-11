@@ -111,10 +111,17 @@ public partial class SandboxPartBody : RigidBody2D
         }
     }
 
-    public void Configure(PlacedSandboxPart part, SandboxPartDefinition definition)
+    /// <summary>
+    /// The tool this part is, when it is one (owner 2026-09-12): a tool in a room is an ordinary
+    /// part whose shape, weight and look come from the tool's authored world form.
+    /// </summary>
+    public Tools.CursorToolProfile? ToolProfile { get; private set; }
+
+    public void Configure(PlacedSandboxPart part, SandboxPartDefinition definition, Tools.CursorToolProfile? toolForm = null)
     {
         ArgumentNullException.ThrowIfNull(part);
         ArgumentNullException.ThrowIfNull(definition);
+        ToolProfile = toolForm;
         if (IsInsideTree())
             throw new InvalidOperationException("A sandbox part must be configured before entering the tree.");
 
@@ -148,9 +155,15 @@ public partial class SandboxPartBody : RigidBody2D
         {
             _shape = new CollisionShape2D
             {
-                Shape = definition.Shape == SandboxPartShape.Circle
-                    ? new CircleShape2D { Radius = definition.Radius }
-                    : new RectangleShape2D { Size = new Vector2(definition.Width, definition.Height) },
+                // A tool collides as the very body the player was holding — an elongated bat stays a
+                // capsule rather than becoming a box as wide as it is long.
+                Shape = ToolProfile is { } tool
+                    ? tool.IsElongated
+                        ? new CapsuleShape2D { Radius = tool.Radius, Height = tool.Length }
+                        : new CircleShape2D { Radius = tool.Radius }
+                    : definition.Shape == SandboxPartShape.Circle
+                        ? new CircleShape2D { Radius = definition.Radius }
+                        : new RectangleShape2D { Size = new Vector2(definition.Width, definition.Height) },
             };
             AddChild(_shape);
         }
@@ -190,7 +203,8 @@ public partial class SandboxPartBody : RigidBody2D
             if (_shape?.Shape is RectangleShape2D box)
                 box.Size = new Vector2(sized.Width, sized.Height);
         }
-        Mass = clamped.MassFor(_definition);
+        // A tool weighs what the tool weighs; the Mass slider still scales it, as it does a part.
+        Mass = ToolProfile is { } tool ? tool.Mass * (clamped.MassScale ?? 1.0f) : clamped.MassFor(_definition);
         GravityScale = clamped.GravityScaleValue;
         PistonPush = clamped.PistonPushValue;
 

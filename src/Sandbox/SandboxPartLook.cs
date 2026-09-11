@@ -92,6 +92,27 @@ public static class SandboxPartLook
 
     // ---- 3D ----------------------------------------------------------------------------------
 
+    /// <summary>
+    /// A fresh model of a tool lying in the room: the tool's own authored 3D look, the same one a
+    /// dropped tool is drawn with, so a bat on a shelf is the bat the player swings. A tool with no
+    /// authored 3D form falls back to its flat silhouette in its own colour.
+    /// </summary>
+    public static Node3D BuildTool(Tools.CursorToolProfile profile)
+    {
+        var node = new Node3D();
+        if (Presentation3D.CursorToolVisualFactory.Create(profile) is { } visual)
+        {
+            Add(node, "Shape", visual.Mesh, visual.Material, Vector3.Zero);
+            return node;
+        }
+        float depth = Math.Max(MinimumDepth * 0.5f, profile.Radius * 2.0f);
+        Mesh mesh = profile.IsElongated
+            ? RoundedBox(profile.Radius * 2.0f, profile.Length, depth, profile.Radius * 0.9f)
+            : new SphereMesh { Radius = profile.Radius, Height = profile.Radius * 2.0f, RadialSegments = 20, Rings = 10 };
+        Add(node, "Shape", mesh, Material(profile.VisualColor, 0.7f), Vector3.Zero);
+        return node;
+    }
+
     /// <summary>A fresh model of the part, centred on the part's origin in 3D world units (= px).</summary>
     public static Node3D Build(SandboxPartDefinition definition)
     {

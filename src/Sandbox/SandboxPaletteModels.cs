@@ -52,6 +52,14 @@ public static class SandboxPaletteModels
         return new PaletteModel(frame, new Vector2(definition.Width, definition.Height + SandboxPartLook.PistonReach));
     }
 
+    /// <summary>A tool lying in the room, in its own authored 3D look.</summary>
+    public static PaletteModel ForTool(Tools.CursorToolProfile profile)
+    {
+        float across = Mathf.Max(8.0f, profile.Radius * 2.0f);
+        float along = profile.IsElongated ? profile.Length + profile.Radius * 2.0f : across;
+        return new PaletteModel(SandboxPartLook.BuildTool(profile), new Vector2(across, along));
+    }
+
     public static PaletteModel ForLink(SandboxLinkKind kind, float strength, float elasticity, float stiffness) => kind switch
     {
         SandboxLinkKind.Rope => Rope(strength, elasticity),

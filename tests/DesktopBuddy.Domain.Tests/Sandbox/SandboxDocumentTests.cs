@@ -44,7 +44,7 @@ public sealed class SandboxDocumentTests
     [Fact]
     public void ShippedPartsAreValidCoreDefinitions()
     {
-        Assert.Equal(9, SandboxPartCatalogue.Definitions.Count);
+        Assert.Equal(10, SandboxPartCatalogue.Definitions.Count);
         foreach (SandboxPartDefinition definition in SandboxPartCatalogue.Definitions)
         {
             Assert.Empty(definition.Validate());
@@ -52,6 +52,27 @@ public sealed class SandboxDocumentTests
             Assert.True(SandboxPartCatalogue.TryGet(definition.Id, out SandboxPartDefinition resolved));
             Assert.Same(definition, resolved);
         }
+    }
+
+    /// <summary>A placed tool names a tool this build can put in a room, and nothing else.</summary>
+    [Fact]
+    public void AToolPartNamesAToolThisBuildCanPlace()
+    {
+        Assert.Equal(Domain.Tools.ToolId.BaseballBat, SandboxToolParts.ToolOf(ContentIds.ToolBaseballBat));
+        Assert.Null(SandboxToolParts.ToolOf(null));
+        Assert.Null(SandboxToolParts.ToolOf("not.a.tool"));
+
+        var document = new SandboxDocument();
+        SandboxPartId bat = document.Add(SandboxPartCatalogue.Tool, At(0.5f, 0.5f),
+            overrides: new SandboxPartOverrides(Tool: ContentIds.ToolBaseballBat)).Part!.PartId;
+        SandboxPartId nonsense = document.Add(SandboxPartCatalogue.Tool, At(0.6f, 0.5f),
+            overrides: new SandboxPartOverrides(Tool: "tool.not_known")).Part!.PartId;
+
+        SandboxDocument reloaded = SandboxSavePolicy.Decode(SandboxSavePolicy.Serialize(document)).Document!;
+        Assert.True(reloaded.TryGet(bat, out PlacedSandboxPart? saved));
+        Assert.Equal(ContentIds.ToolBaseballBat, saved!.Overrides.Tool);
+        Assert.True(reloaded.TryGet(nonsense, out PlacedSandboxPart? refused));
+        Assert.Null(refused!.Overrides.Tool);
     }
 
     [Fact]

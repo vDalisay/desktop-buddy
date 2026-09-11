@@ -585,6 +585,9 @@ public partial class CursorToolController : Node2D
         }
     }
 
+    /// <summary>This build's authored profile for a tool, or null when it has none.</summary>
+    public CursorToolProfile? ProfileOf(ToolId tool) => ProfileFor(tool);
+
     private CursorToolProfile? ProfileFor(ToolId tool)
     {
         string contentId = ContentIds.ForTool(tool);

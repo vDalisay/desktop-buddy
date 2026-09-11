@@ -22,6 +22,9 @@ public static class SandboxPartCatalogue
     public static SemanticDefinitionId WeaponTrigger { get; } = SemanticDefinitionId.CreateCore("part/weapon_trigger");
     public static SemanticDefinitionId Lamp { get; } = SemanticDefinitionId.CreateCore("part/lamp");
 
+    /// <summary>One definition for every tool lying in a room; its overrides say which tool.</summary>
+    public static SemanticDefinitionId Tool { get; } = SemanticDefinitionId.CreateCore("part/tool");
+
     /// <summary>Definitions in palette order.</summary>
     public static IReadOnlyList<SandboxPartDefinition> Definitions { get; } =
     [
@@ -62,6 +65,12 @@ public static class SandboxPartCatalogue
             "Lights up with one pulse and goes out with the next.",
             SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 24.0f, Height: 32.0f, Mass: 2.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Lamp),
+        // A tool lying in the room. The size and weight here are only a fallback: a placement takes
+        // the shape, the weight and the look of the tool it actually holds.
+        new(Tool, "Tool",
+            "A tool lying in the room. Rope it, weld it or hinge it to anything, and pick it up to use it.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 32.0f, Height: 32.0f, Mass: 3.0f, Bounce: 0.1f, Friction: 0.9f),
     ];
 
     public static SemanticDefinitionRegistry<SandboxPartDefinition> Registry { get; } = CreateRegistry();

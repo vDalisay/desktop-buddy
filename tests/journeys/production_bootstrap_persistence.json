@@ -251,6 +251,7 @@
         { "predicate": "build_devices_work", "equals": true },
         { "predicate": "build_links_snap", "equals": true },
         { "predicate": "build_preview_plays", "equals": true },
+        { "predicate": "build_tool_parts_work", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
     },

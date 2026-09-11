@@ -335,6 +335,7 @@ public static class ProductionBootstrapJourneyProbe
             bool buildLinksSurviveSceneSwitch = !buildRoom;
             bool buildDevicesWork = !buildRoom;
             bool buildLinksSnap = !buildRoom;
+            bool buildToolPartsWork = !buildRoom;
             bool buildPreviewPlays = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
@@ -725,6 +726,43 @@ public static class ProductionBootstrapJourneyProbe
                     bool pressedByWeight = sandbox.ButtonContactPresses == contactPressesBefore + 1 &&
                         buttonBody.ButtonPress > 0.5f;
 
+                    // A tool is an ordinary part (owner 2026-09-12): place a bat, rope it to a
+                    // frozen beam so it hangs there, and pick it up again in Play.
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Vector2 railAt = ShelfAt(0.62f) + new Vector2(0.0f, -90.0f);
+                    SandboxPartId rail = PlaceDevice(SandboxPartCatalogue.MetalPlate, railAt);
+                    bool railFrozen = build.SetSelectedPartOverrides(new SandboxPartOverrides(Frozen: true));
+                    bool batOffered = build.SelectToolPart(Domain.Tools.ToolId.BaseballBat);
+                    build.PlaceSelectedPartAt(railAt + new Vector2(0.0f, 60.0f));
+                    SandboxPartId batPart = build.SelectedPlacedPart ?? default;
+                    SandboxPartBody batBody = sandbox.BuiltParts[batPart];
+                    bool batIsTheTool = batBody.ToolProfile is { } batForm &&
+                        batForm.ContentId == ContentIds.ToolBaseballBat &&
+                        Mathf.IsEqualApprox(batBody.Mass, batForm.Mass);
+                    Log.Info("BootstrapJourney",
+                        $"bat body: form={batBody.ToolProfile?.ContentId ?? "none"} mass={batBody.Mass:F2} " +
+                        $"formMass={batBody.ToolProfile?.Mass ?? -1.0f:F2}");
+                    build.SetTool(BuildTool.Rope);
+                    build.TuneLink(1.0f, 0.1f, 0.0f);
+                    bool batRoped = build.RopeBetween(railAt, batBody.GlobalPosition).Succeeded;
+                    build.SetTool(BuildTool.Parts);
+                    await build.LeaveAsync();
+                    for (int frame = 0; frame < Engine.PhysicsTicksPerSecond * 2; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    // The rope holds it up: a bat with nothing on it would be on the floor by now.
+                    bool batHangs = GodotObject.IsInstanceValid(batBody) &&
+                        batBody.GlobalPosition.Y < railAt.Y + 140.0f;
+                    int partsBeforePickUp = scenes.ActiveSandbox.Count;
+                    bool batPickedUp = sandbox.DroppedTools?.TryTakeToolPart(batBody.GlobalPosition) == true &&
+                        sandbox.Pipeline.SelectedTool == Domain.Tools.ToolId.BaseballBat &&
+                        scenes.ActiveSandbox.Count == partsBeforePickUp - 1 &&
+                        !sandbox.BuiltParts.ContainsKey(batPart);
+                    buildToolPartsWork = railFrozen && batOffered && batIsTheTool && batRoped && batHangs && batPickedUp;
+                    Log.Info("BootstrapJourney",
+                        $"tool part: offered={batOffered} isTool={batIsTheTool} roped={batRoped} hangs={batHangs} " +
+                        $"pickedUp={batPickedUp} tool={sandbox.Pipeline.SelectedTool}");
+
                     build.Toggle();
                     await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
                     // A beam made longer and thicker in Properties: its body and weight follow.
@@ -735,7 +773,7 @@ public static class ProductionBootstrapJourneyProbe
                         beamBody.Definition.Width == 192.0f && beamBody.Definition.Height == 24.0f &&
                         Mathf.IsEqualApprox(beamBody.Mass, beamMass * 3.0f) &&
                         beamBody.ContainsPoint(beamBody.GlobalPosition + new Vector2(90.0f, 0.0f));
-                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, beamPart, weight, shelf })
+                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, rail, beamPart, weight, shelf })
                     {
                         if (build.SelectPlaced(device))
                             build.DeleteSelectedPart();
@@ -1016,6 +1054,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_links_survive_scene_switch"] = buildLinksSurviveSceneSwitch,
                 ["build_devices_work"] = buildDevicesWork,
                 ["build_links_snap"] = buildLinksSnap,
+                ["build_tool_parts_work"] = buildToolPartsWork,
                 ["build_preview_plays"] = buildPreviewPlays,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,

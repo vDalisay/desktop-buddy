@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Sandbox;
+using DesktopBuddy.Domain.Tools;
+using DesktopBuddy.Ui;
 using DesktopBuddy.UI.Win98;
 using Godot;
 
@@ -26,10 +29,11 @@ public partial class BuildModeController
     private const string Hinges = "Hinges";
     private const string Welds = "Welds";
     private const string Wires = "Wires";
+    private const string ToolsCategory = "Tools";
 
     // Props and Misc (in the owner's mock-up) arrive with the Creator; a category with nothing in
     // it would only be a dead button.
-    private static readonly string[] Categories = [Structural, Mechanics, Devices, Ropes, Hinges, Welds, Wires];
+    private static readonly string[] Categories = [Structural, Mechanics, Devices, ToolsCategory, Ropes, Hinges, Welds, Wires];
 
     /// <summary>One palette row: a part, a link preset or a wire colour.</summary>
     private sealed record PaletteEntry(
@@ -38,7 +42,8 @@ public partial class BuildModeController
         BuildTool Tool,
         SandboxPartDefinition? Part = null,
         SandboxLinkPreset? Preset = null,
-        SandboxWireColor Wire = SandboxWireColor.Green);
+        SandboxWireColor Wire = SandboxWireColor.Green,
+        ToolId? HeldTool = null);
 
     private readonly List<PaletteEntry> _entries = BuildEntries();
     private readonly List<int> _visible = [];
@@ -93,11 +98,31 @@ public partial class BuildModeController
         }
         entries.AddRange(Enum.GetValues<SandboxWireColor>()
             .Select(color => new PaletteEntry($"{color} Wire", Wires, BuildTool.Wire, Wire: color)));
+        // A tool lying in the room is an ordinary part (owner 2026-09-12), so it is placed with the
+        // Parts tool and can be roped, hinged, welded and picked up like anything else.
+        SandboxPartCatalogue.TryGet(SandboxPartCatalogue.Tool, out SandboxPartDefinition toolPart);
+        foreach (ToolId tool in SandboxToolParts.All)
+        {
+            entries.Add(new PaletteEntry(
+                ContentDisplayName.For(ContentIds.ForTool(tool)),
+                ToolsCategory,
+                BuildTool.Parts,
+                Part: toolPart,
+                HeldTool: tool));
+        }
         return entries;
     }
 
     private PaletteEntry? CurrentEntry() =>
         _selectedIndex >= 0 && _selectedIndex < _entries.Count ? _entries[_selectedIndex] : null;
+
+    /// <summary>A tool row is only offered when this build knows what that tool looks like on the ground.</summary>
+    private bool Available(PaletteEntry entry) =>
+        entry.HeldTool is not { } tool || _sandbox.ToolWorldForm(ContentIds.ForTool(tool)) is not null;
+
+    /// <summary>The world form behind a tool row.</summary>
+    private Tools.CursorToolProfile? FormOf(PaletteEntry? entry) =>
+        entry?.HeldTool is { } tool ? _sandbox.ToolWorldForm(ContentIds.ForTool(tool)) : null;
 
     /// <summary>
     /// Switches tool. When the chosen row is not already one of that tool's, the first of them is
@@ -107,7 +132,7 @@ public partial class BuildModeController
     {
         if (CurrentEntry()?.Tool != tool)
         {
-            int index = _entries.FindIndex(entry => entry.Tool == tool);
+            int index = _entries.FindIndex(entry => entry.Tool == tool && Available(entry));
             if (index >= 0)
             {
                 SelectEntry(index);
@@ -122,7 +147,7 @@ public partial class BuildModeController
     {
         int index = _lastInCategory.TryGetValue(category, out int last)
             ? last
-            : _entries.FindIndex(entry => entry.Category == category);
+            : _entries.FindIndex(entry => entry.Category == category && Available(entry));
         if (index < 0)
             return false;
         SelectEntry(index);
@@ -165,7 +190,7 @@ public partial class BuildModeController
         _visible.Clear();
         for (int index = 0; index < _entries.Count; index++)
         {
-            if (_entries[index].Category == _category)
+            if (_entries[index].Category == _category && Available(_entries[index]))
                 _visible.Add(index);
         }
         if (_partsGroup?.FindChild("GroupCaption", recursive: true, owned: false) is Label caption)
@@ -218,6 +243,8 @@ public partial class BuildModeController
             Structural => SandboxPaletteModels.ForPart(_entries.First(entry => entry.Category == Structural).Part!),
             Mechanics => SandboxPaletteModels.ForPart(_entries.First(entry => entry.Part?.Device == SandboxDeviceKind.Piston).Part!),
             Devices => SandboxPaletteModels.ForPart(_entries.First(entry => entry.Part?.Device == SandboxDeviceKind.Button).Part!),
+            ToolsCategory when FormOf(_entries.First(entry => entry.Category == ToolsCategory)) is { } form =>
+                SandboxPaletteModels.ForTool(form),
             Ropes => SandboxPaletteModels.ForLink(SandboxLinkKind.Rope, 1.0f, 0.1f, 0.0f),
             Hinges => SandboxPaletteModels.ForLink(SandboxLinkKind.Hinge, 1.0f, 0.0f, 0.6f),
             Welds => SandboxPaletteModels.ForLink(SandboxLinkKind.Weld, 1.0f, 0.0f, 0.0f),
@@ -251,7 +278,9 @@ public partial class BuildModeController
     private void ShowSelectedPart()
     {
         PaletteEntry? entry = CurrentEntry();
-        if (entry?.Part is { } definition)
+        if (FormOf(entry) is { } form)
+            _preview?.ShowTool(form);
+        else if (entry?.Part is { } definition)
             _preview?.Show(definition);
         else if (entry?.Preset is { } preset)
             _preview?.ShowLink(preset.Kind, _newLink.Strength, _newLink.Elasticity, _newLink.Stiffness);
@@ -264,6 +293,8 @@ public partial class BuildModeController
         {
             _description.Text = entry switch
             {
+                { HeldTool: not null } => "A tool lying in the room. Rope, hinge or weld it to anything, " +
+                    "and in Play double-click it to pick it up and use it.",
                 { Part: { } part } => part.Description,
                 { Preset: { } link } => link.Kind switch
                 {
@@ -278,6 +309,11 @@ public partial class BuildModeController
         }
         SetStats(entry switch
         {
+            { HeldTool: { } held } =>
+            [
+                ("material", $"Tool: {ContentDisplayName.For(ContentIds.ForTool(held))}"),
+                ("mass", $"Mass: {FormOf(entry)?.Mass ?? 0.0f:0.#}"),
+            ],
             { Part: { } part } =>
             [
                 ("material", $"Material: {part.Material}"),
