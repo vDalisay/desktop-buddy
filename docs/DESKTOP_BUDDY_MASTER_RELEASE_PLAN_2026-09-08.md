@@ -1261,6 +1261,17 @@ does not satisfy "build a physical cart" in spirit.
 - Add Scene-owned Normal/Low/Zero Gravity controls and restore them when switching rooms.
 - **Acceptance:** operate all four chains, remove a live connection/device, switch/reload the machine, and reject invalid connections/cycle overload safely. No general behavior-graph editor is required for this packet.
 
+**NF-4 status 2026-09-11.** Split into packets. **4A done (domain only):** Button, Timer, Piston,
+Weapon Trigger and Lamp are core part definitions with authored `in`/`out` pulse ports; wires live
+in the Scene's sandbox document (schema 3, at most 192, cut with their devices, copied on Scene
+duplication, bad ones dropped on load); `SandboxSignalNetwork` is the two-phase engine — pulses due
+this tick are gathered first, then delivered in stable part order, a Timer only ever schedules so a
+loop runs across ticks instead of recursing, and a tick is capped at 256 deliveries and a Timer at
+16 pulses in flight. Every Next Fest port carries a pulse, so there are no value kinds yet. Devices
+stay out of the Build palette until their runtime lands. Next: 4B runtime (device bodies, pressing a
+Button in Play, Lamp, Timer, the wiring tool and wire view), then Piston, Weapon Trigger, and the
+gravity presets with Shotgun overrides.
+
 #### NF-5 — Break and repair
 
 **Depends on:** NF-3; integrate weapon-device damage from NF-4 when available. **Player result:** break an authored Wood structure, damage a Buddy part, and restore the Buddy with Repair Kit or free System Restore.

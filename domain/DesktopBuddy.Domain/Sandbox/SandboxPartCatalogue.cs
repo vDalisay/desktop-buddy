@@ -16,6 +16,11 @@ public static class SandboxPartCatalogue
     public static SemanticDefinitionId MetalBlock { get; } = SemanticDefinitionId.CreateCore("part/metal_block");
     public static SemanticDefinitionId MetalPlate { get; } = SemanticDefinitionId.CreateCore("part/metal_plate");
     public static SemanticDefinitionId Wheel { get; } = SemanticDefinitionId.CreateCore("part/wheel");
+    public static SemanticDefinitionId Button { get; } = SemanticDefinitionId.CreateCore("part/button");
+    public static SemanticDefinitionId Timer { get; } = SemanticDefinitionId.CreateCore("part/timer");
+    public static SemanticDefinitionId Piston { get; } = SemanticDefinitionId.CreateCore("part/piston");
+    public static SemanticDefinitionId WeaponTrigger { get; } = SemanticDefinitionId.CreateCore("part/weapon_trigger");
+    public static SemanticDefinitionId Lamp { get; } = SemanticDefinitionId.CreateCore("part/lamp");
 
     /// <summary>Definitions in palette order.</summary>
     public static IReadOnlyList<SandboxPartDefinition> Definitions { get; } =
@@ -36,6 +41,27 @@ public static class SandboxPartCatalogue
             "A grippy rubber disc. It rolls, so put two under a beam and you have a cart.",
             SandboxPartShape.Circle, SandboxPartMaterial.Rubber,
             Width: 40.0f, Height: 40.0f, Mass: 3.0f, Bounce: 0.15f, Friction: 1.4f),
+        // NF-4 devices: the Next Fest signal vocabulary.
+        new(Button, "Button",
+            "Click it while the room plays and it sends a pulse down its wire.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 32.0f, Height: 16.0f, Mass: 4.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Button),
+        new(Timer, "Timer",
+            "Waits a moment after a pulse comes in, then sends one on.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 32.0f, Height: 32.0f, Mass: 4.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Timer),
+        new(Piston, "Piston",
+            "Shoves out hard when a pulse comes in, then pulls back.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 32.0f, Height: 32.0f, Mass: 8.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Piston),
+        new(WeaponTrigger, "Weapon Trigger",
+            "Holds a gun and pulls its trigger every time a pulse comes in.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 48.0f, Height: 24.0f, Mass: 5.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.WeaponTrigger),
+        new(Lamp, "Lamp",
+            "Lights up with one pulse and goes out with the next.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 24.0f, Height: 32.0f, Mass: 2.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Lamp),
     ];
 
     public static SemanticDefinitionRegistry<SandboxPartDefinition> Registry { get; } = CreateRegistry();

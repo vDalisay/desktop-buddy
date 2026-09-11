@@ -95,6 +95,39 @@ public sealed record SandboxLinkSave
     }
 }
 
+public sealed record SandboxWireSave
+{
+    public Guid WireId { get; set; }
+    public Guid FromPartId { get; set; }
+    public string FromPort { get; set; } = string.Empty;
+    public Guid ToPartId { get; set; }
+    public string ToPort { get; set; } = string.Empty;
+
+    public static SandboxWireSave FromWire(SandboxWire wire)
+    {
+        ArgumentNullException.ThrowIfNull(wire);
+        return new SandboxWireSave
+        {
+            WireId = wire.WireId.Value,
+            FromPartId = wire.From.Value,
+            FromPort = wire.FromPort,
+            ToPartId = wire.To.Value,
+            ToPort = wire.ToPort,
+        };
+    }
+
+    /// <summary>The wire, or null when a stored ID is empty; ports and parts are checked by the room.</summary>
+    public SandboxWire? TryCreateWire() =>
+        WireId == Guid.Empty || FromPartId == Guid.Empty || ToPartId == Guid.Empty
+            ? null
+            : new SandboxWire(
+                SandboxWireId.From(WireId),
+                SandboxPartId.From(FromPartId),
+                FromPort ?? string.Empty,
+                SandboxPartId.From(ToPartId),
+                ToPort ?? string.Empty);
+}
+
 /// <summary>
 /// Versioned disk DTO for <c>user://scenes/&lt;scene-id&gt;/sandbox.json</c>. Systemic construction
 /// keeps its own document beside the Scene root so it can grow a schema — devices, links, materials
@@ -102,13 +135,14 @@ public sealed record SandboxLinkSave
 /// </summary>
 public sealed record SandboxDocumentSave
 {
-    /// <summary>2 added links. A version-1 room simply has none.</summary>
-    public const int CurrentSchemaVersion = 2;
+    /// <summary>2 added links, 3 signal wires. An older room simply has none.</summary>
+    public const int CurrentSchemaVersion = 3;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public long Revision { get; set; }
     public List<PlacedSandboxPartSave> Parts { get; set; } = [];
     public List<SandboxLinkSave> Links { get; set; } = [];
+    public List<SandboxWireSave> Wires { get; set; } = [];
 
     public static SandboxDocumentSave FromDocument(SandboxDocument document)
     {
@@ -118,11 +152,9 @@ public sealed record SandboxDocumentSave
             Revision = document.Revision,
             Parts = document.Parts.Select(PlacedSandboxPartSave.FromPart).ToList(),
             Links = document.Links.Select(SandboxLinkSave.FromLink).ToList(),
+            Wires = document.Wires.Select(SandboxWireSave.FromWire).ToList(),
         };
     }
-
-    public SandboxDocument CreateDocument() =>
-        new(Parts.Select(part => part.CreatePart()), Revision);
 }
 
 public readonly record struct SandboxDocumentDecodeResult(
@@ -179,7 +211,7 @@ public static class SandboxSavePolicy
                 null,
                 $"Sandbox schema {schema} is newer than {SandboxDocumentSave.CurrentSchemaVersion}.");
         }
-        if (schema is not (1 or SandboxDocumentSave.CurrentSchemaVersion))
+        if (schema < 1)
             return new SandboxDocumentDecodeResult(SaveDecodeStatus.Invalid, null, $"Unsupported sandbox schema {schema}.");
 
         try
@@ -214,9 +246,16 @@ public static class SandboxSavePolicy
                 links.Add(link);
             }
 
-            return new SandboxDocumentDecodeResult(
-                SaveDecodeStatus.Valid,
-                new SandboxDocument(parts, save.Revision, links: links));
+            // And wires: one into a dropped part, onto a port its device lacks, or past the budget
+            // is dropped and the rest of the machine still loads.
+            var document = new SandboxDocument(parts, save.Revision, links: links);
+            foreach (SandboxWireSave stored in save.Wires ?? [])
+            {
+                if (stored.TryCreateWire() is { } wire)
+                    document.TryRestoreWire(wire);
+            }
+
+            return new SandboxDocumentDecodeResult(SaveDecodeStatus.Valid, document);
         }
         catch (JsonException exception)
         {

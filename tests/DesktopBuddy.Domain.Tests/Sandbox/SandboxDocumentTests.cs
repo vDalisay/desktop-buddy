@@ -15,7 +15,7 @@ public sealed class SandboxDocumentTests
     [Fact]
     public void ShippedPartsAreValidCoreDefinitions()
     {
-        Assert.Equal(4, SandboxPartCatalogue.Definitions.Count);
+        Assert.Equal(9, SandboxPartCatalogue.Definitions.Count);
         foreach (SandboxPartDefinition definition in SandboxPartCatalogue.Definitions)
         {
             Assert.Empty(definition.Validate());

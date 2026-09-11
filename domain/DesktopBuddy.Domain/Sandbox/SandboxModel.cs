@@ -58,7 +58,8 @@ public sealed record SandboxPartDefinition(
     float Height,
     float Mass,
     float Bounce,
-    float Friction) : ISemanticDefinition
+    float Friction,
+    SandboxDeviceKind Device = SandboxDeviceKind.None) : ISemanticDefinition
 {
     public const float MinimumExtent = 4.0f;
     public const float MaximumExtent = 512.0f;
@@ -84,6 +85,8 @@ public sealed record SandboxPartDefinition(
             problems.Add($"Part '{Id}' bounce must be between 0 and 1.");
         if (!float.IsFinite(Friction) || Friction < 0.0f || Friction > 2.0f)
             problems.Add($"Part '{Id}' friction must be between 0 and 2.");
+        if (!Enum.IsDefined(Device))
+            problems.Add($"Part '{Id}' names an unknown device kind.");
         return problems;
     }
 
@@ -200,14 +203,19 @@ public sealed class SandboxDocument
     /// <summary>Two per part on average: enough for carts and chains, bounded for the fixed tick.</summary>
     public const int MaximumLinks = 400;
 
+    /// <summary>The systemic-sandbox budget's signal-wire allowance for one room.</summary>
+    public const int MaximumWires = 192;
+
     private readonly List<PlacedSandboxPart> _parts;
     private readonly List<SandboxLink> _links;
+    private readonly List<SandboxWire> _wires = [];
 
     public SandboxDocument(
         IEnumerable<PlacedSandboxPart>? parts = null,
         long revision = 0,
         int schemaVersion = CurrentSchemaVersion,
-        IEnumerable<SandboxLink>? links = null)
+        IEnumerable<SandboxLink>? links = null,
+        IEnumerable<SandboxWire>? wires = null)
     {
         if (schemaVersion <= 0 || schemaVersion > CurrentSchemaVersion)
             throw new ArgumentOutOfRangeException(nameof(schemaVersion), "Unsupported sandbox schema version.");
@@ -239,6 +247,15 @@ public sealed class SandboxDocument
             _links.Add(link);
         }
 
+        foreach (SandboxWire wire in wires ?? [])
+        {
+            ArgumentNullException.ThrowIfNull(wire);
+            SandboxWireResult admitted = Admit(wire);
+            if (!admitted.Succeeded)
+                throw new ArgumentException($"Invalid sandbox wire: {admitted.Detail ?? admitted.Status.ToString()}", nameof(wires));
+            _wires.Add(wire);
+        }
+
         SchemaVersion = schemaVersion;
         Revision = revision;
     }
@@ -247,6 +264,7 @@ public sealed class SandboxDocument
     public long Revision { get; private set; }
     public IReadOnlyList<PlacedSandboxPart> Parts => _parts;
     public IReadOnlyList<SandboxLink> Links => _links;
+    public IReadOnlyList<SandboxWire> Wires => _wires;
     public int Count => _parts.Count;
     public bool CanAdd => _parts.Count < MaximumParts;
 
@@ -291,8 +309,10 @@ public sealed class SandboxDocument
 
         PlacedSandboxPart removed = _parts[index];
         _parts.RemoveAt(index);
-        // A link to a part that is gone would be a constraint on nothing; it goes with the part.
+        // A link to a part that is gone would be a constraint on nothing; it goes with the part,
+        // and so does every wire into or out of it.
         _links.RemoveAll(link => link.Touches(partId));
+        _wires.RemoveAll(wire => wire.Touches(partId));
         Touch();
         return new SandboxEditResult(SandboxEditStatus.Succeeded, removed);
     }
@@ -337,9 +357,9 @@ public sealed class SandboxDocument
     /// copied by the one method that knows every field: a hand-written copy in the coordinator
     /// kept only parts and silently dropped every link from every save.
     /// </summary>
-    public SandboxDocument Snapshot() => new(_parts, Revision, SchemaVersion, _links);
+    public SandboxDocument Snapshot() => new(_parts, Revision, SchemaVersion, _links, _wires);
 
-    /// <summary>Copies this room's parts and links under fresh IDs, for Scene duplication.</summary>
+    /// <summary>Copies this room's parts, links and wires under fresh IDs, for Scene duplication.</summary>
     public SandboxDocument CopyWithNewPartIds()
     {
         var map = _parts.ToDictionary(part => part.PartId, _ => SandboxPartId.New());
@@ -352,7 +372,81 @@ public sealed class SandboxDocument
                 LinkId = SandboxLinkId.New(),
                 A = Remap(link.A),
                 B = Remap(link.B),
+            }),
+            wires: _wires.Select(wire => wire with
+            {
+                WireId = SandboxWireId.New(),
+                From = map[wire.From],
+                To = map[wire.To],
             }));
+    }
+
+    /// <summary>
+    /// Wires one device's output to another device's input. Nothing is stored unless the wire is
+    /// valid — both ends are devices with those ports, facing the right way, and not the same part —
+    /// so a rejected wire never changes the room.
+    /// </summary>
+    public SandboxWireResult AddWire(SandboxPartId from, string fromPort, SandboxPartId to, string toPort)
+    {
+        var wire = new SandboxWire(SandboxWireId.New(), from, fromPort, to, toPort);
+        SandboxWireResult admitted = Admit(wire);
+        if (!admitted.Succeeded)
+            return admitted;
+
+        _wires.Add(wire);
+        Touch();
+        return new SandboxWireResult(SandboxLinkStatus.Succeeded, wire);
+    }
+
+    public SandboxWireResult RemoveWire(SandboxWireId wireId)
+    {
+        int index = _wires.FindIndex(wire => wire.WireId == wireId);
+        if (index < 0)
+            return new SandboxWireResult(SandboxLinkStatus.WireNotFound);
+        SandboxWire removed = _wires[index];
+        _wires.RemoveAt(index);
+        Touch();
+        return new SandboxWireResult(SandboxLinkStatus.Succeeded, removed);
+    }
+
+    /// <summary>The device a placed part is, or <see cref="SandboxDeviceKind.None"/>.</summary>
+    public SandboxDeviceKind DeviceOf(SandboxPartId partId) =>
+        TryGet(partId, out PlacedSandboxPart? part) &&
+        SandboxPartCatalogue.TryGet(part!.DefinitionId, out SandboxPartDefinition definition)
+            ? definition.Device
+            : SandboxDeviceKind.None;
+
+    private SandboxWireResult Admit(SandboxWire wire)
+    {
+        if (!wire.WireId.IsValid)
+            return new SandboxWireResult(SandboxLinkStatus.Invalid, null, "A wire requires a stable ID.");
+        if (IndexOf(wire.From) < 0 || IndexOf(wire.To) < 0)
+            return new SandboxWireResult(SandboxLinkStatus.PartNotFound);
+        if (wire.From == wire.To)
+            return new SandboxWireResult(SandboxLinkStatus.Invalid, null, "A wire cannot join a device to itself.");
+        if (!SandboxDevices.HasPort(DeviceOf(wire.From), wire.FromPort, SandboxPortDirection.Output))
+            return new SandboxWireResult(SandboxLinkStatus.Invalid, null, "A wire must start at a device's output.");
+        if (!SandboxDevices.HasPort(DeviceOf(wire.To), wire.ToPort, SandboxPortDirection.Input))
+            return new SandboxWireResult(SandboxLinkStatus.Invalid, null, "A wire must end at a device's input.");
+        if (_wires.Count >= MaximumWires)
+            return new SandboxWireResult(SandboxLinkStatus.LimitReached);
+        foreach (SandboxWire existing in _wires)
+        {
+            if (existing.WireId == wire.WireId)
+                return new SandboxWireResult(SandboxLinkStatus.Invalid, null, "Duplicate wire ID.");
+            if (existing.Duplicates(wire))
+                return new SandboxWireResult(SandboxLinkStatus.Duplicate, existing);
+        }
+        return new SandboxWireResult(SandboxLinkStatus.Succeeded, wire);
+    }
+
+    /// <summary>Keeps a stored wire only if this room can honour it; the load path, so no revision change.</summary>
+    internal bool TryRestoreWire(SandboxWire wire)
+    {
+        if (!Admit(wire).Succeeded)
+            return false;
+        _wires.Add(wire);
+        return true;
     }
 
     public bool TryGetLink(SandboxLinkId linkId, out SandboxLink? link)

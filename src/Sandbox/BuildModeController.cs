@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using DesktopBuddy.Domain.Content;
 using DesktopBuddy.App;
@@ -19,7 +20,9 @@ namespace DesktopBuddy.Sandbox;
 /// </summary>
 public partial class BuildModeController : Node
 {
-    private readonly List<SandboxPartDefinition> _palette = [.. SandboxPartCatalogue.Definitions];
+    // Devices join the palette with their runtime (NF-4B); until then a placed Button would do nothing.
+    private readonly List<SandboxPartDefinition> _palette =
+        [.. SandboxPartCatalogue.Definitions.Where(definition => definition.Device == SandboxDeviceKind.None)];
     private SandboxRoot _sandbox = null!;
     private SceneProgressCoordinator _scenes = null!;
     private Win98CommandBarBootstrap _commandBar = null!;

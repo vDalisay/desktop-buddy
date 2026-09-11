@@ -121,6 +121,7 @@ public enum SandboxLinkStatus
     LinkNotFound,
     Invalid,
     Duplicate,
+    WireNotFound,
 }
 
 public readonly record struct SandboxLinkResult(
