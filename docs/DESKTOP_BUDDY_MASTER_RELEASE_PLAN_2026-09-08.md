@@ -1191,7 +1191,8 @@ two-wheel hinged cart and a beam hanging on a rope, and checks the tuning and a 
 restart. Deviation from the joint-UX draft in the systemic-sandbox plan: Hinge and Weld are one click
 on an overlap (as an axle through a wheel and a beam) rather than two; Rope keeps two clicks.
 Not done: parts still draw as flat 2D shapes, with no 3D presentation (owner noted 2026-09-10 they
-should match the Buddy's 3D look); NF-3T traversal below; a Scene-switch-then-reload pass over links.
+should match the Buddy's 3D look); a Scene-switch-then-reload pass over links. NF-3T traversal
+below is done for steps and piles a hop clears.
 Known feel issue to tune with the owner: a shoved cart partly slides rather than rolls.
 
 ##### NF-3T — Buddies must traverse what the player builds (owner requirement 2026-09-10)
@@ -1232,6 +1233,16 @@ height budget, and `RecoveryComponent` accepting a resting surface above the flo
 The trait gate stays for the *decorative* hop; traversal must not be trait-gated, or a third of the
 cast could never leave a room they built. Sizing it as its own packet is deliberate — it touches
 locomotion, recovery and the arbiter, all of which are shared with the Initial Demo surface.
+
+**Status 2026-09-11, points 2 and 3.** Fixed without the ground model: a built part is now a
+*blocking* obstacle (`AutonomousMotionComponent.BlockingObstacleInCommittedPath`), the same class
+as a dropped tool, so every Buddy hops it whatever its trait — the arbiter's existing untrait-gated
+hop. A room-interest walk no longer abandons its errand at a part it will hop. The feet reach about
+110 px at the top of a hop, so steps and piles well under that are crossed (the new
+`built_part_traversal` scenario: a zero-trait Buddy crosses a two-beam stack in one or two hops on
+seeds 7 and 11, and turns around without the fix). Anything taller still reads as a wall and the
+give-up timer turns the Buddy around, which is the intended behaviour for a real wall. The step-up
+ground model stays unbuilt until a structure the hop cannot handle is reported.
 
 **Ordering.** Not a blocker for the rest of NF-3 (placement, links, Properties, persistence), but it
 must land before NF-3 can be reported complete: a room the player can build but not walk through

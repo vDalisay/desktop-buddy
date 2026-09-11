@@ -5,6 +5,7 @@ using DesktopBuddy.Domain.Autonomy;
 using DesktopBuddy.Domain.Buddy;
 using DesktopBuddy.Domain.Physics;
 using DesktopBuddy.Objects;
+using DesktopBuddy.Sandbox;
 using DesktopBuddy.Tools;
 using Godot;
 
@@ -254,17 +255,18 @@ public partial class AutonomousMotionComponent : Node
     }
 
     /// <summary>
-    /// An obstacle the buddy has no use for and must simply get past: a dropped tool. Balls are
-    /// excluded here for the same reason they are excluded from
-    /// <see cref="ObstacleInCommittedPath"/> — walking into them is the point — and so are
-    /// consumables, which he is walking over to eat.
+    /// An obstacle the buddy has no use for and must simply get past: a dropped tool, or a part
+    /// the player built (NF-3T — a third of buddies are below the hop threshold, and a room they
+    /// can never cross is a room they were walled into). Balls are excluded here for the same
+    /// reason they are excluded from <see cref="ObstacleInCommittedPath"/> — walking into them is
+    /// the point — and so are consumables, which he is walking over to eat.
     /// </summary>
     public bool BlockingObstacleInCommittedPath(float walkDirection)
     {
         RayCast2D? cast = walkDirection < 0.0f ? LeftObstacleCast :
             walkDirection > 0.0f ? RightObstacleCast : null;
         return cast is not null && cast.IsColliding() &&
-            cast.GetCollider() is DroppedCursorToolBody;
+            cast.GetCollider() is DroppedCursorToolBody or SandboxPartBody;
     }
 
     private void ApplyRoomInterest(bool enabled, bool canWalk)
@@ -289,8 +291,9 @@ public partial class AutonomousMotionComponent : Node
         }
 
         float direction = Math.Sign(delta);
+        // Something he will hop anyway does not cancel the errand.
         if ((direction < 0.0 && BlockedLeft) || (direction > 0.0 && BlockedRight) ||
-            ObstacleInCommittedPath(direction))
+            (ObstacleInCommittedPath(direction) && !BlockingObstacleInCommittedPath(direction)))
         {
             ClearRoomInterest();
             return;
