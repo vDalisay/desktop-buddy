@@ -153,15 +153,14 @@ public partial class SandboxRoot
 
     /// <summary>
     /// A weapon mount pulls its gun's trigger (NF-4D): one shot out of the barrel, along the way the
-    /// part is turned. The mount only fires the gun it holds, and only while the player owns that
-    /// gun — building a mount is never a way around the shop — and its own recoil is the fastest it
-    /// can be made to fire, so a quick Timer cannot turn a pistol into a machine gun.
+    /// part is turned. A mount fires whether or not the player owns that gun (owner's call
+    /// 2026-09-12); what bounds it is its own recoil, the fastest it can be made to fire, so a quick
+    /// Timer cannot turn a pistol into a machine gun.
     /// </summary>
     private void FireWeaponMount(SandboxPartBody mount)
     {
         if (SandboxPartCatalogue.WeaponOf(mount.Definition.Id) is not { } weapon ||
             !GodotObject.IsInstanceValid(CursorGuns) ||
-            !Economy.IsUnlocked(ContentIds.ForTool(weapon)) ||
             !mount.StartWeaponShot())
         {
             return;

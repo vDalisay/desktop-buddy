@@ -1284,8 +1284,8 @@ adds Button → Piston with a Metal Block on the head and checks the block is th
 (`SandboxPartCatalogue.WeaponOf` names the gun each holds). A pulse pulls that gun's trigger:
 `CursorGunComponent.FireMounted` launches the gun's own projectiles from the mount's barrel along the
 way the part is turned, attributed to the gun's content, so a mounted gun hurts exactly as the held
-one does. A mount is offered only while the player owns that gun, so building one is never a way
-around the shop. A mount has no magazine — rounds, reloads and pumping belong to the gun in hand —
+one does. Owner's call 2026-09-12: a mount is **not** gated on owning that gun — every mount is in
+the palette and fires either way. A mount has no magazine — rounds, reloads and pumping belong to the gun in hand —
 and its own quarter-second recoil is the fastest it can be made to fire, so a fast Timer cannot turn
 a pistol into a machine gun. The journey buys a pistol, builds a mount aimed at the ceiling, wires
 Button → Mount and checks one press puts one round out of the barrel.

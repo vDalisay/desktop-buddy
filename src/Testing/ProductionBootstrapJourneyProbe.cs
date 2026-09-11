@@ -648,12 +648,10 @@ public static class ProductionBootstrapJourneyProbe
                     Vector2 ShelfAt(float x) => bounds.Position + bounds.Size * new Vector2(x, ShelfY) + new Vector2(0.0f, -24.0f);
                     SandboxPartId shelf = PlaceDevice(SandboxPartCatalogue.MetalPlate, bounds.Position + bounds.Size * new Vector2(0.225f, ShelfY));
                     bool shelfBuilt = build.SetSelectedPartOverrides(new SandboxPartOverrides(Frozen: true, Length: 384.0f, Thickness: 12.0f));
-                    // NF-4D: a weapon mount is offered only for a gun this player owns, so buy the
-                    // pistol first — before that, the row is not in the palette at all.
-                    bool mountHiddenUnowned = sandbox.Economy.IsUnlocked(ContentIds.ToolPistol) ||
-                        !build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
-                    sandbox.Economy.Unlock(ContentIds.ToolPistol);
-                    bool mountOffered = build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
+                    // NF-4D: every weapon mount is in the palette, whether or not the player has
+                    // bought that gun (owner's call 2026-09-12), and it fires either way.
+                    bool mountOffered = !sandbox.Economy.IsUnlocked(ContentIds.ToolPistol) &&
+                        build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
                     SandboxPartId button = PlaceDevice(SandboxPartCatalogue.Button, ShelfAt(0.19f));
                     SandboxPartId timer = PlaceDevice(SandboxPartCatalogue.Timer, ShelfAt(0.26f));
                     SandboxPartId lamp = PlaceDevice(SandboxPartCatalogue.Lamp, ShelfAt(0.33f));
@@ -762,11 +760,11 @@ public static class ProductionBootstrapJourneyProbe
                     bool cleared = scenes.ActiveSandbox.Wires.Count == 0 && scenes.ActiveSandbox.Count == 1;
                     await build.LeaveAsync();
 
-                    buildDevicesWork = shelfBuilt && mountHiddenUnowned && mountOffered && mountAimed && mountFired && wired && badRejected && pressed && timed && shoved &&
+                    buildDevicesWork = shelfBuilt && mountOffered && mountAimed && mountFired && wired && badRejected && pressed && timed && shoved &&
                         running && wiresHiddenInPlay && wiresShownInBuild && cut && stayedLit && stopped &&
                         pressedByWeight && resized && cleared && !scenes.IsDirty;
                     Log.Info("BootstrapJourney",
-                        $"build devices: mountHidden={mountHiddenUnowned} mountOffered={mountOffered} mountAimed={mountAimed} mountFired={mountFired} wired={wired} badRejected={badRejected} " +
+                        $"build devices: mountOffered={mountOffered} mountAimed={mountAimed} mountFired={mountFired} wired={wired} badRejected={badRejected} " +
                         $"pressed={pressed} litAfter={litAfter} shoved={shoved} rise={loadRestY - loadHighestY:F1} " +
                         $"running={running} wiresHiddenInPlay={wiresHiddenInPlay} wiresShownInBuild={wiresShownInBuild} " +
                         $"cut={cut} stayedLit={stayedLit} stopped={stopped} pressedByWeight={pressedByWeight} contactPresses={sandbox.ButtonContactPresses} " +

@@ -99,14 +99,11 @@ public partial class BuildModeController
         _selectedIndex >= 0 && _selectedIndex < _entries.Count ? _entries[_selectedIndex] : null;
 
     /// <summary>
-    /// Whether a row may be used at all. A weapon mount is offered only for a gun the player owns:
-    /// building one is never a way around buying the gun, and a mount for a gun nobody owns would
-    /// be a row that fires nothing.
+    /// Whether a row may be used at all. Every row is, including the weapon mounts: the owner's call
+    /// 2026-09-12 is that a built room may hold a gun the player has not bought, because a mount you
+    /// cannot see is a feature that does not exist. Kept as a seam so a rule can come back here.
     /// </summary>
-    private bool Available(PaletteEntry entry) =>
-        entry.Part is not { } part ||
-        SandboxPartCatalogue.WeaponOf(part.Id) is not { } weapon ||
-        _sandbox.Economy.IsUnlocked(ContentIds.ForTool(weapon));
+    private static bool Available(PaletteEntry entry) => entry is not null;
 
     /// <summary>
     /// Switches tool. When the chosen row is not already one of that tool's, the first of them is
