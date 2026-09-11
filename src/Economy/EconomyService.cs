@@ -146,9 +146,28 @@ public sealed class EconomyService
     /// internal deliberately: dynamic entitlement policies may author an unbounded next entry,
     /// but UI/gameplay callers still cannot supply a price directly.
     /// </summary>
+    /// <summary>
+    /// Everything in the shop is free (owner 2026-09-12): an interim step on the way to scrapping
+    /// the money system outright, so nothing stands between the player and a tool they want to try.
+    /// It is a shop rule, not a change to what money means — the ledger, the authored prices and the
+    /// purchase path underneath are untouched, and the price is simply handed to the player first so
+    /// their own balance is never the poorer. Set it to false to sell things again.
+    /// </summary>
+    public const bool EverythingIsFree = true;
+
     internal PurchaseResult PurchaseFrom(string contentId, ToolCatalogue authoritativeCatalogue)
     {
         ArgumentNullException.ThrowIfNull(authoritativeCatalogue);
+        if (EverythingIsFree &&
+            authoritativeCatalogue.TryGet(contentId, out CatalogueEntry entry) &&
+            entry.Visible && !entry.IsStarting && !IsUnlocked(contentId))
+        {
+            // Only the exact shortfall, and only for something really on sale: a purchase that is
+            // going to be refused anyway must not leave the player holding money given for it.
+            long shortfall = entry.PriceMilliCredits - BalanceMilliCredits;
+            if (shortfall > 0)
+                DepositPassive(shortfall);
+        }
         PurchaseResult result = _playerProgress is not null
             ? _playerProgress.Purchase(contentId, authoritativeCatalogue)
             : RequireLegacyProgress().Purchase(contentId, authoritativeCatalogue);
