@@ -262,6 +262,10 @@ public partial class BuildModeController : Node
             "BuildModePalette", "Build", new Vector2(450, 320), out VBoxContainer body,
             () => _ = LeaveAsync(), draggable: false);
         _panel.Visible = true;
+        // Opens centred, like every other shell workspace (owner instruction 2026-09-10). Growing
+        // both ways keeps it centred if its content outgrows the authored size.
+        _panel.GrowHorizontal = Control.GrowDirection.Both;
+        _panel.GrowVertical = Control.GrowDirection.Both;
         _partList = new ItemList
         {
             Name = "BuildModePartList",
@@ -314,7 +318,6 @@ public partial class BuildModeController : Node
         body.AddChild(_hint);
         _layer.AddChild(_panel);
         AddChild(_layer);
-        NudgeToLeftEdge();
         // Same deal as Paint Background: the pin controller owns the title drag, so the palette
         // can be pulled out onto the desktop and pinned back rather than being stuck in the room.
         _panelPin = new Win98PinnablePanel { Name = "BuildModePinController" };
@@ -322,20 +325,6 @@ public partial class BuildModeController : Node
         _panelPin.Configure(_panel, new Vector2I(470, 350), "BuildModeWindow");
     }
 
-    /// <summary>
-    /// <see cref="Win98Dialog"/> centres its windows; the palette belongs beside the room rather
-    /// than on top of the parts being placed. Drag from the title bar moves it from here.
-    /// </summary>
-    private void NudgeToLeftEdge()
-    {
-        Vector2 view = GetViewport().GetVisibleRect().Size;
-        float width = _panel!.OffsetRight - _panel.OffsetLeft;
-        float height = _panel.OffsetBottom - _panel.OffsetTop;
-        _panel.OffsetLeft = -view.X / 2f + 16f;
-        _panel.OffsetTop = -view.Y / 2f + 48f;
-        _panel.OffsetRight = _panel.OffsetLeft + width;
-        _panel.OffsetBottom = _panel.OffsetTop + height;
-    }
 
     private void RefreshPalette()
     {
