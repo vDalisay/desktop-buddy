@@ -458,45 +458,58 @@ public partial class BuildModeController
             Mathf.Clamp((world.Y - bounds.Position.Y) / Math.Max(1.0f, bounds.Size.Y), 0.0f, 1.0f));
     }
 
-    /// <summary>The "Selected part" group: what it is, its tuning, and what can be done to it.</summary>
+    /// <summary>
+    /// The "Selected part" group (owner layout 2026-09-11): what is selected and its sliders on the
+    /// left, each with an icon and its value; the frozen switch and the actions on the right.
+    /// </summary>
     private void BuildPropertiesUi(VBoxContainer body)
     {
         var group = new Win98GroupBox { Name = "BuildModeProperties" };
         group.Configure("Selected part");
         body.AddChild(group);
+        var columns = new HBoxContainer { Name = "BuildModePropertiesColumns" };
+        columns.AddThemeConstantOverride("separation", 12);
+        group.Content.AddChild(columns);
+        var sliders = new VBoxContainer { Name = "BuildModePropertiesSliders", SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
+        sliders.AddThemeConstantOverride("separation", Win98ThemeFactory.Gap);
+        columns.AddChild(sliders);
+        columns.AddChild(new VSeparator());
+        var side = new VBoxContainer { Name = "BuildModePropertiesActions" };
+        side.AddThemeConstantOverride("separation", Win98ThemeFactory.Gap);
+        columns.AddChild(side);
 
         _propertiesTitle = new Label
         {
             Name = "BuildModePropertiesTitle",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
         };
-        group.Content.AddChild(_propertiesTitle);
+        sliders.AddChild(_propertiesTitle);
 
         // A beam's own size: shown only for parts that can be resized (wood and metal boxes).
-        _lengthSlider = AddPropertySlider(group.Content, "Length", "How long it is. Its weight grows with it.",
+        _lengthSlider = AddPropertySlider(sliders, "Length", "length", "How long it is. Its weight grows with it.",
             SandboxPartOverrides.MinimumLength, SandboxPartOverrides.MaximumLength,
             4.0, out _lengthReadout, value => WithOverride(o => o with { Length = (float)value }));
-        _thicknessSlider = AddPropertySlider(group.Content, "Thickness", "How thick it is. Its weight grows with it.",
+        _thicknessSlider = AddPropertySlider(sliders, "Thickness", "thickness", "How thick it is. Its weight grows with it.",
             SandboxPartOverrides.MinimumThickness, SandboxPartOverrides.MaximumThickness,
             1.0, out _thicknessReadout, value => WithOverride(o => o with { Thickness = (float)value }));
         // Mass is a scale spanning two orders of magnitude, so the slider moves in log space.
-        _massSlider = AddPropertySlider(group.Content, "Mass", "How heavy it is, relative to the part's own mass.",
+        _massSlider = AddPropertySlider(sliders, "Mass", "mass", "How heavy it is, relative to the part's own mass.",
             Mathf.Log(SandboxPartOverrides.MinimumMassScale) / Mathf.Log(10.0f),
             Mathf.Log(SandboxPartOverrides.MaximumMassScale) / Mathf.Log(10.0f),
             0.05, out _massReadout, value => WithOverride(o => o with { MassScale = Mathf.Pow(10.0f, (float)value) }));
-        _bounceSlider = AddPropertySlider(group.Content, "Bounce", "How much it springs back after a hit.",
+        _bounceSlider = AddPropertySlider(sliders, "Bounce", "bounce", "How much it springs back after a hit.",
             0.0, 1.0, 0.05, out _bounceReadout, value => WithOverride(o => o with { Bounce = (float)value }));
-        _gravitySlider = AddPropertySlider(group.Content, "Gravity", "How strongly it falls. Negative floats upward.",
+        _gravitySlider = AddPropertySlider(sliders, "Gravity", "gravity", "How strongly it falls. Negative floats upward.",
             SandboxPartOverrides.MinimumGravityScale, SandboxPartOverrides.MaximumGravityScale,
             0.1, out _gravityReadout, value => WithOverride(o => o with { GravityScale = (float)value }));
         // Device settings: each row shows only while its device is selected.
-        _strengthSlider = AddPropertySlider(group.Content, "Push", "How hard the Piston shoves.",
+        _strengthSlider = AddPropertySlider(sliders, "Push", "push", "How hard the Piston shoves.",
             SandboxPartOverrides.MinimumPistonPush, SandboxPartOverrides.MaximumPistonPush,
             10.0, out _strengthReadout, value => WithOverride(o => o with { PistonPush = (float)value }));
-        _intervalSlider = AddPropertySlider(group.Content, "Every", "How often the Timer sends a pulse while it runs.",
+        _intervalSlider = AddPropertySlider(sliders, "Every", "timer", "How often the Timer sends a pulse while it runs.",
             SandboxPartOverrides.MinimumTimerSeconds, SandboxPartOverrides.MaximumTimerSeconds,
             0.1, out _intervalReadout, value => WithOverride(o => o with { TimerSeconds = (float)value }));
-        BuildLinkPropertiesUi(group.Content);
+        BuildLinkPropertiesUi(sliders);
 
         _frozenToggle = new CheckBox
         {
@@ -506,16 +519,15 @@ public partial class BuildModeController
             FocusMode = Control.FocusModeEnum.All,
         };
         _frozenToggle.Toggled += frozen => WithOverride(o => o with { Frozen = frozen });
-        group.Content.AddChild(_frozenToggle);
+        side.AddChild(_frozenToggle);
 
-        var actions = new HBoxContainer { Name = "BuildModePropertiesActions" };
-        actions.AddThemeConstantOverride("separation", Win98ThemeFactory.Gap);
-        group.Content.AddChild(actions);
-        _duplicateButton = Win98Dialog.Action(actions, "Duplicate", () => DuplicateSelectedPart());
-        _duplicateButton.Name = "BuildModeDuplicateButton";
-        _deleteButton = Win98Dialog.Action(actions, "Delete", DeleteSelection);
-        _deleteButton.Name = "BuildModeDeleteButton";
-        _resetButton = Win98Dialog.Action(actions, "Reset", () =>
+        var actions = new GridContainer { Name = "BuildModeActionGrid", Columns = 2 };
+        actions.AddThemeConstantOverride("h_separation", Win98ThemeFactory.Gap);
+        actions.AddThemeConstantOverride("v_separation", Win98ThemeFactory.Gap);
+        side.AddChild(actions);
+        _duplicateButton = ActionButton(actions, "Duplicate", "duplicate", () => DuplicateSelectedPart());
+        _deleteButton = ActionButton(actions, "Delete", "delete", DeleteSelection);
+        _resetButton = ActionButton(actions, "Reset", "reset", () =>
         {
             if (_selectedPart is not null)
                 SetSelectedPartOverrides(SandboxPartOverrides.None);
@@ -524,9 +536,8 @@ public partial class BuildModeController
             else if (CurrentEntry()?.Preset is { } preset)
                 TuneLink(preset.Strength, preset.Elasticity, preset.Stiffness);
         });
-        _resetButton.Name = "BuildModeResetButton";
         _resetButton.TooltipText = "Back to the part's own settings, unfrozen.";
-        _unlinkButton = Win98Dialog.Action(actions, "Unlink", () =>
+        _unlinkButton = ActionButton(actions, "Unlink", "unlink", () =>
         {
             if (_selectedPart is { } partId && _scenes.ActiveSandbox.RemoveLinksOf(partId) > 0)
             {
@@ -535,15 +546,34 @@ public partial class BuildModeController
                 RefreshProperties();
             }
         });
-        _unlinkButton.Name = "BuildModeUnlinkButton";
         _unlinkButton.TooltipText = "Remove every rope, hinge and weld on this part.";
 
         RefreshProperties();
     }
 
+    private static Button ActionButton(Container parent, string text, string icon, Action pressed)
+    {
+        var button = new Button
+        {
+            Name = $"BuildMode{text}Button",
+            Text = text,
+            Icon = BuildIcons.Get(icon),
+            Alignment = HorizontalAlignment.Left,
+            FocusMode = Control.FocusModeEnum.All,
+            CustomMinimumSize = new Vector2(104, 30),
+        };
+        button.AddThemeConstantOverride("h_separation", 6);
+        button.Pressed += pressed;
+        parent.AddChild(button);
+        return button;
+    }
+
+    private StyleBox? _readoutWell;
+
     private HSlider AddPropertySlider(
         VBoxContainer column,
         string label,
+        string icon,
         string tooltip,
         double minimum,
         double maximum,
@@ -554,7 +584,13 @@ public partial class BuildModeController
         var row = new HBoxContainer { Name = $"BuildMode{label}Row" };
         row.AddThemeConstantOverride("separation", Win98ThemeFactory.Gap);
         column.AddChild(row);
-        row.AddChild(new Label { Text = label, CustomMinimumSize = new Vector2(64, 0) });
+        row.AddChild(new TextureRect
+        {
+            Texture = BuildIcons.Get(icon),
+            StretchMode = TextureRect.StretchModeEnum.KeepCentered,
+            CustomMinimumSize = new Vector2(20, 20),
+        });
+        row.AddChild(new Label { Text = label, CustomMinimumSize = new Vector2(70, 0) });
         var slider = new HSlider
         {
             Name = $"BuildMode{label}Slider",
@@ -564,7 +600,7 @@ public partial class BuildModeController
             TooltipText = tooltip,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
             SizeFlagsVertical = Control.SizeFlags.ShrinkCenter,
-            CustomMinimumSize = new Vector2(180, 0),
+            CustomMinimumSize = new Vector2(150, 0),
         };
         slider.ValueChanged += value =>
         {
@@ -572,8 +608,12 @@ public partial class BuildModeController
             changed(value);
         };
         row.AddChild(slider);
-        readout = new Label { CustomMinimumSize = new Vector2(52, 0), HorizontalAlignment = HorizontalAlignment.Right };
-        row.AddChild(readout);
+        // The value in a sunken white field, as the period's numeric boxes were.
+        var well = new PanelContainer { CustomMinimumSize = new Vector2(84, 0) };
+        well.AddThemeStyleboxOverride("panel", _readoutWell ??= Win98ThemeFactory.Recessed(Colors.White, 2));
+        row.AddChild(well);
+        readout = new Label { HorizontalAlignment = HorizontalAlignment.Right };
+        well.AddChild(readout);
         return slider;
     }
 
@@ -627,7 +667,7 @@ public partial class BuildModeController
         }
         if (!hasPart)
         {
-            _massReadout!.Text = _bounceReadout!.Text = _gravityReadout!.Text = string.Empty;
+            _massReadout!.Text = _bounceReadout!.Text = _gravityReadout!.Text = "—";
             _frozenToggle!.SetPressedNoSignal(false);
             foreach (HSlider? slider in new[] { _lengthSlider, _thicknessSlider, _strengthSlider, _intervalSlider })
                 slider!.GetParent<Control>().Visible = false;

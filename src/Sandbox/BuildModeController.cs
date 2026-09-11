@@ -32,7 +32,7 @@ public partial class BuildModeController : Node
     private SandboxPartPreview? _preview;
     private Label? _description;
     private bool _configured;
-    private int _selectedIndex = 1;   // the first part, under the Parts heading
+    private int _selectedIndex;
 
     public bool IsActive { get; private set; }
 
@@ -261,58 +261,89 @@ public partial class BuildModeController : Node
 
         _layer = new CanvasLayer { Name = "BuildModeLayer", Layer = 90 };
         _panel = Win98Dialog.Create(
-            "BuildModePalette", "Build", new Vector2(480, 580), out VBoxContainer body,
+            "BuildModePalette", "Build", new Vector2(660, 600), out VBoxContainer body,
             () => _ = LeaveAsync(), draggable: false);
         _panel.Visible = true;
         // Opens centred, like every other shell workspace (owner instruction 2026-09-10). Growing
         // both ways keeps it centred if its content outgrows the authored size.
         _panel.GrowHorizontal = Control.GrowDirection.Both;
         _panel.GrowVertical = Control.GrowDirection.Both;
-        // One list for everything that can be built with (owner note 2026-09-11), and it takes
-        // whatever height the window has left, so the palette fills its window instead of scrolling
-        // inside a strip.
-        _partList = new ItemList
-        {
-            Name = "BuildModePartList",
-            CustomMinimumSize = new Vector2(200, 160),
-            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
-        };
-        _partList.ItemSelected += index => SelectEntry((int)index);
 
+        // The owner's layout (2026-09-11): categories | the category's rows | preview over details,
+        // taking all the height the Properties group leaves.
         var browser = new HBoxContainer
         {
             Name = "BuildModeBrowser",
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-        browser.AddThemeConstantOverride("separation", 10);
+        browser.AddThemeConstantOverride("separation", 8);
         body.AddChild(browser);
-        browser.AddChild(_partList);
 
-        // What the part actually is, before it is in the room: the shape and material that will
-        // be placed, plus what it is for (owner instruction 2026-09-10).
+        BuildCategoryColumn(browser);
+
+        _partsGroup = new Win98GroupBox
+        {
+            Name = "BuildModeParts",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+            SizeFlagsStretchRatio = 0.8f,
+        };
+        _partsGroup.Configure("Parts");
+        _partsGroup.Content.SizeFlagsVertical = Control.SizeFlags.ExpandFill;
+        browser.AddChild(_partsGroup);
+        _partList = new ItemList
+        {
+            Name = "BuildModePartList",
+            CustomMinimumSize = new Vector2(150, 160),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
+        };
+        _partList.ItemSelected += row =>
+        {
+            if (row >= 0 && row < _visible.Count)
+                SelectEntry(_visible[(int)row]);
+        };
+        _partsGroup.Content.AddChild(_partList);
+
+        var right = new VBoxContainer
+        {
+            Name = "BuildModeDetails",
+            CustomMinimumSize = new Vector2(220, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        right.AddThemeConstantOverride("separation", 8);
+        browser.AddChild(right);
+
+        var previewGroup = new Win98GroupBox { Name = "BuildModePreviewGroup" };
+        previewGroup.Configure("Preview");
+        right.AddChild(previewGroup);
+        // What it actually is before it is in the room: the 3D thing that will be placed.
         _preview = new SandboxPartPreview
         {
             Name = "BuildModePartPreview",
-            CustomMinimumSize = new Vector2(200, 76),
+            CustomMinimumSize = new Vector2(220, 120),
             MouseFilter = Control.MouseFilterEnum.Ignore,
         };
-        var details = new VBoxContainer
-        {
-            Name = "BuildModeDetails",
-            CustomMinimumSize = new Vector2(200, 0),
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-        };
-        details.AddChild(_preview);
+        previewGroup.Content.AddChild(_preview);
 
+        var info = new PanelContainer { Name = "BuildModeInfo", SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        info.AddThemeStyleboxOverride("panel", Win98ThemeFactory.Etched());
+        right.AddChild(info);
+        var infoColumn = new VBoxContainer();
+        infoColumn.AddThemeConstantOverride("separation", 6);
+        info.AddChild(infoColumn);
+        _detailsTitle = new Label { Name = "BuildModePartTitle" };
+        _detailsTitle.AddThemeFontSizeOverride("font_size", 18);
+        infoColumn.AddChild(_detailsTitle);
         _description = new Label
         {
             Name = "BuildModePartDescription",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(200, 52),
+            CustomMinimumSize = new Vector2(200, 0),
             SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-        details.AddChild(_description);
-        browser.AddChild(details);
+        infoColumn.AddChild(_description);
+        infoColumn.AddChild(new HSeparator());
+        _stats = new VBoxContainer { Name = "BuildModePartStats" };
+        infoColumn.AddChild(_stats);
 
         BuildPropertiesUi(body);
         _layer.AddChild(_panel);
@@ -321,7 +352,7 @@ public partial class BuildModeController : Node
         // can be pulled out onto the desktop and pinned back rather than being stuck in the room.
         _panelPin = new Win98PinnablePanel { Name = "BuildModePinController" };
         AddChild(_panelPin);
-        _panelPin.Configure(_panel, new Vector2I(500, 620), "BuildModeWindow");
+        _panelPin.Configure(_panel, new Vector2I(680, 640), "BuildModeWindow");
     }
 
 

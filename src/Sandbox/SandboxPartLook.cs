@@ -223,7 +223,7 @@ public static class SandboxPartLook
     /// <summary>Part space is y-down; 3D is y-up.</summary>
     private static Vector3 FromPart(Vector2 point) => new(point.X, -point.Y, 0.0f);
 
-    private static StandardMaterial3D Material(Color color, float roughness, float metallic = 0.0f)
+    internal static StandardMaterial3D Material(Color color, float roughness, float metallic = 0.0f)
     {
         if (!Materials.TryGetValue((color, roughness, metallic), out StandardMaterial3D? material))
         {

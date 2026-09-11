@@ -358,6 +358,26 @@ public static class ProductionBootstrapJourneyProbe
                 buildPreviewRightOfList = list is not null && preview is not null &&
                     preview.GlobalPosition.X >= list.GlobalPosition.X + list.Size.X;
 
+                // With a real window, picture the palette for the owner: a part, then a link preset.
+                if (DisplayServer.GetName() != "headless" && !string.IsNullOrWhiteSpace(args.ArtifactsDir))
+                {
+                    async Task Picture(string name)
+                    {
+                        for (int frame = 0; frame < 4; frame++)
+                            await sandbox.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                        Directory.CreateDirectory(args.ArtifactsDir!);
+                        sandbox.GetViewport().GetTexture().GetImage().SavePng(Path.Combine(args.ArtifactsDir!, name));
+                    }
+                    build.SelectPart(SandboxPartCatalogue.WoodBeam);
+                    await Picture("build_palette_part.png");
+                    build.SetTool(BuildTool.Hinge);
+                    build.TuneLink(1.0f, 0.0f, 0.6f);
+                    await Picture("build_palette_hinge.png");
+                    build.SetTool(BuildTool.Wire);
+                    await Picture("build_palette_wire.png");
+                    build.SetTool(BuildTool.Parts);
+                }
+
                 build.SelectPart(SandboxPartCatalogue.WoodBeam);
                 build.PlaceSelectedPartAt(beamPoint);
                 build.SelectPart(SandboxPartCatalogue.Wheel);
