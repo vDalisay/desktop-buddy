@@ -48,6 +48,9 @@ public sealed record SceneDocumentSave
     public List<string> OwnedUnplaced { get; init; } = [];
     public List<BuddyPlacementSave> BuddyPlacements { get; init; } = [];
 
+    /// <summary>Absent in saves written before the setting existed, which read as the default.</summary>
+    public bool BuddiesCollide { get; init; } = true;
+
     public static SceneDocumentSave FromDocument(SceneDocument scene)
     {
         ArgumentNullException.ThrowIfNull(scene);
@@ -64,6 +67,7 @@ public sealed record SceneDocumentSave
             BuddyPlacements = scene.BuddyPlacements
                 .Select(item => BuddyPlacementSave.FromPlacement(item))
                 .ToList(),
+            BuddiesCollide = scene.BuddiesCollide,
         };
     }
 
@@ -94,7 +98,8 @@ public sealed record SceneDocumentSave
             DesktopBuddy.Domain.Scenes.SceneId.From(SceneId),
             Name,
             environment,
-            BuddyPlacements.Select(item => item.CreatePlacement()));
+            BuddyPlacements.Select(item => item.CreatePlacement()),
+            buddiesCollide: BuddiesCollide);
     }
 
     private static DecorationDefinitionId ParseDecorationDefinitionId(string value)

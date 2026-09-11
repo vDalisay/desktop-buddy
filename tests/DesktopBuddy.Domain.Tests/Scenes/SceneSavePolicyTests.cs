@@ -50,6 +50,29 @@ public sealed class SceneSavePolicyTests
     }
 
     [Fact]
+    public void Buddy_collision_defaults_on_survives_round_trip_and_reads_on_from_older_saves()
+    {
+        var scene = new SceneDocument(SceneId.From(Id(1)), "Home", new EnvironmentLayout());
+        Assert.True(scene.BuddiesCollide);
+
+        var off = new SceneDocument(
+            SceneId.From(Id(1)), "Home", new EnvironmentProgressSnapshot(0, new EnvironmentLayout(), []),
+            buddiesCollide: false);
+        SceneDocumentDecodeResult decoded = SceneSavePolicy.DecodeScene(SceneSavePolicy.SerializeScene(off));
+        Assert.Equal(SaveDecodeStatus.Valid, decoded.Status);
+        Assert.False(decoded.Scene!.BuddiesCollide);
+
+        // A save written before the setting existed has no field at all; it must read as on.
+        System.Text.Json.Nodes.JsonObject node =
+            System.Text.Json.Nodes.JsonNode.Parse(SceneSavePolicy.SerializeScene(scene))!.AsObject();
+        Assert.True(node.Remove("buddiesCollide"));
+        string older = node.ToJsonString();
+        SceneDocumentDecodeResult legacy = SceneSavePolicy.DecodeScene(older);
+        Assert.Equal(SaveDecodeStatus.Valid, legacy.Status);
+        Assert.True(legacy.Scene!.BuddiesCollide);
+    }
+
+    [Fact]
     public void Schema_one_scene_upgrades_with_empty_storage_and_environment_revision_zero()
     {
         string legacy = $$"""

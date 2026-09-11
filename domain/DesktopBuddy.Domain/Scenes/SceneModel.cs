@@ -115,7 +115,8 @@ public sealed class SceneDocument
         string name,
         EnvironmentProgressSnapshot environmentProgress,
         IEnumerable<BuddyPlacement>? buddyPlacements = null,
-        int schemaVersion = CurrentSchemaVersion)
+        int schemaVersion = CurrentSchemaVersion,
+        bool buddiesCollide = true)
     {
         if (!sceneId.IsValid)
             throw new ArgumentException("Scene document requires a stable Scene ID.", nameof(sceneId));
@@ -152,6 +153,7 @@ public sealed class SceneDocument
         SchemaVersion = schemaVersion;
         SceneId = sceneId;
         Name = name;
+        BuddiesCollide = buddiesCollide;
         EnvironmentProgress = new EnvironmentProgressSnapshot(
             environmentProgress.Revision,
             new EnvironmentLayout(
@@ -168,6 +170,13 @@ public sealed class SceneDocument
     public EnvironmentLayout Environment => EnvironmentProgress.Layout;
     public IReadOnlyList<DecorationDefinitionId> OwnedUnplaced => _ownedUnplaced;
     public IReadOnlyList<BuddyPlacement> BuddyPlacements => _placements;
+
+    /// <summary>
+    /// Whether this room's Buddies bump into each other. On by default: separate bodies that pass
+    /// through each other read as ghosts rather than a cast (owner instruction 2026-09-10). It is a
+    /// per-Scene setting, so one room can be a pile-up and another a calm gallery.
+    /// </summary>
+    public bool BuddiesCollide { get; }
 
     public static void ValidateName(string? name)
     {

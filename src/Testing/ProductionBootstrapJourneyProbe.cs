@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using DesktopBuddy.Achievements;
+using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
@@ -378,6 +379,16 @@ public static class ProductionBootstrapJourneyProbe
                 {
                     BuddyActorRuntime actor = runtime.Actors[0];
                     beam.Freeze = true;
+                    // Buddies collide with each other by default now, so a neighbour that wandered
+                    // onto the beam would catch the drop and this would measure that Buddy's head
+                    // instead of the build surface. Park the rest of the cast at the far wall.
+                    Vector2 farWall = sandbox.PlannedSceneBuddyOrigin(
+                        new Vector2(bounds.End.X, beam.GlobalPosition.Y));
+                    foreach (BuddyActorRuntime other in runtime.Actors.Skip(1))
+                    {
+                        other.Buddy.Recovery.SafePoseOrigin = farWall;
+                        other.Buddy.Rig.ResetToSafePose(farWall);
+                    }
                     Vector2 origin = new(
                         beam.GlobalPosition.X,
                         beam.GlobalPosition.Y - 8.0f - 17.0f - 55.0f);
@@ -388,6 +399,11 @@ public static class ProductionBootstrapJourneyProbe
                     buildSurfaceSupportsBuddy =
                         actor.Buddy.Rig.LeftFoot.HasSupportContact ||
                         actor.Buddy.Rig.RightFoot.HasSupportContact;
+                    Log.Info("BootstrapJourney",
+                        $"support probe: beam={beam.GlobalPosition} torso={actor.Buddy.Rig.Torso.GlobalPosition} " +
+                        $"left=[{string.Join(",", actor.Buddy.Rig.LeftFoot.GetCollidingBodies().Select(b => (b is PuppetPartBody lp && actor.OwnsPart(lp) ? "own:" : "other:") + b.Name))}] " +
+                        $"right=[{string.Join(",", actor.Buddy.Rig.RightFoot.GetCollidingBodies().Select(b => (b is PuppetPartBody rp && actor.OwnsPart(rp) ? "own:" : "other:") + b.Name))}] " +
+                        $"others=[{string.Join(",", runtime.Actors.Skip(1).Select(a => a.Buddy.Rig.Torso.GlobalPosition.ToString()))}]");
                 }
             }
 

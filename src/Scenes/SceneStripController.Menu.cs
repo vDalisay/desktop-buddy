@@ -20,6 +20,7 @@ public partial class SceneStripController
     private Control? _menuBlocker;
     private ItemList? _menuScenes;
     private ItemList? _menuCast;
+    private CheckBox? _menuCollide;
     private readonly List<SceneId> _menuSceneIds = [];
 
     private bool MenuIsOpen =>
@@ -30,7 +31,7 @@ public partial class SceneStripController
         _menuBlocker = OpenShellModal(
             "SceneWorkspaceDialog",
             "Scenes",
-            new Vector2(420, 452),
+            new Vector2(420, 484),
             out VBoxContainer body,
             out Label message);
         if (_menuBlocker is null)
@@ -96,6 +97,20 @@ public partial class SceneStripController
         Win98Dialog.Action(castActions, "Remove Focused", RemoveFocusedCastMemberAsync).Name =
             "SceneWorkspaceRemoveBuddyButton";
 
+        _menuCollide = new CheckBox
+        {
+            Name = "SceneWorkspaceCollideToggle",
+            Text = "Buddies bump into each other",
+            TooltipText = "When off, the Buddies in this Scene pass through one another.",
+            FocusMode = Control.FocusModeEnum.All,
+        };
+        _menuCollide.Toggled += collide =>
+        {
+            if (collide != _sandbox.BuddiesCollide)
+                _sandbox.SetBuddiesCollide(collide);
+        };
+        castGroup.Content.AddChild(_menuCollide);
+
         HBoxContainer close = ModalActions(body, "SceneWorkspaceActions");
         Win98Dialog.Action(close, "Close", () => _menuBlocker!.Visible = false).Name =
             "SceneWorkspaceCloseButton";
@@ -143,6 +158,12 @@ public partial class SceneStripController
         {
             _menuCast.AddItem("This room is empty.");
             _menuCast.SetItemDisabled(0, true);
+        }
+
+        if (_menuCollide is not null)
+        {
+            _menuCollide.SetPressedNoSignal(_sandbox.BuddiesCollide);
+            _menuCollide.Disabled = busy;
         }
 
         SetMenuButtonDisabled("SceneWorkspaceSwitchButton", busy || scenes.Count <= 1);

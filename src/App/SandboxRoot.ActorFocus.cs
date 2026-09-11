@@ -119,6 +119,7 @@ public partial class SandboxRoot
     /// </summary>
     private void OnSceneRuntimeComposed()
     {
+        ApplyBuddyCollision();
         foreach ((InteractionDamageComponent damage, Action<AcceptedImpact> handler) in _focusHooks)
         {
             if (GodotObject.IsInstanceValid(damage))

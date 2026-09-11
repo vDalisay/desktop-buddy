@@ -214,6 +214,9 @@ public sealed partial class SceneProgressCoordinator
     public SceneLibraryResult RenameScene(SceneId sceneId, string newName) =>
         TrackSceneMutation(_scenes.Rename(sceneId, newName));
 
+    public SceneLibraryResult SetBuddiesCollide(SceneId sceneId, bool collide) =>
+        TrackSceneMutation(_scenes.SetBuddiesCollide(sceneId, collide));
+
     public SceneLibraryResult DuplicateScene(SceneId sourceSceneId, string? newName = null)
     {
         SceneLibraryResult result = TrackSceneMutation(_scenes.Duplicate(sourceSceneId, newName));

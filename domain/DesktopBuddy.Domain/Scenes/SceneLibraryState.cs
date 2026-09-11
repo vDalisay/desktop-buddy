@@ -130,6 +130,24 @@ public sealed class SceneLibraryState
         return new SceneLibraryResult(SceneLibraryStatus.Succeeded, renamed);
     }
 
+    /// <summary>Turns Buddy-to-Buddy collision on or off for one Scene.</summary>
+    public SceneLibraryResult SetBuddiesCollide(SceneId sceneId, bool collide)
+    {
+        if (!_scope.IncludesScenes)
+            return new SceneLibraryResult(SceneLibraryStatus.ScenesUnavailable);
+        int index = IndexOf(sceneId);
+        if (index < 0)
+            return new SceneLibraryResult(SceneLibraryStatus.SceneNotFound);
+
+        SceneDocument current = _scenes[index];
+        if (current.BuddiesCollide == collide)
+            return new SceneLibraryResult(SceneLibraryStatus.NoChange, current);
+
+        SceneDocument changed = CopyScene(current, current.SceneId, current.Name, current.BuddyPlacements, collide);
+        _scenes[index] = changed;
+        return new SceneLibraryResult(SceneLibraryStatus.Succeeded, changed);
+    }
+
     public SceneLibraryResult Duplicate(SceneId sourceSceneId, string? newName = null)
     {
         if (!_scope.IncludesScenes)
@@ -192,7 +210,8 @@ public sealed class SceneLibraryState
             current.Name,
             environment,
             current.BuddyPlacements,
-            current.SchemaVersion);
+            current.SchemaVersion,
+            current.BuddiesCollide);
         _scenes[index] = changed;
         return new SceneLibraryResult(SceneLibraryStatus.Succeeded, changed);
     }
@@ -354,7 +373,15 @@ public sealed class SceneLibraryState
         SceneId sceneId,
         string name,
         IEnumerable<BuddyPlacement> placements) =>
-        new(sceneId, name, source.EnvironmentProgress, placements, source.SchemaVersion);
+        CopyScene(source, sceneId, name, placements, source.BuddiesCollide);
+
+    private static SceneDocument CopyScene(
+        SceneDocument source,
+        SceneId sceneId,
+        string name,
+        IEnumerable<BuddyPlacement> placements,
+        bool buddiesCollide) =>
+        new(sceneId, name, source.EnvironmentProgress, placements, source.SchemaVersion, buddiesCollide);
 
     private BuddyPlacementId NextUniquePlacementIdForCopy()
     {

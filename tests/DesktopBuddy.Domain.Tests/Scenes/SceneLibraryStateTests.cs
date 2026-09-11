@@ -37,6 +37,29 @@ public sealed class SceneLibraryStateTests
     }
 
     [Fact]
+    public void Buddy_collision_setting_is_per_scene_and_survives_rename_and_duplicate()
+    {
+        int next = 1;
+        var library = new SceneLibraryState(
+            NextFest(),
+            sceneIdFactory: () => SceneId.From(GuidFromInt(next++)));
+        SceneId home = library.Create("Home").Scene!.SceneId;
+        SceneId other = library.Create("Other").Scene!.SceneId;
+
+        Assert.True(library.SetBuddiesCollide(home, false).Succeeded);
+        Assert.Equal(SceneLibraryStatus.NoChange, library.SetBuddiesCollide(home, false).Status);
+        Assert.True(library.Scenes[1].BuddiesCollide);
+
+        library.Rename(home, "Renamed");
+        Assert.False(library.Scenes[0].BuddiesCollide);
+        SceneDocument copy = library.Duplicate(home).Scene!;
+        Assert.False(copy.BuddiesCollide);
+        Assert.Equal(SceneLibraryStatus.SceneNotFound,
+            library.SetBuddiesCollide(SceneId.From(GuidFromInt(999)), true).Status);
+        Assert.NotEqual(home, other);
+    }
+
+    [Fact]
     public void Full_release_has_no_artificial_ten_scene_cap()
     {
         BuildScopePolicy scope = FullRelease();
