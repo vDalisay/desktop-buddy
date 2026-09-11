@@ -28,6 +28,10 @@ public partial class SandboxPartBody : RigidBody2D
     private const double PistonHoldSeconds = 0.18;
     private const double PistonBackSeconds = 0.2;
 
+    // A Button lets go only after nothing has touched its cap for this long, so a body settling or
+    // bouncing on it presses it once rather than chattering.
+    private const double ButtonReleaseSeconds = 0.15;
+
     private bool _selected;
     private bool _frozen;
     private bool _drawsShape = true;
@@ -36,6 +40,11 @@ public partial class SandboxPartBody : RigidBody2D
     private SandboxPartDefinition _definition = null!;
     private CollisionShape2D? _shape;
     private CollisionShape2D? _pistonHead;
+    private CollisionShape2D? _buttonCap;
+    private bool _buttonHeld;
+    private int _buttonIdleTicks;
+    private int _buttonFlashTicks;
+    private int _buttonReleaseTicks = 1;
     private int _strokeTick;
     private int _outTicks = 1;
     private int _holdTicks = 1;
@@ -82,6 +91,12 @@ public partial class SandboxPartBody : RigidBody2D
 
     /// <summary>True from the moment a Piston fires until its head is home again.</summary>
     public bool PistonBusy => _strokeTick > 0;
+
+    /// <summary>How far a Button's cap is down, 0 up to 1 fully pressed.</summary>
+    public float ButtonPress { get; private set; }
+
+    /// <summary>Whatever a device's model moves: a Piston's head travel, a Button's press.</summary>
+    public float DeviceMotion => _definition.Device == SandboxDeviceKind.Button ? ButtonPress : PistonExtension;
 
     /// <summary>Build/Edit's selection outline. Presentation only; the document owns nothing of it.</summary>
     public bool Selected
@@ -138,6 +153,18 @@ public partial class SandboxPartBody : RigidBody2D
                     : new RectangleShape2D { Size = new Vector2(definition.Width, definition.Height) },
             };
             AddChild(_shape);
+        }
+        if (definition.Device == SandboxDeviceKind.Button)
+        {
+            // The cap is solid: things rest on it, and whatever rests on it is pressing it.
+            Rect2 cap = SandboxPartLook.ButtonCap(definition, 0.0f);
+            _buttonCap = new CollisionShape2D
+            {
+                Shape = new RectangleShape2D { Size = cap.Size },
+                Position = cap.GetCenter(),
+            };
+            AddChild(_buttonCap);
+            _buttonReleaseTicks = Math.Max(1, (int)Math.Round(ButtonReleaseSeconds * Engine.PhysicsTicksPerSecond));
         }
         CollisionLayer = CollisionLayers.LooseObjects;
         CollisionMask = CollisionLayers.MaskLooseObjects;
@@ -236,6 +263,61 @@ public partial class SandboxPartBody : RigidBody2D
         QueueRedraw();
     }
 
+    /// <summary>
+    /// One routed tick of a Button: <paramref name="touching"/> says whether anything is on its cap.
+    /// True exactly when the Button goes down — the moment to send its pulse. It stays down while
+    /// anything stays on it and comes back up once the cap has been clear for a moment.
+    /// </summary>
+    public bool UpdateButton(bool touching)
+    {
+        if (_buttonCap is null)
+            return false;
+        bool wentDown = false;
+        if (touching)
+        {
+            _buttonIdleTicks = 0;
+            wentDown = !_buttonHeld;
+            _buttonHeld = true;
+        }
+        else if (_buttonHeld && ++_buttonIdleTicks >= _buttonReleaseTicks)
+        {
+            _buttonHeld = false;
+        }
+        if (_buttonFlashTicks > 0)
+            _buttonFlashTicks--;
+        SetButtonPress(_buttonHeld || _buttonFlashTicks > 0 ? 1.0f : 0.0f);
+        return wentDown;
+    }
+
+    /// <summary>A click pressed it: the cap dips for a moment, as if a finger had.</summary>
+    public void FlashButton()
+    {
+        if (_buttonCap is null)
+            return;
+        _buttonFlashTicks = _buttonReleaseTicks;
+        SetButtonPress(1.0f);
+    }
+
+    /// <summary>Where the query for "something on the cap" looks: a band just over its top face.</summary>
+    public Transform2D ButtonSensor(out Vector2 size)
+    {
+        Rect2 cap = SandboxPartLook.ButtonCap(_definition, 0.0f);
+        size = new Vector2(cap.Size.X - 2.0f, SandboxPartLook.ButtonTravel + 4.0f);
+        // From 3 px above the raised cap down to the pressed cap's top, so a body riding it down still counts.
+        var centre = new Vector2(0.0f, cap.Position.Y - 3.0f + size.Y * 0.5f);
+        return GlobalTransform * new Transform2D(0.0f, centre);
+    }
+
+    private void SetButtonPress(float press)
+    {
+        if (ButtonPress.Equals(press))
+            return;
+        ButtonPress = press;
+        if (_buttonCap is not null)
+            _buttonCap.Position = SandboxPartLook.ButtonCap(_definition, press).GetCenter();
+        QueueRedraw();
+    }
+
     /// <summary>Geometric hit test in world space; usable while the room is paused.</summary>
     public bool ContainsPoint(Vector2 world)
     {
@@ -254,7 +336,7 @@ public partial class SandboxPartBody : RigidBody2D
         if (!IsConfigured)
             return;
 
-        SandboxPartLook.Draw(this, _definition, _drawsShape, _lit, PistonExtension);
+        SandboxPartLook.Draw(this, _definition, _drawsShape, _lit, DeviceMotion);
 
         if (_selected)
         {

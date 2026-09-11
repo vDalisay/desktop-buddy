@@ -16,6 +16,7 @@ public partial class SandboxRoot
     private const float PistonShoveMargin = 6.0f;
 
     private const int MaximumPistonTargets = 32;
+    private const int MaximumButtonContacts = 8;
 
     private readonly List<SandboxDeviceCommand> _deviceCommands = [];
 
@@ -36,7 +37,62 @@ public partial class SandboxRoot
     }
 
     /// <summary>The player pressed a Button; its pulse goes out on the next routed tick.</summary>
-    public bool PressButton(SandboxPartId button) => Signals.Press(button);
+    public bool PressButton(SandboxPartId button)
+    {
+        if (!Signals.Press(button))
+            return false;
+        if (_builtParts.TryGetValue(button, out SandboxPartBody? body) && GodotObject.IsInstanceValid(body))
+            body.FlashButton();
+        return true;
+    }
+
+    /// <summary>Buttons pressed by something landing on them rather than by a click, for verification.</summary>
+    public int ButtonContactPresses { get; private set; }
+
+    /// <summary>What last pressed a Button by landing on it, for verification.</summary>
+    public string LastButtonPresser { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// A Button is pressed by anything that comes down on its cap — a falling beam, a Buddy's foot,
+    /// a Piston's head, a thrown tool (owner note 2026-09-11). It sends one pulse as it goes down and
+    /// none while held; it must come back up before it can send another.
+    /// </summary>
+    private void SenseButtons(SandboxSignalNetwork signals)
+    {
+        PhysicsDirectSpaceState2D? space = GetWorld2D()?.DirectSpaceState;
+        if (space is null)
+            return;
+        foreach ((SandboxPartId partId, SandboxPartBody body) in _builtParts)
+        {
+            if (body.Definition.Device != SandboxDeviceKind.Button || !GodotObject.IsInstanceValid(body))
+                continue;
+
+            Transform2D sensor = body.ButtonSensor(out Vector2 size);
+            using var shape = new RectangleShape2D { Size = size };
+            var query = new PhysicsShapeQueryParameters2D
+            {
+                Shape = shape,
+                Transform = sensor,
+                CollisionMask = CollisionLayers.BuddyParts | CollisionLayers.LooseObjects,
+                CollideWithBodies = true,
+                CollideWithAreas = false,
+            };
+            PhysicsBody2D? presser = null;
+            foreach (Godot.Collections.Dictionary hit in space.IntersectShape(query, MaximumButtonContacts))
+            {
+                if (hit.TryGetValue("collider", out Variant value) && value.AsGodotObject() is PhysicsBody2D other && other != body)
+                {
+                    presser = other;
+                    break;
+                }
+            }
+            if (body.UpdateButton(presser is not null) && signals.Press(partId))
+            {
+                ButtonContactPresses++;
+                LastButtonPresser = $"{presser!.Name} ({presser.GetType().Name}) at {presser.GlobalPosition}";
+            }
+        }
+    }
 
     private void SyncSignals()
     {
@@ -56,6 +112,7 @@ public partial class SandboxRoot
         if (SceneProgress is null)
             return;
         SandboxSignalNetwork signals = Signals;
+        SenseButtons(signals);
         _deviceCommands.Clear();
         signals.Tick(_deviceCommands);
         foreach (SandboxDeviceCommand command in _deviceCommands)

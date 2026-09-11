@@ -566,19 +566,26 @@ public static class ProductionBootstrapJourneyProbe
                         build.PlaceSelectedPartAt(at);
                         return build.SelectedPlacedPart ?? default;
                     }
+                    // The machine stands on a frozen shelf half-way up the room, out of the cast's
+                    // reach: Buttons now answer to anything landing on them, and a Buddy wandering
+                    // across the test rig would press it for real.
+                    const float ShelfY = 0.45f;
+                    Vector2 ShelfAt(float x) => bounds.Position + bounds.Size * new Vector2(x, ShelfY) + new Vector2(0.0f, -24.0f);
+                    SandboxPartId shelf = PlaceDevice(SandboxPartCatalogue.MetalPlate, bounds.Position + bounds.Size * new Vector2(0.225f, ShelfY));
+                    bool shelfBuilt = build.SetSelectedPartOverrides(new SandboxPartOverrides(Frozen: true, Length: 384.0f, Thickness: 12.0f));
                     bool triggerHidden = !build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
-                    SandboxPartId button = PlaceDevice(SandboxPartCatalogue.Button, FloorAt(0.2f));
-                    SandboxPartId timer = PlaceDevice(SandboxPartCatalogue.Timer, FloorAt(0.3f));
-                    SandboxPartId lamp = PlaceDevice(SandboxPartCatalogue.Lamp, FloorAt(0.4f));
+                    SandboxPartId button = PlaceDevice(SandboxPartCatalogue.Button, ShelfAt(0.19f));
+                    SandboxPartId timer = PlaceDevice(SandboxPartCatalogue.Timer, ShelfAt(0.26f));
+                    SandboxPartId lamp = PlaceDevice(SandboxPartCatalogue.Lamp, ShelfAt(0.33f));
                     // A Metal Block resting on a Piston's head, for Button -> Piston.
-                    SandboxPartId piston = PlaceDevice(SandboxPartCatalogue.Piston, FloorAt(0.1f));
-                    SandboxPartId load = PlaceDevice(SandboxPartCatalogue.MetalBlock, FloorAt(0.1f) + new Vector2(0.0f, -40.0f));
-                    bool wired = build.WireBetween(FloorAt(0.2f), FloorAt(0.3f)).Succeeded &&
-                        build.WireBetween(FloorAt(0.3f), FloorAt(0.4f)).Succeeded &&
-                        build.WireBetween(FloorAt(0.2f), FloorAt(0.1f)).Succeeded;
+                    SandboxPartId piston = PlaceDevice(SandboxPartCatalogue.Piston, ShelfAt(0.12f));
+                    SandboxPartId load = PlaceDevice(SandboxPartCatalogue.MetalBlock, ShelfAt(0.12f) + new Vector2(0.0f, -40.0f));
+                    bool wired = build.WireBetween(ShelfAt(0.19f), ShelfAt(0.26f)).Succeeded &&
+                        build.WireBetween(ShelfAt(0.26f), ShelfAt(0.33f)).Succeeded &&
+                        build.WireBetween(ShelfAt(0.19f), ShelfAt(0.12f)).Succeeded;
                     // A Lamp sends nothing, and a Button receives nothing.
-                    bool badRejected = !build.WireBetween(FloorAt(0.4f), FloorAt(0.2f)).Succeeded &&
-                        !build.WireBetween(FloorAt(0.3f), FloorAt(0.2f)).Succeeded &&
+                    bool badRejected = !build.WireBetween(ShelfAt(0.33f), ShelfAt(0.19f)).Succeeded &&
+                        !build.WireBetween(ShelfAt(0.26f), ShelfAt(0.19f)).Succeeded &&
                         scenes.ActiveSandbox.Wires.Count == 3;
                     await build.LeaveAsync();
                     for (int frame = 0; frame < 30; frame++)
@@ -629,6 +636,20 @@ public static class ProductionBootstrapJourneyProbe
                         await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
                     bool stopped = !sandbox.Signals.IsTimerRunning(timer);
 
+                    // Anything landing on a Button presses it: a block dropped on the cap presses it
+                    // once, and resting there holds it down without pressing it again.
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    SandboxPartBody buttonBody = sandbox.BuiltParts[button];
+                    SandboxPartId weight = PlaceDevice(SandboxPartCatalogue.MetalBlock,
+                        buttonBody.GlobalPosition + new Vector2(0.0f, -70.0f));
+                    await build.LeaveAsync();
+                    int contactPressesBefore = sandbox.ButtonContactPresses;
+                    for (int frame = 0; frame < Engine.PhysicsTicksPerSecond; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    bool pressedByWeight = sandbox.ButtonContactPresses == contactPressesBefore + 1 &&
+                        buttonBody.ButtonPress > 0.5f;
+
                     build.Toggle();
                     await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
                     // A beam made longer and thicker in Properties: its body and weight follow.
@@ -639,7 +660,7 @@ public static class ProductionBootstrapJourneyProbe
                         beamBody.Definition.Width == 192.0f && beamBody.Definition.Height == 24.0f &&
                         Mathf.IsEqualApprox(beamBody.Mass, beamMass * 3.0f) &&
                         beamBody.ContainsPoint(beamBody.GlobalPosition + new Vector2(90.0f, 0.0f));
-                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, beamPart })
+                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, beamPart, weight, shelf })
                     {
                         if (build.SelectPlaced(device))
                             build.DeleteSelectedPart();
@@ -647,14 +668,15 @@ public static class ProductionBootstrapJourneyProbe
                     bool cleared = scenes.ActiveSandbox.Wires.Count == 0 && scenes.ActiveSandbox.Count == 1;
                     await build.LeaveAsync();
 
-                    buildDevicesWork = triggerHidden && wired && badRejected && pressed && timed && shoved &&
+                    buildDevicesWork = shelfBuilt && triggerHidden && wired && badRejected && pressed && timed && shoved &&
                         running && wiresHiddenInPlay && wiresShownInBuild && cut && stayedLit && stopped &&
-                        resized && cleared && !scenes.IsDirty;
+                        pressedByWeight && resized && cleared && !scenes.IsDirty;
                     Log.Info("BootstrapJourney",
                         $"build devices: triggerHidden={triggerHidden} wired={wired} badRejected={badRejected} " +
                         $"pressed={pressed} litAfter={litAfter} shoved={shoved} rise={loadRestY - loadHighestY:F1} " +
                         $"running={running} wiresHiddenInPlay={wiresHiddenInPlay} wiresShownInBuild={wiresShownInBuild} " +
-                        $"cut={cut} stayedLit={stayedLit} stopped={stopped} resized={resized} cleared={cleared}");
+                        $"cut={cut} stayedLit={stayedLit} stopped={stopped} pressedByWeight={pressedByWeight} contactPresses={sandbox.ButtonContactPresses} " +
+                        $"lastPresser={sandbox.LastButtonPresser} button={sandbox.BuiltParts.GetValueOrDefault(button)?.GlobalPosition} resized={resized} cleared={cleared}");
                 }
 
                 if (runtime is { Actors.Count: > 0 } &&

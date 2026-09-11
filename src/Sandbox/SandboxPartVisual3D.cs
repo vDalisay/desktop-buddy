@@ -96,7 +96,7 @@ public partial class SandboxPartVisual3D : Node3D
             position.Z = body.Definition.Shape == SandboxPartShape.Circle ? WheelDepthLane : BoxDepthLane;
             node.GlobalPosition = position;
             node.GlobalRotation = new Vector3(0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(angle));
-            SandboxPartLook.Pose(node, body.Definition, body.PistonExtension, body.Lit);
+            SandboxPartLook.Pose(node, body.Definition, body.DeviceMotion, body.Lit);
         }
     }
 

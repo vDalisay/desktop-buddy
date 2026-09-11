@@ -76,6 +76,20 @@ public static class SandboxPartLook
         return new Rect2(-halfWidth, top, definition.Width, PistonHeadThickness);
     }
 
+    /// <summary>How far a Button's cap sinks when pressed.</summary>
+    public const float ButtonTravel = 4.0f;
+
+    /// <summary>
+    /// A Button's cap in part space, standing on its top face; <paramref name="pressed"/> (0..1) sinks
+    /// it. The cap is a real collision shape: whatever lands on it, presses it.
+    /// </summary>
+    public static Rect2 ButtonCap(SandboxPartDefinition definition, float pressed)
+    {
+        float width = definition.Width * 0.55f;
+        float top = -definition.Height * 0.5f - 6.0f + ButtonTravel * Mathf.Clamp(pressed, 0.0f, 1.0f);
+        return new Rect2(-width * 0.5f, top, width, 6.0f);
+    }
+
     // ---- 3D ----------------------------------------------------------------------------------
 
     /// <summary>A fresh model of the part, centred on the part's origin in 3D world units (= px).</summary>
@@ -100,9 +114,10 @@ public static class SandboxPartLook
             }
             case SandboxDeviceKind.Button:
                 Add(node, "Shape", RoundedBox(definition.Width, definition.Height, depth, 6.0f), Material(DeviceFill, 0.5f, 0.2f), Vector3.Zero);
-                // The cap stands on top, where the flat look drew it.
-                Add(node, "Cap", RoundedBox(halfWidth * 1.1f, 8.0f, depth * 0.6f, 3.5f), Material(ButtonRed, 0.35f),
-                    FromPart(new Vector2(0.0f, -halfHeight - 2.0f)));
+                // The cap stands on top, 2 px taller than its collider so its foot tucks into the body.
+                Rect2 cap = ButtonCap(definition, 0.0f);
+                Add(node, "Cap", RoundedBox(cap.Size.X, cap.Size.Y + 2.0f, depth * 0.6f, 3.5f), Material(ButtonRed, 0.35f), Vector3.Zero);
+                Pose(node, definition, 0.0f, false);
                 return node;
             case SandboxDeviceKind.Timer:
             {
@@ -163,11 +178,18 @@ public static class SandboxPartLook
         return node;
     }
 
-    /// <summary>Brings a model up to the part's live state: a Piston's head and rod, a Lamp's light.</summary>
+    /// <summary>
+    /// Brings a model up to the part's live state. <paramref name="extension"/> is a Piston's head
+    /// travel or a Button's press (0..1); <paramref name="lit"/> a Lamp's light.
+    /// </summary>
     public static void Pose(Node3D model, SandboxPartDefinition definition, float extension, bool lit)
     {
         switch (definition.Device)
         {
+            case SandboxDeviceKind.Button:
+                Rect2 cap = ButtonCap(definition, extension);
+                model.GetNode<Node3D>("Cap").Position = FromPart(cap.GetCenter() + new Vector2(0.0f, 1.0f));
+                break;
             case SandboxDeviceKind.Piston:
                 Rect2 baseRect = PistonBase(definition);
                 Rect2 head = PistonHead(definition, extension);
@@ -366,7 +388,7 @@ public static class SandboxPartLook
         switch (definition.Device)
         {
             case SandboxDeviceKind.Button:
-                var cap = new Rect2(-halfWidth * 0.55f, -halfHeight - 6.0f, halfWidth * 1.1f, 6.0f);
+                Rect2 cap = ButtonCap(definition, extension);
                 canvas.DrawRect(cap, ButtonRed, filled: true);
                 canvas.DrawRect(cap, Outline, filled: false, 1.5f);
                 break;
