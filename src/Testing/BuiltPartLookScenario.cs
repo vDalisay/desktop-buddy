@@ -43,6 +43,8 @@ public sealed class BuiltPartLookScenario : IScenario
         Place(sandbox, SandboxPartCatalogue.Timer, 0.5f, 0.35f, 0.0f);
         Place(sandbox, SandboxPartCatalogue.Lamp, 0.7f, 0.35f, 0.0f);
         Place(sandbox, SandboxPartCatalogue.Piston, 0.85f, 0.35f, 0.0f);
+        // Beside the Lamp, to see its light land on something.
+        SandboxPartId neighbour = Place(sandbox, SandboxPartCatalogue.MetalBlock, 0.745f, 0.35f, 0.0f);
         for (int frame = 0; frame < 10; frame++)
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
@@ -65,9 +67,21 @@ public sealed class BuiltPartLookScenario : IScenario
             string directory = Path.GetFullPath(ScenarioArtifacts.Directory ?? ".artifacts/built_part_look");
             Directory.CreateDirectory(directory);
             picture = Path.Combine(directory, "built_parts_3d.png");
-            if (tree.Root.GetTexture().GetImage().SavePng(picture) != Error.Ok)
+            Image litImage = tree.Root.GetTexture().GetImage();
+            if (litImage.SavePng(picture) != Error.Ok)
                 picture = null;
             messages.Add($"picture={picture}");
+
+            // A lit Lamp lights the block beside it: the block is brighter lit than unlit.
+            Vector2 at = sandbox.BuiltParts[neighbour].GetGlobalTransformWithCanvas().Origin;
+            float litBrightness = Brightness(litImage, at);
+            foreach (SandboxPartBody body in bodies.Where(body => body.Definition.Device == SandboxDeviceKind.Lamp))
+                body.Lit = false;
+            for (int frame = 0; frame < 3; frame++)
+                await tree.ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            float darkBrightness = Brightness(tree.Root.GetTexture().GetImage(), at);
+            checks.Add(new StartupCheck("lit_lamp_lights_its_neighbour", litBrightness - darkBrightness > 0.04f,
+                $"lit={litBrightness:F3} dark={darkBrightness:F3} at={at}"));
         }
 
         sandbox.SetPresentationMode(PresentationMode.LegacyCircles);
@@ -84,8 +98,30 @@ public sealed class BuiltPartLookScenario : IScenario
         return new ScenarioResult(passed, checks, messages);
     }
 
-    private static void Place(SandboxRoot sandbox, SemanticDefinitionId definition, float x, float y, float rotation) =>
-        sandbox.PlaceBuiltPart(new PlacedSandboxPart(
+    private static SandboxPartId Place(SandboxRoot sandbox, SemanticDefinitionId definition, float x, float y, float rotation)
+    {
+        var part = new PlacedSandboxPart(
             SandboxPartId.New(), definition, new CanonicalRoomPosition(x, y), rotation,
-            new SandboxPartOverrides(Frozen: true)));
+            new SandboxPartOverrides(Frozen: true));
+        sandbox.PlaceBuiltPart(part);
+        return part.PartId;
+    }
+
+    /// <summary>Mean luminance of a small patch, a little off centre to miss the frozen nail.</summary>
+    private static float Brightness(Image image, Vector2 centre)
+    {
+        float sum = 0.0f;
+        int count = 0;
+        for (int x = -8; x <= -4; x++)
+        {
+            for (int y = -8; y <= -4; y++)
+            {
+                int px = Mathf.Clamp((int)centre.X + x, 0, image.GetWidth() - 1);
+                int py = Mathf.Clamp((int)centre.Y + y, 0, image.GetHeight() - 1);
+                sum += image.GetPixel(px, py).Luminance;
+                count++;
+            }
+        }
+        return sum / count;
+    }
 }

@@ -21,6 +21,8 @@ public sealed record PlacedSandboxPartSave
     public bool Frozen { get; set; }
     public float? PistonPush { get; set; }
     public float? TimerSeconds { get; set; }
+    public float? Length { get; set; }
+    public float? Thickness { get; set; }
 
     public static PlacedSandboxPartSave FromPart(PlacedSandboxPart part)
     {
@@ -38,6 +40,8 @@ public sealed record PlacedSandboxPartSave
             Frozen = part.Overrides.Frozen,
             PistonPush = part.Overrides.PistonPush,
             TimerSeconds = part.Overrides.TimerSeconds,
+            Length = part.Overrides.Length,
+            Thickness = part.Overrides.Thickness,
         };
     }
 
@@ -46,7 +50,7 @@ public sealed record PlacedSandboxPartSave
         SemanticDefinitionId.Parse(DefinitionId),
         new CanonicalRoomPosition(CanonicalX, CanonicalY),
         PlacedSandboxPart.NormalizeRotation(RotationDegrees),
-        new SandboxPartOverrides(MassScale, Bounce, GravityScale, Frozen, PistonPush, TimerSeconds).Clamped());
+        new SandboxPartOverrides(MassScale, Bounce, GravityScale, Frozen, PistonPush, TimerSeconds, Length, Thickness).Clamped());
 }
 
 public sealed record SandboxLinkSave
@@ -140,8 +144,8 @@ public sealed record SandboxWireSave
 public sealed record SandboxDocumentSave
 {
     /// <summary>
-    /// 2 added links, 3 signal wires, 4 Piston push and Timer interval settings. An older room
-    /// simply has none.
+    /// 2 added links, 3 signal wires, 4 device settings (Piston push, Timer interval) and a
+    /// beam's own length and thickness. An older room simply has none.
     /// </summary>
     public const int CurrentSchemaVersion = 4;
 

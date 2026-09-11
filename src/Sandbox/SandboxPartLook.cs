@@ -127,12 +127,15 @@ public static class SandboxPartLook
                 Vector3 bulbAt = FromPart(new Vector2(0.0f, halfHeight - footHeight - bulb * 0.8f));
                 Add(node, "Bulb", new SphereMesh { Radius = bulb, Height = bulb * 2.0f, RadialSegments = 24, Rings = 12 },
                     Material(BulbOff, 0.2f), bulbAt);
+                // The room is measured in pixels, so Godot's inverse-square falloff would spend the
+                // whole light in the first few pixels; no falloff exponent, and the range does the fade.
                 node.AddChild(new OmniLight3D
                 {
                     Name = "Glow",
                     LightColor = LampLight,
-                    LightEnergy = 3.0f,
-                    OmniRange = 170.0f,
+                    LightEnergy = 2.0f,
+                    OmniRange = 180.0f,
+                    OmniAttenuation = 0.0f,
                     Position = bulbAt + new Vector3(0.0f, 0.0f, 30.0f),
                     Visible = false,
                 });

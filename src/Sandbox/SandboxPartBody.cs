@@ -32,7 +32,9 @@ public partial class SandboxPartBody : RigidBody2D
     private bool _frozen;
     private bool _drawsShape = true;
     private bool _lit;
+    private SandboxPartDefinition _baseDefinition = null!;
     private SandboxPartDefinition _definition = null!;
+    private CollisionShape2D? _shape;
     private CollisionShape2D? _pistonHead;
     private int _strokeTick;
     private int _outTicks = 1;
@@ -41,6 +43,8 @@ public partial class SandboxPartBody : RigidBody2D
 
     public SandboxPartId PartId { get; private set; }
     public bool IsConfigured { get; private set; }
+
+    /// <summary>The part as placed: the shared definition at this placement's own size.</summary>
     public SandboxPartDefinition Definition => _definition;
 
     /// <summary>
@@ -100,7 +104,9 @@ public partial class SandboxPartBody : RigidBody2D
             throw new InvalidOperationException("A sandbox part must be configured before entering the tree.");
 
         PartId = part.PartId;
-        _definition = definition;
+        _baseDefinition = definition;
+        _definition = part.Overrides.Clamped().SizedDefinition(definition);
+        definition = _definition;
 
         if (definition.Device == SandboxDeviceKind.Piston)
         {
@@ -125,12 +131,13 @@ public partial class SandboxPartBody : RigidBody2D
         }
         else
         {
-            AddChild(new CollisionShape2D
+            _shape = new CollisionShape2D
             {
                 Shape = definition.Shape == SandboxPartShape.Circle
                     ? new CircleShape2D { Radius = definition.Radius }
                     : new RectangleShape2D { Size = new Vector2(definition.Width, definition.Height) },
-            });
+            };
+            AddChild(_shape);
         }
         CollisionLayer = CollisionLayers.LooseObjects;
         CollisionMask = CollisionLayers.MaskLooseObjects;
@@ -147,6 +154,15 @@ public partial class SandboxPartBody : RigidBody2D
     public void ApplyOverrides(SandboxPartOverrides overrides)
     {
         SandboxPartOverrides clamped = overrides.Clamped();
+        // A beam's length and thickness: the collision box follows, and the 3D model rebuilds
+        // when it sees the new definition.
+        SandboxPartDefinition sized = clamped.SizedDefinition(_baseDefinition);
+        if (!ReferenceEquals(sized, _definition) && !sized.Equals(_definition))
+        {
+            _definition = sized;
+            if (_shape?.Shape is RectangleShape2D box)
+                box.Size = new Vector2(sized.Width, sized.Height);
+        }
         Mass = clamped.MassFor(_definition);
         GravityScale = clamped.GravityScaleValue;
         PistonPush = clamped.PistonPushValue;

@@ -32,6 +32,10 @@ public partial class BuildModeController
     private Label? _massReadout;
     private Label? _bounceReadout;
     private Label? _gravityReadout;
+    private HSlider? _lengthSlider;
+    private HSlider? _thicknessSlider;
+    private Label? _lengthReadout;
+    private Label? _thicknessReadout;
     private HSlider? _strengthSlider;
     private HSlider? _intervalSlider;
     private Label? _strengthReadout;
@@ -447,6 +451,13 @@ public partial class BuildModeController
         };
         group.Content.AddChild(_propertiesTitle);
 
+        // A beam's own size: shown only for parts that can be resized (wood and metal boxes).
+        _lengthSlider = AddPropertySlider(group.Content, "Length", "How long it is. Its weight grows with it.",
+            SandboxPartOverrides.MinimumLength, SandboxPartOverrides.MaximumLength,
+            4.0, out _lengthReadout, value => WithOverride(o => o with { Length = (float)value }));
+        _thicknessSlider = AddPropertySlider(group.Content, "Thickness", "How thick it is. Its weight grows with it.",
+            SandboxPartOverrides.MinimumThickness, SandboxPartOverrides.MaximumThickness,
+            1.0, out _thicknessReadout, value => WithOverride(o => o with { Thickness = (float)value }));
         // Mass is a scale spanning two orders of magnitude, so the slider moves in log space.
         _massSlider = AddPropertySlider(group.Content, "Mass", "How heavy it is, relative to the part's own mass.",
             Mathf.Log(SandboxPartOverrides.MinimumMassScale) / Mathf.Log(10.0f),
@@ -571,8 +582,8 @@ public partial class BuildModeController
         {
             _massReadout!.Text = _bounceReadout!.Text = _gravityReadout!.Text = string.Empty;
             _frozenToggle!.SetPressedNoSignal(false);
-            _strengthSlider!.GetParent<Control>().Visible = false;
-            _intervalSlider!.GetParent<Control>().Visible = false;
+            foreach (HSlider? slider in new[] { _lengthSlider, _thicknessSlider, _strengthSlider, _intervalSlider })
+                slider!.GetParent<Control>().Visible = false;
             return;
         }
 
@@ -587,6 +598,17 @@ public partial class BuildModeController
         _bounceReadout!.Text = $"{bounce * 100.0f:0}%";
         _gravityReadout!.Text = $"×{gravity:0.0}";
         _frozenToggle!.SetPressedNoSignal(overrides.Frozen);
+
+        bool resizable = definition.IsResizable;
+        _lengthSlider!.GetParent<Control>().Visible = resizable;
+        _thicknessSlider!.GetParent<Control>().Visible = resizable;
+        _lengthSlider.Editable = resizable;
+        _thicknessSlider.Editable = resizable;
+        SandboxPartDefinition sized = overrides.SizedDefinition(definition);
+        _lengthSlider.SetValueNoSignal(sized.Width);
+        _thicknessSlider.SetValueNoSignal(sized.Height);
+        _lengthReadout!.Text = $"{sized.Width:0} px";
+        _thicknessReadout!.Text = $"{sized.Height:0} px";
 
         bool piston = definition.Device == SandboxDeviceKind.Piston;
         bool timer = definition.Device == SandboxDeviceKind.Timer;

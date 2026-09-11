@@ -66,6 +66,9 @@ public sealed record SandboxPartDefinition(
 
     public float Radius => Math.Min(Width, Height) * 0.5f;
 
+    /// <summary>Plain material boxes — beams, plates, blocks — can be given their own length and thickness.</summary>
+    public bool IsResizable => Shape == SandboxPartShape.Box && Device == SandboxDeviceKind.None;
+
     public IReadOnlyList<string> Validate()
     {
         var problems = new List<string>();
@@ -107,8 +110,18 @@ public readonly record struct SandboxPartOverrides(
     float? GravityScale = null,
     bool Frozen = false,
     float? PistonPush = null,
-    float? TimerSeconds = null)
+    float? TimerSeconds = null,
+    float? Length = null,
+    float? Thickness = null)
 {
+    /// <summary>A resizable part's length (its unrotated width), in pixels.</summary>
+    public const float MinimumLength = 16.0f;
+    public const float MaximumLength = 384.0f;
+
+    /// <summary>A resizable part's thickness (its unrotated height), in pixels.</summary>
+    public const float MinimumThickness = 4.0f;
+    public const float MaximumThickness = 64.0f;
+
     public const float MinimumMassScale = 0.1f;
     public const float MaximumMassScale = 10.0f;
     public const float MinimumGravityScale = -2.0f;
@@ -127,7 +140,7 @@ public readonly record struct SandboxPartOverrides(
     public static SandboxPartOverrides None => default;
 
     public bool HasAny => MassScale.HasValue || Bounce.HasValue || GravityScale.HasValue || Frozen ||
-        PistonPush.HasValue || TimerSeconds.HasValue;
+        PistonPush.HasValue || TimerSeconds.HasValue || Length.HasValue || Thickness.HasValue;
 
     /// <summary>Clamps every present value into its allowed band; out-of-band input never throws.</summary>
     public SandboxPartOverrides Clamped() => new(
@@ -136,7 +149,31 @@ public readonly record struct SandboxPartOverrides(
         Clamp(GravityScale, MinimumGravityScale, MaximumGravityScale),
         Frozen,
         Clamp(PistonPush, MinimumPistonPush, MaximumPistonPush),
-        Clamp(TimerSeconds, MinimumTimerSeconds, MaximumTimerSeconds));
+        Clamp(TimerSeconds, MinimumTimerSeconds, MaximumTimerSeconds),
+        Clamp(Length, MinimumLength, MaximumLength),
+        Clamp(Thickness, MinimumThickness, MaximumThickness));
+
+    /// <summary>
+    /// The part as this placement makes it: a resizable part at its own length and thickness, its
+    /// mass growing with its area so a long beam is heavier than a short one. Everything else — and
+    /// any part that is not resizable — is the shared definition, which is never mutated.
+    /// </summary>
+    public SandboxPartDefinition SizedDefinition(SandboxPartDefinition definition)
+    {
+        ArgumentNullException.ThrowIfNull(definition);
+        if (!definition.IsResizable)
+            return definition;
+        float width = Clamp(Length, MinimumLength, MaximumLength) ?? definition.Width;
+        float height = Clamp(Thickness, MinimumThickness, MaximumThickness) ?? definition.Height;
+        if (width.Equals(definition.Width) && height.Equals(definition.Height))
+            return definition;
+        return definition with
+        {
+            Width = width,
+            Height = height,
+            Mass = definition.Mass * width * height / (definition.Width * definition.Height),
+        };
+    }
 
     public float PistonPushValue => Clamp(PistonPush, MinimumPistonPush, MaximumPistonPush) ?? DefaultPistonPush;
 

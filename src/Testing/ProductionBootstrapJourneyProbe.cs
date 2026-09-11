@@ -631,7 +631,15 @@ public static class ProductionBootstrapJourneyProbe
 
                     build.Toggle();
                     await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
-                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load })
+                    // A beam made longer and thicker in Properties: its body and weight follow.
+                    SandboxPartId beamPart = PlaceDevice(SandboxPartCatalogue.WoodBeam, FloorAt(0.6f) + new Vector2(0.0f, -60.0f));
+                    SandboxPartBody beamBody = sandbox.BuiltParts[beamPart];
+                    float beamMass = beamBody.Mass;
+                    bool resized = build.SetSelectedPartOverrides(new SandboxPartOverrides(Length: 192.0f, Thickness: 24.0f)) &&
+                        beamBody.Definition.Width == 192.0f && beamBody.Definition.Height == 24.0f &&
+                        Mathf.IsEqualApprox(beamBody.Mass, beamMass * 3.0f) &&
+                        beamBody.ContainsPoint(beamBody.GlobalPosition + new Vector2(90.0f, 0.0f));
+                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, beamPart })
                     {
                         if (build.SelectPlaced(device))
                             build.DeleteSelectedPart();
@@ -641,12 +649,12 @@ public static class ProductionBootstrapJourneyProbe
 
                     buildDevicesWork = triggerHidden && wired && badRejected && pressed && timed && shoved &&
                         running && wiresHiddenInPlay && wiresShownInBuild && cut && stayedLit && stopped &&
-                        cleared && !scenes.IsDirty;
+                        resized && cleared && !scenes.IsDirty;
                     Log.Info("BootstrapJourney",
                         $"build devices: triggerHidden={triggerHidden} wired={wired} badRejected={badRejected} " +
                         $"pressed={pressed} litAfter={litAfter} shoved={shoved} rise={loadRestY - loadHighestY:F1} " +
                         $"running={running} wiresHiddenInPlay={wiresHiddenInPlay} wiresShownInBuild={wiresShownInBuild} " +
-                        $"cut={cut} stayedLit={stayedLit} stopped={stopped} cleared={cleared}");
+                        $"cut={cut} stayedLit={stayedLit} stopped={stopped} resized={resized} cleared={cleared}");
                 }
 
                 if (runtime is { Actors.Count: > 0 } &&

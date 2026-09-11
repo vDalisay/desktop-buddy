@@ -13,6 +13,35 @@ public sealed class SandboxDocumentTests
     private static CanonicalRoomPosition At(float x, float y) => new(x, y);
 
     [Fact]
+    public void BeamsTakeTheirOwnSizeAndWeighWhatTheyMeasure()
+    {
+        SandboxPartCatalogue.TryGet(SandboxPartCatalogue.WoodBeam, out SandboxPartDefinition beam);
+        SandboxPartCatalogue.TryGet(SandboxPartCatalogue.Piston, out SandboxPartDefinition piston);
+
+        SandboxPartDefinition longer = new SandboxPartOverrides(Length: beam.Width * 2.0f, Thickness: beam.Height * 1.5f)
+            .SizedDefinition(beam);
+        Assert.Equal(beam.Width * 2.0f, longer.Width);
+        Assert.Equal(beam.Height * 1.5f, longer.Height);
+        Assert.Equal(beam.Mass * 3.0f, longer.Mass, 3);
+        Assert.Equal(beam.Id, longer.Id);
+
+        // Bounded, never trusted; devices and wheels keep their shape; no setting is the shared part.
+        SandboxPartDefinition wild = new SandboxPartOverrides(Length: 1e9f, Thickness: -3.0f).SizedDefinition(beam);
+        Assert.Equal(SandboxPartOverrides.MaximumLength, wild.Width);
+        Assert.Equal(SandboxPartOverrides.MinimumThickness, wild.Height);
+        Assert.Same(piston, new SandboxPartOverrides(Length: 200.0f).SizedDefinition(piston));
+        Assert.Same(beam, SandboxPartOverrides.None.SizedDefinition(beam));
+
+        var document = new SandboxDocument();
+        SandboxPartId id = document.Add(SandboxPartCatalogue.WoodBeam, At(0.5f, 0.5f),
+            overrides: new SandboxPartOverrides(Length: 200.0f, Thickness: 24.0f)).Part!.PartId;
+        SandboxDocument reloaded = SandboxSavePolicy.Decode(SandboxSavePolicy.Serialize(document)).Document!;
+        Assert.True(reloaded.TryGet(id, out PlacedSandboxPart? saved));
+        Assert.Equal(200.0f, saved!.Overrides.Length);
+        Assert.Equal(24.0f, saved.Overrides.Thickness);
+    }
+
+    [Fact]
     public void ShippedPartsAreValidCoreDefinitions()
     {
         Assert.Equal(9, SandboxPartCatalogue.Definitions.Count);

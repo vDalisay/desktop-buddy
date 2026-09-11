@@ -21,6 +21,7 @@ public partial class SandboxPartVisual3D : Node3D
     private const float WheelDepthLane = 20.0f;
 
     private readonly Dictionary<SandboxPartBody, Node3D> _drawn = [];
+    private readonly Dictionary<SandboxPartBody, SandboxPartDefinition> _modelOf = [];
     private readonly Dictionary<SandboxPartBody, (Vector2 Position, float Rotation)> _previous = [];
     private readonly List<SandboxPartBody> _gone = [];
     private IReadOnlyDictionary<SandboxPartId, SandboxPartBody> _parts = null!;
@@ -64,6 +65,7 @@ public partial class SandboxPartVisual3D : Node3D
         foreach (SandboxPartBody body in _gone)
         {
             _drawn.Remove(body);
+            _modelOf.Remove(body);
             _previous.Remove(body);
         }
 
@@ -72,8 +74,13 @@ public partial class SandboxPartVisual3D : Node3D
         {
             if (!GodotObject.IsInstanceValid(body) || !body.IsConfigured || !body.IsInsideTree())
                 continue;
-            if (!_drawn.TryGetValue(body, out Node3D? node))
-                node = Adopt(body);
+            // A beam resized in Build is a new definition; its model is rebuilt to match.
+            if (_drawn.TryGetValue(body, out Node3D? node) && !ReferenceEquals(_modelOf[body], body.Definition))
+            {
+                node.QueueFree();
+                node = null;
+            }
+            node ??= Adopt(body);
 
             // Blended between physics ticks while the room plays, as Body2DVisual3D does; exact
             // while Build drags a part in a paused room, where no tick will catch the blend up.
@@ -109,6 +116,7 @@ public partial class SandboxPartVisual3D : Node3D
         node.Name = body.Name;
         AddChild(node);
         _drawn[body] = node;
+        _modelOf[body] = body.Definition;
         body.DrawsShape = !_active;
         return node;
     }
