@@ -44,7 +44,7 @@ public sealed class SandboxDocumentTests
     [Fact]
     public void ShippedPartsAreValidCoreDefinitions()
     {
-        Assert.Equal(11, SandboxPartCatalogue.Definitions.Count);
+        Assert.Equal(9, SandboxPartCatalogue.Definitions.Count);
         foreach (SandboxPartDefinition definition in SandboxPartCatalogue.Definitions)
         {
             Assert.Empty(definition.Validate());
@@ -54,17 +54,21 @@ public sealed class SandboxDocumentTests
         }
     }
 
-    /// <summary>Every mount names the gun it holds, and nothing else does.</summary>
+    /// <summary>A mount holds one of the mountable tools, and an unset one holds the first of them.</summary>
     [Fact]
-    public void OnlyWeaponMountsNameAGun()
+    public void AMountHoldsAMountableTool()
     {
-        foreach (SandboxPartDefinition definition in SandboxPartCatalogue.Definitions)
-        {
-            Assert.Equal(
-                definition.Device == SandboxDeviceKind.WeaponTrigger,
-                SandboxPartCatalogue.WeaponOf(definition.Id) is not null);
-        }
-        Assert.Equal(Domain.Tools.ToolId.Shotgun, SandboxPartCatalogue.WeaponOf(SandboxPartCatalogue.ShotgunTrigger));
+        Assert.Equal(SandboxMountableTools.All[0], SandboxMountableTools.ToolOf(null));
+        Assert.Equal(Domain.Tools.ToolId.BaseballBat,
+            SandboxMountableTools.ToolOf(Domain.Content.ContentIds.ToolBaseballBat));
+        Assert.Null(SandboxMountableTools.ToolOf(Domain.Content.ContentIds.ToolMeal));
+        Assert.Null(SandboxMountableTools.ToolOf("not.a.tool"));
+
+        // An unmountable tool never survives into a placement.
+        var overrides = new SandboxPartOverrides(MountedTool: Domain.Content.ContentIds.ToolMeal).Clamped();
+        Assert.Null(overrides.MountedTool);
+        Assert.Equal(Domain.Content.ContentIds.ToolSword,
+            new SandboxPartOverrides(MountedTool: Domain.Content.ContentIds.ToolSword).Clamped().MountedTool);
     }
 
     [Fact]

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Sandbox;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.UI;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -40,6 +42,8 @@ public partial class BuildModeController
     private HSlider? _intervalSlider;
     private Label? _strengthReadout;
     private Label? _intervalReadout;
+    private HBoxContainer? _toolRow;
+    private OptionButton? _toolChoice;
     private CheckBox? _frozenToggle;
     private Button? _duplicateButton;
     private Button? _deleteButton;
@@ -509,6 +513,31 @@ public partial class BuildModeController
         _intervalSlider = AddPropertySlider(sliders, "Every", "timer", "How often the Timer sends a pulse while it runs.",
             SandboxPartOverrides.MinimumTimerSeconds, SandboxPartOverrides.MaximumTimerSeconds,
             0.1, out _intervalReadout, value => WithOverride(o => o with { TimerSeconds = (float)value }));
+        // A Tool Mount's tool: a list, not a slider, because the choice is not a quantity.
+        _toolRow = new HBoxContainer { Name = "BuildModeToolRow" };
+        _toolRow.AddThemeConstantOverride("separation", Win98ThemeFactory.Gap);
+        sliders.AddChild(_toolRow);
+        _toolRow.AddChild(new TextureRect
+        {
+            Texture = Win98Icons.Get("push"),
+            StretchMode = TextureRect.StretchModeEnum.KeepCentered,
+            CustomMinimumSize = new Vector2(20, 20),
+        });
+        _toolRow.AddChild(new Label { Text = "Tool", CustomMinimumSize = new Vector2(70, 0) });
+        _toolChoice = new OptionButton
+        {
+            Name = "BuildModeToolChoice",
+            TooltipText = "What this mount holds. A gun fires; a glove, bat or sword swings.",
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+        };
+        foreach (ToolId tool in SandboxMountableTools.All)
+            _toolChoice.AddItem(ToolDisplayName(tool));
+        _toolChoice.ItemSelected += index => WithOverride(overrides => overrides with
+        {
+            MountedTool = ContentIds.ForTool(SandboxMountableTools.All[(int)index]),
+        });
+        _toolRow.AddChild(_toolChoice);
+
         BuildLinkPropertiesUi(sliders);
 
         _frozenToggle = new CheckBox
@@ -638,6 +667,7 @@ public partial class BuildModeController
         {
             foreach (HSlider? slider in new[] { _lengthSlider, _thicknessSlider, _strengthSlider, _intervalSlider })
                 Row(slider!).Visible = false;
+            _toolRow!.Visible = false;
             bool placed = _selectedLink is not null;
             _duplicateButton!.Disabled = true;
             _unlinkButton!.Disabled = true;
@@ -671,6 +701,7 @@ public partial class BuildModeController
             _frozenToggle!.SetPressedNoSignal(false);
             foreach (HSlider? slider in new[] { _lengthSlider, _thicknessSlider, _strengthSlider, _intervalSlider })
                 slider!.GetParent<Control>().Visible = false;
+            _toolRow!.Visible = false;
             return;
         }
 
@@ -709,5 +740,19 @@ public partial class BuildModeController
         _intervalSlider.SetValueNoSignal(seconds);
         _strengthReadout!.Text = $"{push / SandboxPartOverrides.MaximumPistonPush * 100.0f:0}%";
         _intervalReadout!.Text = $"{seconds:0.0} s";
+
+        _toolRow!.Visible = definition.Device == SandboxDeviceKind.WeaponTrigger;
+        if (_toolRow.Visible)
+        {
+            int held = SandboxMountableTools.ToolOf(overrides.MountedTool) is { } tool
+                ? SandboxMountableTools.All.ToList().IndexOf(tool)
+                : 0;
+            _toolChoice!.Selected = Math.Max(0, held);
+        }
     }
+
+    /// <summary>A tool's name as the mount's list shows it: "Baseball Bat" from <c>tool.baseball_bat</c>.</summary>
+    private static string ToolDisplayName(ToolId tool) =>
+        string.Join(' ', ContentIds.ForTool(tool)["tool.".Length..].Split('_')
+            .Select(word => char.ToUpperInvariant(word[0]) + word[1..]));
 }

@@ -648,8 +648,8 @@ public static class ProductionBootstrapJourneyProbe
                     Vector2 ShelfAt(float x) => bounds.Position + bounds.Size * new Vector2(x, ShelfY) + new Vector2(0.0f, -24.0f);
                     SandboxPartId shelf = PlaceDevice(SandboxPartCatalogue.MetalPlate, bounds.Position + bounds.Size * new Vector2(0.225f, ShelfY));
                     bool shelfBuilt = build.SetSelectedPartOverrides(new SandboxPartOverrides(Frozen: true, Length: 384.0f, Thickness: 12.0f));
-                    // NF-4D: every weapon mount is in the palette, whether or not the player has
-                    // bought that gun (owner's call 2026-09-12), and it fires either way.
+                    // NF-4D: one Tool Mount, holding whichever tool it is given and using it whether
+                    // or not the player has bought that tool (owner's calls 2026-09-12).
                     bool mountOffered = !sandbox.Economy.IsUnlocked(ContentIds.ToolPistol) &&
                         build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
                     SandboxPartId button = PlaceDevice(SandboxPartCatalogue.Button, ShelfAt(0.19f));
@@ -658,13 +658,14 @@ public static class ProductionBootstrapJourneyProbe
                     // A Metal Block resting on a Piston's head, for Button -> Piston.
                     SandboxPartId piston = PlaceDevice(SandboxPartCatalogue.Piston, ShelfAt(0.12f));
                     SandboxPartId load = PlaceDevice(SandboxPartCatalogue.MetalBlock, ShelfAt(0.12f) + new Vector2(0.0f, -40.0f));
-                    // The pistol mount, nailed down and turned to shoot at the ceiling, so its rounds
-                    // cannot cross the room and hit the cast.
-                    // It stands off the shelf line so its wire does not run along the Timer's.
+                    // A mount holding a pistol, nailed down and turned to shoot at the ceiling, so its
+                    // rounds cannot cross the room and hit the cast. It stands off the shelf line so
+                    // its wire does not run along the Timer's.
                     Vector2 mountAt = ShelfAt(0.40f) + new Vector2(0.0f, -40.0f);
                     SandboxPartId mount = PlaceDevice(SandboxPartCatalogue.WeaponTrigger, mountAt);
                     bool mountAimed = build.RotateSelectedPart(-90.0f) &&
-                        build.SetSelectedPartOverrides(new SandboxPartOverrides(Frozen: true));
+                        build.SetSelectedPartOverrides(new SandboxPartOverrides(
+                            Frozen: true, MountedTool: ContentIds.ToolPistol));
                     bool wired = build.WireBetween(ShelfAt(0.19f), ShelfAt(0.26f)).Succeeded &&
                         build.WireBetween(ShelfAt(0.26f), ShelfAt(0.33f)).Succeeded &&
                         build.WireBetween(ShelfAt(0.19f), ShelfAt(0.12f)).Succeeded &&
@@ -701,6 +702,7 @@ public static class ProductionBootstrapJourneyProbe
                     // the barrel, and the mount kicked.
                     bool mountFired = sandbox.WeaponMountShots == mountShotsBefore + 1 &&
                         sandbox.CursorGuns.ProjectilesLaunched > roundsBefore;
+
                     // The press switched the Timer on; its first beat is one interval (default one
                     // second) later: at 120 Hz the lamp lights a little after 120 ticks.
                     bool timed = litAfter >= Engine.PhysicsTicksPerSecond - 5 &&
@@ -742,6 +744,34 @@ public static class ProductionBootstrapJourneyProbe
                     bool pressedByWeight = sandbox.ButtonContactPresses == contactPressesBefore + 1 &&
                         buttonBody.ButtonPress > 0.5f;
 
+                    // The same mount holding a bat swings it instead, and the bat knocks a block away.
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    build.SelectPlaced(mount);
+                    bool batHeld = build.SetSelectedPartOverrides(new SandboxPartOverrides(
+                        Frozen: true, MountedTool: ContentIds.ToolBaseballBat));
+                    SandboxPartId target = PlaceDevice(SandboxPartCatalogue.MetalBlock, mountAt + new Vector2(38.0f, 0.0f));
+                    await build.LeaveAsync();
+                    SandboxPartBody targetBody = sandbox.BuiltParts[target];
+                    Vector2 targetRest = targetBody.GlobalPosition;
+                    int swingsBefore = sandbox.WeaponMountShots;
+                    build.PressButtonAt(sandbox.BuiltParts[button].GlobalPosition);
+                    float knocked = 0.0f;
+                    float peakSpin = 0.0f;
+                    for (int frame = 0; frame < Engine.PhysicsTicksPerSecond * 2; frame++)
+                    {
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                        knocked = Mathf.Max(knocked, Mathf.Abs(targetBody.GlobalPosition.X - targetRest.X));
+                        if (sandbox.FindChild("mounted-baseball-bat", recursive: true, owned: false) is RigidBody2D spinning)
+                            peakSpin = Mathf.Max(peakSpin, Mathf.Abs(spinning.AngularVelocity));
+                    }
+                    // A struck Metal Block is shoved about ten pixels: enough to prove the swing
+                    // really connected (nothing at all moves it when it does not), not a feel target.
+                    bool mountSwung = batHeld && sandbox.WeaponMountShots > swingsBefore && knocked > 6.0f;
+                    string armState = sandbox.FindChild("mounted-baseball-bat", recursive: true, owned: false) is RigidBody2D bat
+                        ? $"at={bat.GlobalPosition} spin={bat.AngularVelocity:F1}" : "no arm";
+                    Log.Info("BootstrapJourney", $"mounted bat: held={batHeld} swings={sandbox.WeaponMountShots - swingsBefore} knocked={knocked:F1} peakSpin={peakSpin:F1} mount={sandbox.BuiltParts.GetValueOrDefault(mount)?.GlobalPosition} block={targetRest} {armState}");
+
                     build.Toggle();
                     await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
                     // A beam made longer and thicker in Properties: its body and weight follow.
@@ -752,7 +782,7 @@ public static class ProductionBootstrapJourneyProbe
                         beamBody.Definition.Width == 192.0f && beamBody.Definition.Height == 24.0f &&
                         Mathf.IsEqualApprox(beamBody.Mass, beamMass * 3.0f) &&
                         beamBody.ContainsPoint(beamBody.GlobalPosition + new Vector2(90.0f, 0.0f));
-                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, mount, beamPart, weight, shelf })
+                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, mount, target, beamPart, weight, shelf })
                     {
                         if (build.SelectPlaced(device))
                             build.DeleteSelectedPart();
@@ -760,11 +790,11 @@ public static class ProductionBootstrapJourneyProbe
                     bool cleared = scenes.ActiveSandbox.Wires.Count == 0 && scenes.ActiveSandbox.Count == 1;
                     await build.LeaveAsync();
 
-                    buildDevicesWork = shelfBuilt && mountOffered && mountAimed && mountFired && wired && badRejected && pressed && timed && shoved &&
+                    buildDevicesWork = shelfBuilt && mountOffered && mountAimed && mountFired && mountSwung && wired && badRejected && pressed && timed && shoved &&
                         running && wiresHiddenInPlay && wiresShownInBuild && cut && stayedLit && stopped &&
                         pressedByWeight && resized && cleared && !scenes.IsDirty;
                     Log.Info("BootstrapJourney",
-                        $"build devices: mountOffered={mountOffered} mountAimed={mountAimed} mountFired={mountFired} wired={wired} badRejected={badRejected} " +
+                        $"build devices: mountOffered={mountOffered} mountAimed={mountAimed} mountFired={mountFired} mountSwung={mountSwung} wired={wired} badRejected={badRejected} " +
                         $"pressed={pressed} litAfter={litAfter} shoved={shoved} rise={loadRestY - loadHighestY:F1} " +
                         $"running={running} wiresHiddenInPlay={wiresHiddenInPlay} wiresShownInBuild={wiresShownInBuild} " +
                         $"cut={cut} stayedLit={stayedLit} stopped={stopped} pressedByWeight={pressedByWeight} contactPresses={sandbox.ButtonContactPresses} " +

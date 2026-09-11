@@ -1,6 +1,7 @@
 using System.Collections.Generic;
-using DesktopBuddy.Domain.Content;
+using System.Linq;
 using DesktopBuddy.Domain.Sandbox;
+using DesktopBuddy.Domain.Tools;
 using DesktopBuddy.Sandbox;
 using Godot;
 
@@ -18,6 +19,12 @@ public partial class SandboxRoot
 
     private const int MaximumPistonTargets = 32;
     private const int MaximumButtonContacts = 8;
+
+    /// <summary>How far out of the mount its swung tool hangs, and how fast a pulse whips it round.</summary>
+    private const float MountedToolReach = 34.0f;
+    private const float MountedSwingSpeed = 26.0f;
+
+    private readonly Dictionary<SandboxPartId, MountedTool> _mountedTools = [];
 
     private readonly List<SandboxDeviceCommand> _deviceCommands = [];
 
@@ -146,29 +153,104 @@ public partial class SandboxRoot
                 body.AdvanceDevice();
         }
 
+        DropStrandedMountedTools();
+
         // Wires follow the devices they join, and devices move.
         if (DocumentWires.Count > 0)
             _linkView?.QueueRedraw();
     }
 
     /// <summary>
-    /// A weapon mount pulls its gun's trigger (NF-4D): one shot out of the barrel, along the way the
-    /// part is turned. A mount fires whether or not the player owns that gun (owner's call
-    /// 2026-09-12); what bounds it is its own recoil, the fastest it can be made to fire, so a quick
-    /// Timer cannot turn a pistol into a machine gun.
+    /// A Tool Mount uses the tool it holds (NF-4D, owner 2026-09-12: one mount, any tool). A gun
+    /// fires along the way the part is turned; a swung tool — glove, bat, sword — is a real tool
+    /// body hinged to the mount, and the pulse whips it round, so what it hits and how much it hurts
+    /// come from the same physics and the same pipeline as the tool in the player's hand. The
+    /// mount's own recoil is the fastest it can be used, so a quick Timer cannot make a machine gun
+    /// of a pistol or a blender of a bat.
     /// </summary>
     private void FireWeaponMount(SandboxPartBody mount)
     {
-        if (SandboxPartCatalogue.WeaponOf(mount.Definition.Id) is not { } weapon ||
-            !GodotObject.IsInstanceValid(CursorGuns) ||
-            !mount.StartWeaponShot())
+        if (SandboxMountableTools.ToolOf(mount.MountedTool) is not { } tool || !mount.StartWeaponShot())
+            return;
+
+        if (SandboxMountableTools.IsGun(tool))
         {
+            if (!GodotObject.IsInstanceValid(CursorGuns))
+                return;
+            Vector2 forward = Vector2.Right.Rotated(mount.GlobalRotation);
+            Vector2 barrel = mount.GlobalPosition + forward * (mount.Definition.Width * 0.5f);
+            if (CursorGuns.FireMounted(tool, barrel, forward))
+                WeaponMountShots++;
             return;
         }
-        Vector2 forward = Vector2.Right.Rotated(mount.GlobalRotation);
-        Vector2 barrel = mount.GlobalPosition + forward * (mount.Definition.Width * 0.5f);
-        if (CursorGuns.FireMounted(weapon, barrel, forward))
+        if (SwingArmOf(mount, tool) is { } arm)
+        {
+            // A whip round the pin. Spin alone would only turn the tool on the spot and fight the
+            // pin; the matching tangential speed is what actually carries it round the mount.
+            arm.Sleeping = false;
+            Vector2 fromPin = arm.GlobalPosition - mount.GlobalPosition;
+            arm.AngularVelocity = MountedSwingSpeed;
+            arm.LinearVelocity = new Vector2(-fromPin.Y, fromPin.X) * MountedSwingSpeed;
             WeaponMountShots++;
+        }
+    }
+
+    /// <summary>
+    /// The tool body a mount swings, hinged to it, made the first time that mount is used and kept
+    /// while it stands. A mount whose tool changed drops the old body and holds the new one.
+    /// </summary>
+    private RigidBody2D? SwingArmOf(SandboxPartBody mount, ToolId tool)
+    {
+        if (_mountedTools.TryGetValue(mount.PartId, out MountedTool held))
+        {
+            if (held.Tool == tool && GodotObject.IsInstanceValid(held.Body))
+                return held.Body;
+            if (GodotObject.IsInstanceValid(held.Body))
+                held.Body!.QueueFree();
+            if (GodotObject.IsInstanceValid(held.Joint))
+                held.Joint!.QueueFree();
+            _mountedTools.Remove(mount.PartId);
+        }
+        if (!GodotObject.IsInstanceValid(CursorTools) || CursorTools.CreateHeldTool(tool, this) is not { } body)
+            return null;
+
+        // Hung from the mount's face, so it swings clear of the mount itself.
+        body.GlobalPosition = mount.GlobalPosition + Vector2.Right.Rotated(mount.GlobalRotation) * MountedToolReach;
+        var joint = new PinJoint2D { Name = $"MountPin_{mount.PartId}" };
+        AddChild(joint);
+        // Every one of these needs the joint in the tree first: a PinJoint2D binds its bodies when
+        // its paths are set, and a path set before it is inside the tree resolves to nothing.
+        joint.GlobalPosition = mount.GlobalPosition;
+        joint.NodeA = joint.GetPathTo(mount);
+        joint.NodeB = joint.GetPathTo(body);
+        _mountedTools[mount.PartId] = new MountedTool(tool, body, joint);
+        return body;
+    }
+
+    private readonly record struct MountedTool(ToolId Tool, RigidBody2D? Body, PinJoint2D? Joint);
+
+    /// <summary>
+    /// A mount that has been deleted, or carried off by a Scene switch, takes its tool with it: the
+    /// hinged body would otherwise be left lying in the room with nothing holding it.
+    /// </summary>
+    private void DropStrandedMountedTools()
+    {
+        if (_mountedTools.Count == 0)
+            return;
+        foreach (SandboxPartId partId in _mountedTools.Keys.ToList())
+        {
+            if (_builtParts.TryGetValue(partId, out SandboxPartBody? mount) && GodotObject.IsInstanceValid(mount) &&
+                SandboxMountableTools.ToolOf(mount.MountedTool) == _mountedTools[partId].Tool)
+            {
+                continue;
+            }
+            MountedTool held = _mountedTools[partId];
+            if (GodotObject.IsInstanceValid(held.Joint))
+                held.Joint!.QueueFree();
+            if (GodotObject.IsInstanceValid(held.Body))
+                held.Body!.QueueFree();
+            _mountedTools.Remove(partId);
+        }
     }
 
     /// <summary>

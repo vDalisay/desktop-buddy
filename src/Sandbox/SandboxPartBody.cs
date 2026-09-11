@@ -220,6 +220,7 @@ public partial class SandboxPartBody : RigidBody2D
             if (_shape?.Shape is RectangleShape2D box)
                 box.Size = new Vector2(sized.Width, sized.Height);
         }
+        MountedTool = clamped.MountedTool;
         Mass = clamped.MassFor(_definition);
         GravityScale = clamped.GravityScaleValue;
         PistonPush = clamped.PistonPushValue;
@@ -241,6 +242,9 @@ public partial class SandboxPartBody : RigidBody2D
         }
         QueueRedraw();
     }
+
+    /// <summary>The tool a Tool Mount holds, as a content ID, or null while it holds none.</summary>
+    public string? MountedTool { get; private set; }
 
     /// <summary>A Piston's push speed, from its placement's setting.</summary>
     public float PistonPush { get; private set; } = SandboxPartOverrides.DefaultPistonPush;
