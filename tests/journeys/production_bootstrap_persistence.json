@@ -246,6 +246,7 @@
         { "predicate": "build_preview_right_of_list", "equals": true },
         { "predicate": "build_surface_supports_buddy", "equals": true },
         { "predicate": "build_edits_apply", "equals": true },
+        { "predicate": "build_links_work", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
     },

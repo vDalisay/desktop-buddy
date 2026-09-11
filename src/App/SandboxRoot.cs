@@ -364,6 +364,7 @@ public partial class SandboxRoot : Node2D
         Boundaries.PhysicsTick();
         Grab.PhysicsTick(delta);
         Ropes.PhysicsTick(delta);
+        TickBuiltLinks(delta);
         Launcher.PhysicsTick();
         GrabState grab = Grab.CurrentGrab;
         Objects.PhysicsTick(grab, Boundaries.InnerBounds);

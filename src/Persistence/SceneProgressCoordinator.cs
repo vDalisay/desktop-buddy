@@ -421,11 +421,11 @@ public sealed partial class SceneProgressCoordinator
             .ToArray();
         SceneDocument[] scenes = _scenes.Scenes.ToArray();
         SceneId activeSceneId = _scenes.ActiveSceneId;
-        // Parts are value-copied for the same reason Buddy states are: the commit must not observe
+        // Rooms are value-copied for the same reason Buddy states are: the commit must not observe
         // a room the player keeps editing while the write is in flight.
         var sandboxCopies = new Dictionary<SceneId, SandboxDocument>(_sandboxes.Count);
         foreach ((SceneId sceneId, SandboxDocument document) in _sandboxes)
-            sandboxCopies[sceneId] = new SandboxDocument(document.Parts, document.Revision);
+            sandboxCopies[sceneId] = document.Snapshot();
         long sandboxRevision = SandboxRevision;
 
         var playerCopy = new PlayerProgressState(Player.CashPerPain, playerSnapshot);

@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.UI;
@@ -21,6 +23,7 @@ public partial class BuildModeController
     private SandboxPartId? _selectedPart;
     private bool _dragging;
     private Vector2 _dragOffset;
+    private readonly List<(SandboxPartBody Body, Vector2 Offset)> _dragGroup = [];
 
     private Label? _propertiesTitle;
     private HSlider? _massSlider;
@@ -33,6 +36,7 @@ public partial class BuildModeController
     private Button? _duplicateButton;
     private Button? _deleteButton;
     private Button? _resetButton;
+    private Button? _unlinkButton;
 
     /// <summary>The part being edited in the room, if any.</summary>
     public SandboxPartId? SelectedPlacedPart => _selectedPart;
@@ -49,21 +53,39 @@ public partial class BuildModeController
         return true;
     }
 
+    /// <summary>Selects one placed part by identity; false if it is not standing in the room.</summary>
+    public bool SelectPlaced(SandboxPartId partId)
+    {
+        SelectPlacedPart(partId);
+        return _selectedPart == partId;
+    }
+
     /// <summary>Moves the selected part so its centre sits at <paramref name="world"/>, and saves it.</summary>
     public bool MoveSelectedPartTo(Vector2 world)
     {
         if (!TrySelectedBody(out SandboxPartBody body))
             return false;
-        body.GlobalPosition = ClampToRoom(world);
-        return CommitSelectedTransform(body);
+        Vector2 delta = ClampToRoom(world) - body.GlobalPosition;
+        List<SandboxPartBody> group = LinkedGroup();
+        foreach (SandboxPartBody member in group)
+            member.GlobalPosition += delta;
+        return CommitGroupTransform(group);
     }
 
     public bool RotateSelectedPart(float degrees)
     {
         if (!TrySelectedBody(out SandboxPartBody body))
             return false;
-        body.RotationDegrees = PlacedSandboxPart.NormalizeRotation(body.RotationDegrees + degrees);
-        bool saved = CommitSelectedTransform(body);
+        // A hinged or welded assembly turns as one, about the part the player is holding.
+        Vector2 centre = body.GlobalPosition;
+        float radians = Mathf.DegToRad(degrees);
+        List<SandboxPartBody> group = LinkedGroup();
+        foreach (SandboxPartBody member in group)
+        {
+            member.GlobalPosition = centre + (member.GlobalPosition - centre).Rotated(radians);
+            member.RotationDegrees = PlacedSandboxPart.NormalizeRotation(member.RotationDegrees + degrees);
+        }
+        bool saved = CommitGroupTransform(group);
         if (saved)
             SetStatus($"Rotated to {body.RotationDegrees:0}°.");
         return saved;
@@ -161,9 +183,17 @@ public partial class BuildModeController
         if (@event is InputEventMouseMotion && _dragging)
         {
             if (TrySelectedBody(out SandboxPartBody dragged))
+            {
                 dragged.GlobalPosition = ClampToRoom(_sandbox.GetGlobalMousePosition() + _dragOffset);
+                foreach ((SandboxPartBody member, Vector2 offset) in _dragGroup)
+                    member.GlobalPosition = dragged.GlobalPosition + offset;
+                _sandbox.RedrawBuiltLinks();
+            }
             return true;
         }
+
+        if (_tool != BuildTool.Parts && HandleLinkInput(@event))
+            return true;
 
         if (@event is not InputEventMouseButton button)
             return false;
@@ -191,20 +221,30 @@ public partial class BuildModeController
 
         if (button.ButtonIndex == MouseButton.Right)
         {
+            // A pin or rope sits on top of the parts it joins, so it is what a right-click means.
+            if (RemoveLinkAt(world))
+                return true;
             if (_sandbox.TryPickBuiltPart(world, out _))
                 RemovePartAt(world);
             else
                 SelectPlacedPart(null);
             return true;
         }
-        if (button.ButtonIndex != MouseButton.Left)
+        if (button.ButtonIndex != MouseButton.Left || _tool != BuildTool.Parts)
             return false;
 
-        // A part under the pointer is picked up; empty space gets the palette's part.
+        // A part under the pointer is picked up with everything hinged or welded to it; empty
+        // space gets the palette's part.
         if (SelectPlacedPartAt(world) && TrySelectedBody(out SandboxPartBody picked))
         {
             _dragging = true;
             _dragOffset = picked.GlobalPosition - world;
+            _dragGroup.Clear();
+            foreach (SandboxPartBody member in LinkedGroup())
+            {
+                if (member != picked)
+                    _dragGroup.Add((member, member.GlobalPosition - picked.GlobalPosition));
+            }
             SetStatus("Drag to move. Wheel or Q/E rotates, Ctrl+D duplicates, F freezes, Delete removes.");
             return true;
         }
@@ -214,6 +254,32 @@ public partial class BuildModeController
 
     private bool HandleEditKey(InputEventKey key)
     {
+        BuildTool? chosen = key.Keycode switch
+        {
+            Key.Key1 => BuildTool.Parts,
+            Key.Key2 => BuildTool.Rope,
+            Key.Key3 => BuildTool.Hinge,
+            Key.Key4 => BuildTool.Weld,
+            _ => null,
+        };
+        if (chosen is { } tool)
+        {
+            SetTool(tool);
+            return true;
+        }
+        // Escape backs out one layer at a time: a half-made rope, then the link tool, then the
+        // selection, and only then the Build workspace itself.
+        if (key.Keycode == Key.Escape && _ropeStart is not null)
+        {
+            CancelPendingLink();
+            SetStatus("Rope cancelled.");
+            return true;
+        }
+        if (key.Keycode == Key.Escape && _tool != BuildTool.Parts)
+        {
+            SetTool(BuildTool.Parts);
+            return true;
+        }
         if (key.Keycode == Key.Escape && _selectedPart is not null)
         {
             SelectPlacedPart(null);
@@ -249,22 +315,74 @@ public partial class BuildModeController
     private void FinishDrag()
     {
         _dragging = false;
-        if (TrySelectedBody(out SandboxPartBody body) && CommitSelectedTransform(body))
-            SetStatus("Moved.");
+        List<SandboxPartBody> group = LinkedGroup();
+        _dragGroup.Clear();
+        if (group.Count > 0 && CommitGroupTransform(group))
+            SetStatus(group.Count > 1 ? $"Moved {group.Count} linked parts." : "Moved.");
     }
 
-    /// <summary>Saves the body's current centre and rotation as the selected part's resting place.</summary>
-    private bool CommitSelectedTransform(SandboxPartBody body)
+    /// <summary>
+    /// The selected part and every part joined to it through hinges and welds: the rigid assembly
+    /// that has to move together or its joints would tear on the next Play. Ropes are slack and
+    /// do not bind a group.
+    /// </summary>
+    private List<SandboxPartBody> LinkedGroup()
     {
-        if (_selectedPart is not { } partId)
-            return false;
-        SandboxEditResult moved = _scenes.ActiveSandbox.Move(
-            partId, ToCanonical(body.GlobalPosition), body.RotationDegrees);
-        if (!moved.Succeeded && moved.Status != SandboxEditStatus.NoChange)
+        var members = new List<SandboxPartBody>();
+        if (_selectedPart is not { } root)
+            return members;
+
+        var seen = new HashSet<SandboxPartId> { root };
+        var queue = new Queue<SandboxPartId>();
+        queue.Enqueue(root);
+        while (queue.Count > 0)
         {
-            SetStatus($"Could not move the part ({moved.Status}).");
-            return false;
+            SandboxPartId current = queue.Dequeue();
+            if (_sandbox.BuiltParts.TryGetValue(current, out SandboxPartBody? body) && GodotObject.IsInstanceValid(body))
+                members.Add(body!);
+            foreach (SandboxLink link in _scenes.ActiveSandbox.Links)
+            {
+                if (link.Kind == SandboxLinkKind.Rope || link.B.IsWorld || !link.Touches(current))
+                    continue;
+                SandboxPartId other = link.A.PartId == current ? link.B.PartId : link.A.PartId;
+                if (seen.Add(other))
+                    queue.Enqueue(other);
+            }
         }
+        return members;
+    }
+
+    /// <summary>
+    /// Saves where every part of a moved group now rests, carries room hinges along with the part
+    /// they pin, and rebuilds the live joints from those resting places.
+    /// </summary>
+    private bool CommitGroupTransform(List<SandboxPartBody> group)
+    {
+        SandboxDocument document = _scenes.ActiveSandbox;
+        var moved = new HashSet<SandboxPartId>();
+        foreach (SandboxPartBody body in group)
+        {
+            SandboxEditResult result = document.Move(body.PartId, ToCanonical(body.GlobalPosition), body.RotationDegrees);
+            if (!result.Succeeded && result.Status != SandboxEditStatus.NoChange)
+            {
+                SetStatus($"Could not move the part ({result.Status}).");
+                return false;
+            }
+            moved.Add(body.PartId);
+        }
+
+        foreach (SandboxLink link in document.Links.ToList())
+        {
+            if (link.Kind != SandboxLinkKind.Hinge || !link.B.IsWorld || !moved.Contains(link.A.PartId) ||
+                _sandbox.LinkEndWorld(link.A) is not { } pivot)
+            {
+                continue;
+            }
+            CanonicalRoomPosition anchor = ToCanonical(pivot);
+            document.ReseatLink(link.LinkId, link.A, SandboxLinkEnd.World(anchor.X, anchor.Y), 0.0f);
+        }
+        if (document.Links.Count > 0)
+            _sandbox.RebuildBuiltLinks();
         return true;
     }
 
@@ -355,6 +473,17 @@ public partial class BuildModeController
         _resetButton = Win98Dialog.Action(actions, "Reset", () => SetSelectedPartOverrides(SandboxPartOverrides.None));
         _resetButton.Name = "BuildModeResetButton";
         _resetButton.TooltipText = "Back to the part's own mass, bounce and gravity, unfrozen.";
+        _unlinkButton = Win98Dialog.Action(actions, "Unlink", () =>
+        {
+            if (_selectedPart is { } partId && _scenes.ActiveSandbox.RemoveLinksOf(partId) > 0)
+            {
+                _sandbox.RebuildBuiltLinks();
+                SetStatus("Removed every link on this part.");
+                RefreshProperties();
+            }
+        });
+        _unlinkButton.Name = "BuildModeUnlinkButton";
+        _unlinkButton.TooltipText = "Remove every rope, hinge and weld on this part.";
 
         RefreshProperties();
     }
@@ -412,11 +541,13 @@ public partial class BuildModeController
         if (hasPart && !SandboxPartCatalogue.TryGet(part.DefinitionId, out definition))
             hasPart = false;
 
+        int links = hasPart ? _scenes.ActiveSandbox.Links.Count(link => link.Touches(part.PartId)) : 0;
         _propertiesTitle.Text = hasPart
-            ? $"{definition!.DisplayName}, turned {part.RotationDegrees:0}°"
+            ? $"{definition!.DisplayName}, turned {part.RotationDegrees:0}°" +
+              (links > 0 ? $", {links} link{(links == 1 ? string.Empty : "s")}" : string.Empty)
             : "Click a part in the room to select it.";
         foreach (Control? control in new Control?[]
-                     { _massSlider, _bounceSlider, _gravitySlider, _frozenToggle, _duplicateButton, _deleteButton, _resetButton })
+                     { _massSlider, _bounceSlider, _gravitySlider, _frozenToggle, _duplicateButton, _deleteButton, _resetButton, _unlinkButton })
         {
             switch (control)
             {

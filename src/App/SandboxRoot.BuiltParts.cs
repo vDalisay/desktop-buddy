@@ -30,10 +30,13 @@ public partial class SandboxRoot
         SandboxDocument document = scenes.ActiveSandbox;
         foreach (PlacedSandboxPart part in document.Parts)
             SpawnBuiltPart(part);
+        RebuildBuiltLinks();
     }
 
     private void ClearBuiltParts()
     {
+        // Joints first: a joint naming a freed body is a constraint on nothing.
+        ClearBuiltLinks();
         foreach (SandboxPartBody body in _builtParts.Values)
         {
             if (!GodotObject.IsInstanceValid(body))
@@ -48,8 +51,15 @@ public partial class SandboxRoot
     /// <summary>Places one just-built part into the live room.</summary>
     public void PlaceBuiltPart(PlacedSandboxPart part) => SpawnBuiltPart(part);
 
-    /// <summary>Drops the body of a part the player removed. The document owns the removal itself.</summary>
-    public void RemoveBuiltPartBody(SandboxPartId partId) => RemoveBuiltPart(partId);
+    /// <summary>
+    /// Drops the body of a part the player removed. The document owns the removal itself and has
+    /// already dropped the part's links, so the live links are rebuilt from it.
+    /// </summary>
+    public void RemoveBuiltPartBody(SandboxPartId partId)
+    {
+        RemoveBuiltPart(partId);
+        RebuildBuiltLinks();
+    }
 
     /// <summary>
     /// The part under a world point, topmost first, so removing picks what the player sees rather
@@ -71,6 +81,22 @@ public partial class SandboxRoot
             return true;
         }
         return false;
+    }
+
+    /// <summary>Every part under a world point, topmost first. Hinges and welds join the top two.</summary>
+    public List<SandboxPartId> PickBuiltPartsAt(Vector2 world)
+    {
+        var hits = new List<SandboxPartId>();
+        for (int index = _builtPartOrder.Count - 1; index >= 0; index--)
+        {
+            SandboxPartId candidate = _builtPartOrder[index];
+            if (_builtParts.TryGetValue(candidate, out SandboxPartBody? body) &&
+                GodotObject.IsInstanceValid(body) && body!.ContainsPoint(world))
+            {
+                hits.Add(candidate);
+            }
+        }
+        return hits;
     }
 
     private SandboxPartBody? SpawnBuiltPart(PlacedSandboxPart part)

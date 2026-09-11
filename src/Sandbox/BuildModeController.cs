@@ -116,6 +116,7 @@ public partial class BuildModeController : Node
         if (_dragging)
             FinishDrag();
         SelectPlacedPart(null);
+        SetTool(BuildTool.Parts);
         IsActive = false;
         // The panel, never the layer: a detached palette lives in its own desktop window, and
         // Win98PinnablePanel mirrors that window's visibility from the panel it follows.
@@ -265,7 +266,7 @@ public partial class BuildModeController : Node
 
         _layer = new CanvasLayer { Name = "BuildModeLayer", Layer = 90 };
         _panel = Win98Dialog.Create(
-            "BuildModePalette", "Build", new Vector2(460, 540), out VBoxContainer body,
+            "BuildModePalette", "Build", new Vector2(480, 580), out VBoxContainer body,
             () => _ = LeaveAsync(), draggable: false);
         _panel.Visible = true;
         // Opens centred, like every other shell workspace (owner instruction 2026-09-10). Growing
@@ -282,6 +283,8 @@ public partial class BuildModeController : Node
             _selectedIndex = (int)index;
             ShowSelectedPart();
         };
+
+        BuildToolRow(body);
 
         var browser = new HBoxContainer { Name = "BuildModeBrowser" };
         browser.AddThemeConstantOverride("separation", 10);
@@ -330,7 +333,7 @@ public partial class BuildModeController : Node
         // can be pulled out onto the desktop and pinned back rather than being stuck in the room.
         _panelPin = new Win98PinnablePanel { Name = "BuildModePinController" };
         AddChild(_panelPin);
-        _panelPin.Configure(_panel, new Vector2I(480, 580), "BuildModeWindow");
+        _panelPin.Configure(_panel, new Vector2I(500, 620), "BuildModeWindow");
     }
 
 

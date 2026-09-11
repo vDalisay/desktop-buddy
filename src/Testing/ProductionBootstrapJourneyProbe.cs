@@ -10,6 +10,7 @@ using DesktopBuddy.Buddy.Physics;
 using DesktopBuddy.App;
 using DesktopBuddy.Diagnostics;
 using DesktopBuddy.Domain.Automation;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.Sandbox;
@@ -330,6 +331,7 @@ public static class ProductionBootstrapJourneyProbe
             bool buildPreviewRightOfList = !buildRoom;
             bool buildSurfaceSupportsBuddy = !buildRoom;
             bool buildEditsApply = !buildRoom;
+            bool buildLinksWork = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
             if (buildRoom)
@@ -410,6 +412,92 @@ public static class ProductionBootstrapJourneyProbe
                     !sandbox.Lifecycle.PauseCoordinator.Contains(GameplayPauseReason.BuildMode) &&
                     !scenes.IsDirty;
 
+                // NF-3 links, played for real: a two-wheel hinged cart, a beam hanging on a rope,
+                // and a rope from the kept beam to the room that must survive the restart.
+                {
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    SandboxPartId keptBeamId = scenes.ActiveSandbox.Parts[0].PartId;
+                    Vector2 cartCentre = bounds.Position + bounds.Size * new Vector2(0.55f, 0.82f);
+                    Vector2 hangCentre = bounds.Position + bounds.Size * new Vector2(0.5f, 0.3f);
+
+                    SandboxPartId Place(SemanticDefinitionId definition, Vector2 at)
+                    {
+                        build.SelectPart(definition);
+                        build.PlaceSelectedPartAt(at);
+                        return build.SelectedPlacedPart ?? default;
+                    }
+
+                    SandboxPartId cartBeam = Place(SandboxPartCatalogue.WoodBeam, cartCentre);
+                    SandboxPartId leftWheel = Place(SandboxPartCatalogue.Wheel, cartCentre + new Vector2(-38.0f, 10.0f));
+                    SandboxPartId rightWheel = Place(SandboxPartCatalogue.Wheel, cartCentre + new Vector2(38.0f, 10.0f));
+                    bool leftAxle = build.HingeAt(cartCentre + new Vector2(-38.0f, 4.0f)).Succeeded;
+                    bool rightAxle = build.HingeAt(cartCentre + new Vector2(38.0f, 4.0f)).Succeeded;
+                    SandboxPartId hanging = Place(SandboxPartCatalogue.WoodBeam, hangCentre);
+                    Vector2 hangPoint = hangCentre + new Vector2(40.0f, 0.0f);
+                    Vector2 hangAnchor = hangPoint + new Vector2(0.0f, -50.0f);
+                    bool hangRope = build.RopeBetween(hangPoint, hangAnchor).Succeeded;
+                    Vector2 keptCentre = sandbox.BuiltParts[keptBeamId].GlobalPosition;
+                    bool keptRope = build.RopeBetween(keptCentre, keptCentre + new Vector2(0.0f, -60.0f)).Succeeded;
+                    int linksBefore = scenes.ActiveSandbox.Links.Count;
+                    bool weldRejected = !build.WeldAt(bounds.Position + new Vector2(4.0f, 4.0f)).Succeeded &&
+                        scenes.ActiveSandbox.Links.Count == linksBefore;
+                    bool created = leftAxle && rightAxle && hangRope && keptRope && weldRejected &&
+                        linksBefore == 4 && sandbox.BuiltLinkCount == 4;
+
+                    // Play: the cart gets a shove and the hanging beam falls onto its rope.
+                    await build.LeaveAsync();
+                    SandboxPartBody cart = sandbox.BuiltParts[cartBeam];
+                    SandboxPartBody wheel = sandbox.BuiltParts[leftWheel];
+                    SandboxPartBody hung = sandbox.BuiltParts[hanging];
+                    SandboxLink axle = scenes.ActiveSandbox.Links.First(link =>
+                        link.Kind == SandboxLinkKind.Hinge && link.Touches(leftWheel));
+                    SandboxLink hangLink = scenes.ActiveSandbox.Links.First(link => link.Touches(hanging));
+                    Vector2 cartStart = cart.GlobalPosition;
+                    // Summed per frame: a body's angle wraps at pi, so start-to-end says nothing
+                    // about a wheel that has rolled several turns.
+                    float spun = 0.0f;
+                    float lastAngle = wheel.Rotation;
+                    for (int frame = 0; frame < 20; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    cart.ApplyCentralImpulse(new Vector2(cart.Mass * 260.0f, 0.0f));
+                    float worstSeparation = 0.0f;
+                    for (int frame = 0; frame < 100; frame++)
+                    {
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                        Vector2 onBeam = sandbox.LinkEndWorld(axle.A)!.Value;
+                        Vector2 onWheel = sandbox.LinkEndWorld(axle.B)!.Value;
+                        worstSeparation = Math.Max(worstSeparation, onBeam.DistanceTo(onWheel));
+                        spun += Math.Abs(Mathf.AngleDifference(lastAngle, wheel.Rotation));
+                        lastAngle = wheel.Rotation;
+                    }
+                    float travelled = Math.Abs(cart.GlobalPosition.X - cartStart.X);
+                    float ropeStretch = sandbox.LinkEndWorld(hangLink.A)!.Value.DistanceTo(
+                        sandbox.LinkEndWorld(hangLink.B)!.Value) - hangLink.Length;
+                    bool played = worstSeparation < 4.0f && travelled > 8.0f && spun > 0.3f &&
+                        ropeStretch < 8.0f && hung.GlobalPosition.Y < bounds.End.Y - 40.0f;
+                    Log.Info("BootstrapJourney",
+                        $"build links: created={created} links={linksBefore} built={sandbox.BuiltLinkCount} " +
+                        $"weldRejected={weldRejected} separation={worstSeparation:0.00} travelled={travelled:0.0} " +
+                        $"spun={spun:0.00} ropeStretch={ropeStretch:0.00} hungY={hung.GlobalPosition.Y:0.0} floor={bounds.End.Y:0.0}");
+
+                    // Clear the cart and the hanging beam; their links must go with them.
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    foreach (SandboxPartId part in new[] { cartBeam, leftWheel, rightWheel, hanging })
+                    {
+                        if (build.SelectPlaced(part))
+                            build.DeleteSelectedPart();
+                    }
+                    bool cleaned = scenes.ActiveSandbox.Count == 1 &&
+                        scenes.ActiveSandbox.Links.Count == 1 &&
+                        scenes.ActiveSandbox.Links[0].Kind == SandboxLinkKind.Rope &&
+                        scenes.ActiveSandbox.Links[0].Touches(keptBeamId) &&
+                        sandbox.BuiltLinkCount == 1;
+                    await build.LeaveAsync();
+                    buildLinksWork = created && played && cleaned && !scenes.IsDirty;
+                }
+
                 if (runtime is { Actors.Count: > 0 } &&
                     sandbox.BuiltParts.Values.FirstOrDefault() is SandboxPartBody beam)
                 {
@@ -456,7 +544,12 @@ public static class ProductionBootstrapJourneyProbe
                     restored.Overrides.GravityScale == SandboxPartOverrides.MaximumGravityScale &&
                     sandbox.BuiltParts.Count == 1 &&
                     sandbox.BuiltParts.TryGetValue(restored.PartId, out SandboxPartBody? restoredBody) &&
-                    restoredBody!.Freeze;
+                    restoredBody!.Freeze &&
+                    // The rope tied in Build comes back tied to the same beam, and is live again.
+                    scenes.ActiveSandbox.Links.Count == 1 &&
+                    scenes.ActiveSandbox.Links[0].Kind == SandboxLinkKind.Rope &&
+                    scenes.ActiveSandbox.Links[0].Touches(restored.PartId) &&
+                    sandbox.BuiltLinkCount == 1;
             }
 
             bool restartPrepared = !prepareRestart;
@@ -617,6 +710,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_preview_right_of_list"] = buildPreviewRightOfList,
                 ["build_surface_supports_buddy"] = buildSurfaceSupportsBuddy,
                 ["build_edits_apply"] = buildEditsApply,
+                ["build_links_work"] = buildLinksWork,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,

@@ -1,0 +1,78 @@
+using DesktopBuddy.App;
+using DesktopBuddy.Domain.Sandbox;
+using Godot;
+
+namespace DesktopBuddy.Sandbox;
+
+/// <summary>
+/// Draws the room's links from the document, against the parts as they stand: a rope as a line, a
+/// hinge as a pin, a weld as a plate, and a room anchor as a nail in the wall. Also draws Build's
+/// half-made link while the player is choosing its second end.
+/// </summary>
+public partial class SandboxLinkView : Node2D
+{
+    private static readonly Color RopeColor = new("8b5a2b");
+    private static readonly Color PinFill = new("f0f0f0");
+    private static readonly Color WeldFill = new("9aa6b4");
+    private static readonly Color Ink = new("2a2118");
+    private static readonly Color PreviewColor = new("000080");
+
+    private SandboxRoot _sandbox = null!;
+    private Vector2? _previewFrom;
+    private Vector2 _previewTo;
+    private bool _previewValid;
+
+    public void Configure(SandboxRoot sandbox) => _sandbox = sandbox;
+
+    /// <summary>Shows or clears the line from a link's first end to the pointer.</summary>
+    public void SetPreview(Vector2? from, Vector2 to, bool valid)
+    {
+        _previewFrom = from;
+        _previewTo = to;
+        _previewValid = valid;
+        QueueRedraw();
+    }
+
+    public override void _Draw()
+    {
+        if (_sandbox is null)
+            return;
+
+        foreach (SandboxLink link in _sandbox.DocumentLinks)
+        {
+            if (_sandbox.LinkEndWorld(link.A) is not { } a || _sandbox.LinkEndWorld(link.B) is not { } b)
+                continue;
+            switch (link.Kind)
+            {
+                case SandboxLinkKind.Rope:
+                    DrawLine(a, b, RopeColor, 2.5f, true);
+                    DrawCircle(a, 3.0f, RopeColor, true, -1.0f, true);
+                    DrawCircle(b, 3.0f, RopeColor, true, -1.0f, true);
+                    break;
+                case SandboxLinkKind.Hinge:
+                    DrawCircle(a, 5.0f, PinFill, true, -1.0f, true);
+                    DrawArc(a, 5.0f, 0.0f, Mathf.Tau, 20, Ink, 1.5f, true);
+                    DrawCircle(a, 1.5f, Ink, true, -1.0f, true);
+                    break;
+                case SandboxLinkKind.Weld:
+                    var plate = new Rect2(a - new Vector2(5.0f, 5.0f), new Vector2(10.0f, 10.0f));
+                    DrawRect(plate, WeldFill, filled: true);
+                    DrawRect(plate, Ink, filled: false, 1.5f);
+                    DrawLine(plate.Position, plate.End, Ink, 1.0f, true);
+                    break;
+            }
+            if (link.B.IsWorld)
+            {
+                var nail = new Rect2(b - new Vector2(3.0f, 3.0f), new Vector2(6.0f, 6.0f));
+                DrawRect(nail, Ink, filled: true);
+            }
+        }
+
+        if (_previewFrom is { } from)
+        {
+            Color color = _previewValid ? PreviewColor : new Color(0.7f, 0.1f, 0.1f);
+            DrawDashedLine(from, _previewTo, color, 2.0f, 6.0f, true, true);
+            DrawCircle(from, 4.0f, color, true, -1.0f, true);
+        }
+    }
+}

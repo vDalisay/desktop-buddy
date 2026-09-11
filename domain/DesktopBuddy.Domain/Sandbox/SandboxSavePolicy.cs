@@ -45,6 +45,56 @@ public sealed record PlacedSandboxPartSave
         new SandboxPartOverrides(MassScale, Bounce, GravityScale, Frozen).Clamped());
 }
 
+public sealed record SandboxLinkSave
+{
+    public Guid LinkId { get; set; }
+    public string Kind { get; set; } = string.Empty;
+    public Guid APartId { get; set; }
+    public float AX { get; set; }
+    public float AY { get; set; }
+    /// <summary>Empty for a room anchor, whose point is then in canonical room space.</summary>
+    public Guid BPartId { get; set; }
+    public float BX { get; set; }
+    public float BY { get; set; }
+    public float Length { get; set; }
+
+    public static SandboxLinkSave FromLink(SandboxLink link)
+    {
+        ArgumentNullException.ThrowIfNull(link);
+        return new SandboxLinkSave
+        {
+            LinkId = link.LinkId.Value,
+            Kind = link.Kind.ToString().ToLowerInvariant(),
+            APartId = link.A.PartId.Value,
+            AX = link.A.X,
+            AY = link.A.Y,
+            BPartId = link.B.PartId.Value,
+            BX = link.B.X,
+            BY = link.B.Y,
+            Length = link.Length,
+        };
+    }
+
+    /// <summary>The validated link, or null for one this build cannot represent.</summary>
+    public SandboxLink? TryCreateLink()
+    {
+        if (LinkId == Guid.Empty || APartId == Guid.Empty ||
+            !Enum.TryParse(Kind, ignoreCase: true, out SandboxLinkKind kind) || !Enum.IsDefined(kind))
+        {
+            return null;
+        }
+        var link = new SandboxLink(
+            SandboxLinkId.From(LinkId),
+            kind,
+            SandboxLinkEnd.OnPart(SandboxPartId.From(APartId), AX, AY),
+            BPartId == Guid.Empty
+                ? SandboxLinkEnd.World(BX, BY)
+                : SandboxLinkEnd.OnPart(SandboxPartId.From(BPartId), BX, BY),
+            Length);
+        return link.Problem() is null ? link : null;
+    }
+}
+
 /// <summary>
 /// Versioned disk DTO for <c>user://scenes/&lt;scene-id&gt;/sandbox.json</c>. Systemic construction
 /// keeps its own document beside the Scene root so it can grow a schema — devices, links, materials
@@ -52,11 +102,13 @@ public sealed record PlacedSandboxPartSave
 /// </summary>
 public sealed record SandboxDocumentSave
 {
-    public const int CurrentSchemaVersion = 1;
+    /// <summary>2 added links. A version-1 room simply has none.</summary>
+    public const int CurrentSchemaVersion = 2;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
     public long Revision { get; set; }
     public List<PlacedSandboxPartSave> Parts { get; set; } = [];
+    public List<SandboxLinkSave> Links { get; set; } = [];
 
     public static SandboxDocumentSave FromDocument(SandboxDocument document)
     {
@@ -65,6 +117,7 @@ public sealed record SandboxDocumentSave
         {
             Revision = document.Revision,
             Parts = document.Parts.Select(PlacedSandboxPartSave.FromPart).ToList(),
+            Links = document.Links.Select(SandboxLinkSave.FromLink).ToList(),
         };
     }
 
@@ -126,7 +179,7 @@ public static class SandboxSavePolicy
                 null,
                 $"Sandbox schema {schema} is newer than {SandboxDocumentSave.CurrentSchemaVersion}.");
         }
-        if (schema != SandboxDocumentSave.CurrentSchemaVersion)
+        if (schema is not (1 or SandboxDocumentSave.CurrentSchemaVersion))
             return new SandboxDocumentDecodeResult(SaveDecodeStatus.Invalid, null, $"Unsupported sandbox schema {schema}.");
 
         try
@@ -144,9 +197,26 @@ public static class SandboxSavePolicy
                 parts.Add(part.CreatePart());
             }
 
+            // Same rule as parts: a link this build cannot honour — an unknown kind, a bad value,
+            // an end on a part that was dropped above — is dropped, not allowed to fail the room.
+            var kept = new HashSet<SandboxPartId>(parts.Select(part => part.PartId));
+            var links = new List<SandboxLink>();
+            foreach (SandboxLinkSave stored in save.Links ?? [])
+            {
+                SandboxLink? link = stored.TryCreateLink();
+                if (link is null || !kept.Contains(link.A.PartId) ||
+                    (!link.B.IsWorld && !kept.Contains(link.B.PartId)) ||
+                    links.Count >= SandboxDocument.MaximumLinks ||
+                    links.Any(other => other.LinkId == link.LinkId || other.Duplicates(link)))
+                {
+                    continue;
+                }
+                links.Add(link);
+            }
+
             return new SandboxDocumentDecodeResult(
                 SaveDecodeStatus.Valid,
-                new SandboxDocument(parts, save.Revision));
+                new SandboxDocument(parts, save.Revision, links: links));
         }
         catch (JsonException exception)
         {

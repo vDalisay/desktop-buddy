@@ -1181,6 +1181,19 @@ Implement and hand off these tasks in order. A task is complete only when its na
 - Persist parts, transforms, overrides and links in the Scene sandbox document; reconstruct them on restart.
 - **Acceptance:** build and play the cart plus a hanging beam, edit while paused, duplicate/delete parts, switch Scenes and reload. Check constraint cleanup, invalid overrides and fixed-tick ownership. Advanced grouping/clipboard is Full Release work.
 
+**NF-3 status 2026-09-11.** Usable in game: Build/Edit entry with the room paused; place, select,
+drag, rotate, duplicate and delete parts; freeze/unfreeze; Properties for Mass, Bounce, Gravity and
+Frozen with Reset; Rope (part–part or part–room), Hinge (where two parts overlap, or a part pinned to
+the room) and Weld; links deleted with their parts; hinged and welded assemblies move and turn as one
+in Build; parts, transforms, overrides and links saved in the Scene's sandbox document and rebuilt on
+restart; rope force on the routed fixed tick. The tagged production journey builds and plays a
+two-wheel hinged cart and a beam hanging on a rope, and checks the tuning and a rope survive a real
+restart. Deviation from the joint-UX draft in the systemic-sandbox plan: Hinge and Weld are one click
+on an overlap (as an axle through a wheel and a beam) rather than two; Rope keeps two clicks.
+Not done: parts still draw as flat 2D shapes, with no 3D presentation (owner noted 2026-09-10 they
+should match the Buddy's 3D look); NF-3T traversal below; a Scene-switch-then-reload pass over links.
+Known feel issue to tune with the owner: a shoved cart partly slides rather than rolls.
+
 ##### NF-3T — Buddies must traverse what the player builds (owner requirement 2026-09-10)
 
 The owner built a floor-wide pile of Wood Beams and found the Buddy standing still against it

@@ -197,9 +197,17 @@ public sealed class SandboxDocument
     /// <summary>Bounded so one room cannot be built into an unopenable save or an unplayable tick.</summary>
     public const int MaximumParts = 200;
 
-    private readonly List<PlacedSandboxPart> _parts;
+    /// <summary>Two per part on average: enough for carts and chains, bounded for the fixed tick.</summary>
+    public const int MaximumLinks = 400;
 
-    public SandboxDocument(IEnumerable<PlacedSandboxPart>? parts = null, long revision = 0, int schemaVersion = CurrentSchemaVersion)
+    private readonly List<PlacedSandboxPart> _parts;
+    private readonly List<SandboxLink> _links;
+
+    public SandboxDocument(
+        IEnumerable<PlacedSandboxPart>? parts = null,
+        long revision = 0,
+        int schemaVersion = CurrentSchemaVersion,
+        IEnumerable<SandboxLink>? links = null)
     {
         if (schemaVersion <= 0 || schemaVersion > CurrentSchemaVersion)
             throw new ArgumentOutOfRangeException(nameof(schemaVersion), "Unsupported sandbox schema version.");
@@ -221,6 +229,16 @@ public sealed class SandboxDocument
         if (_parts.Count > MaximumParts)
             throw new ArgumentException($"A Scene cannot hold more than {MaximumParts} parts.", nameof(parts));
 
+        _links = [];
+        foreach (SandboxLink link in links ?? [])
+        {
+            ArgumentNullException.ThrowIfNull(link);
+            SandboxLinkResult admitted = Admit(link);
+            if (!admitted.Succeeded)
+                throw new ArgumentException($"Invalid sandbox link: {admitted.Detail ?? admitted.Status.ToString()}", nameof(links));
+            _links.Add(link);
+        }
+
         SchemaVersion = schemaVersion;
         Revision = revision;
     }
@@ -228,6 +246,7 @@ public sealed class SandboxDocument
     public int SchemaVersion { get; }
     public long Revision { get; private set; }
     public IReadOnlyList<PlacedSandboxPart> Parts => _parts;
+    public IReadOnlyList<SandboxLink> Links => _links;
     public int Count => _parts.Count;
     public bool CanAdd => _parts.Count < MaximumParts;
 
@@ -272,6 +291,8 @@ public sealed class SandboxDocument
 
         PlacedSandboxPart removed = _parts[index];
         _parts.RemoveAt(index);
+        // A link to a part that is gone would be a constraint on nothing; it goes with the part.
+        _links.RemoveAll(link => link.Touches(partId));
         Touch();
         return new SandboxEditResult(SandboxEditStatus.Succeeded, removed);
     }
@@ -310,10 +331,133 @@ public sealed class SandboxDocument
         return new SandboxEditResult(SandboxEditStatus.Succeeded, updated);
     }
 
-    /// <summary>Copies this room's parts under fresh part IDs, for Scene duplication.</summary>
-    public SandboxDocument CopyWithNewPartIds() => new(
-        _parts.Select(part => part with { PartId = SandboxPartId.New() }),
-        revision: 0);
+    /// <summary>
+    /// An independent copy of everything in this document, identities kept, for a save commit that
+    /// must not see edits made while it writes. It lives here so a field added to the document is
+    /// copied by the one method that knows every field: a hand-written copy in the coordinator
+    /// kept only parts and silently dropped every link from every save.
+    /// </summary>
+    public SandboxDocument Snapshot() => new(_parts, Revision, SchemaVersion, _links);
+
+    /// <summary>Copies this room's parts and links under fresh IDs, for Scene duplication.</summary>
+    public SandboxDocument CopyWithNewPartIds()
+    {
+        var map = _parts.ToDictionary(part => part.PartId, _ => SandboxPartId.New());
+        SandboxLinkEnd Remap(SandboxLinkEnd end) => end.IsWorld ? end : end with { PartId = map[end.PartId] };
+        return new SandboxDocument(
+            _parts.Select(part => part with { PartId = map[part.PartId] }),
+            revision: 0,
+            links: _links.Select(link => link with
+            {
+                LinkId = SandboxLinkId.New(),
+                A = Remap(link.A),
+                B = Remap(link.B),
+            }));
+    }
+
+    public bool TryGetLink(SandboxLinkId linkId, out SandboxLink? link)
+    {
+        link = _links.FirstOrDefault(candidate => candidate.LinkId == linkId);
+        return link is not null;
+    }
+
+    /// <summary>
+    /// Adds one link between existing parts, or from a part to the room. Nothing is stored unless
+    /// the whole link is valid, so a rejected link never leaves half a constraint behind.
+    /// </summary>
+    public SandboxLinkResult AddLink(
+        SandboxLinkKind kind,
+        SandboxLinkEnd a,
+        SandboxLinkEnd b,
+        float length = 0.0f)
+    {
+        var link = new SandboxLink(
+            SandboxLinkId.New(),
+            kind,
+            a,
+            b,
+            kind == SandboxLinkKind.Rope
+                ? Math.Clamp(float.IsFinite(length) ? length : 0.0f, SandboxLink.MinimumRopeLength, SandboxLink.MaximumRopeLength)
+                : 0.0f);
+        SandboxLinkResult admitted = Admit(link);
+        if (!admitted.Succeeded)
+            return admitted;
+
+        _links.Add(link);
+        Touch();
+        return new SandboxLinkResult(SandboxLinkStatus.Succeeded, link);
+    }
+
+    public SandboxLinkResult RemoveLink(SandboxLinkId linkId)
+    {
+        int index = _links.FindIndex(link => link.LinkId == linkId);
+        if (index < 0)
+            return new SandboxLinkResult(SandboxLinkStatus.LinkNotFound);
+        SandboxLink removed = _links[index];
+        _links.RemoveAt(index);
+        Touch();
+        return new SandboxLinkResult(SandboxLinkStatus.Succeeded, removed);
+    }
+
+    /// <summary>
+    /// Re-anchors an existing link — same identity, same kind, same parts — at new end points. Build
+    /// uses it after a linked part is moved or turned, so the link holds where the player left the
+    /// parts instead of snapping them back together when Play resumes.
+    /// </summary>
+    public SandboxLinkResult ReseatLink(SandboxLinkId linkId, SandboxLinkEnd a, SandboxLinkEnd b, float length)
+    {
+        int index = _links.FindIndex(link => link.LinkId == linkId);
+        if (index < 0)
+            return new SandboxLinkResult(SandboxLinkStatus.LinkNotFound);
+
+        SandboxLink current = _links[index];
+        if (a.PartId != current.A.PartId || b.PartId != current.B.PartId)
+            return new SandboxLinkResult(SandboxLinkStatus.Invalid, current, "Re-seating cannot change which parts a link joins.");
+
+        SandboxLink updated = current with
+        {
+            A = a,
+            B = b,
+            Length = current.Kind == SandboxLinkKind.Rope
+                ? Math.Clamp(float.IsFinite(length) ? length : current.Length, SandboxLink.MinimumRopeLength, SandboxLink.MaximumRopeLength)
+                : 0.0f,
+        };
+        if (updated.Problem() is { } problem)
+            return new SandboxLinkResult(SandboxLinkStatus.Invalid, current, problem);
+        if (updated == current)
+            return new SandboxLinkResult(SandboxLinkStatus.Succeeded, current);
+
+        _links[index] = updated;
+        Touch();
+        return new SandboxLinkResult(SandboxLinkStatus.Succeeded, updated);
+    }
+
+    /// <summary>Removes every link touching one part, keeping the part.</summary>
+    public int RemoveLinksOf(SandboxPartId partId)
+    {
+        int removed = _links.RemoveAll(link => link.Touches(partId));
+        if (removed > 0)
+            Touch();
+        return removed;
+    }
+
+    private SandboxLinkResult Admit(SandboxLink link)
+    {
+        if (link.Problem() is { } problem)
+            return new SandboxLinkResult(SandboxLinkStatus.Invalid, null, problem);
+        if (IndexOf(link.A.PartId) < 0 || (!link.B.IsWorld && IndexOf(link.B.PartId) < 0))
+            return new SandboxLinkResult(SandboxLinkStatus.PartNotFound);
+        if (_links.Count >= MaximumLinks)
+            return new SandboxLinkResult(SandboxLinkStatus.LimitReached);
+        foreach (SandboxLink existing in _links)
+        {
+            if (existing.LinkId == link.LinkId)
+                return new SandboxLinkResult(SandboxLinkStatus.Invalid, null, "Duplicate link ID.");
+            if (existing.Duplicates(link))
+                return new SandboxLinkResult(SandboxLinkStatus.Duplicate, existing);
+        }
+        return new SandboxLinkResult(SandboxLinkStatus.Succeeded, link);
+    }
 
     private int IndexOf(SandboxPartId partId)
     {
