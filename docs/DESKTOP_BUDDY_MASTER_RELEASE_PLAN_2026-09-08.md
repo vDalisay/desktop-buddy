@@ -1273,8 +1273,14 @@ that glows when lit); Build has a Wire tool (key 5: click a sender, then a recei
 wire cuts it) and wires draw as arrowed green lines; a click on a Button in Play presses it and is
 not also taken by the held tool; `SandboxRoot` ticks the network on the routed tick and re-reads the
 document whenever its revision changes. The journey wires Button → Timer → Lamp, sees the Lamp light
-one second after the press, and cuts the wire with a pulse in flight. Next: Piston, Weapon Trigger,
-then the gravity presets with Shotgun overrides.
+one second after the press, and cuts the wire with a pulse in flight.
+**4C done:** the Piston is in the palette. A pulse throws its head out of its top face (it turns with
+the part) and every unfrozen body in front of it — parts, loose objects, Buddy parts — gets the same
+push speed whatever it weighs; the head stays out a quarter second and ignores pulses meanwhile, and
+an unfrozen piston is pushed back by what it pushes (nail it to make it a wall). Push speed, hold
+time and reach are constants in `SandboxRoot.Devices.cs`, left for owner feel tuning. The journey
+adds Button → Piston with a Metal Block on the head and checks the block is thrown.
+Next: Weapon Trigger, then the gravity presets with Shotgun overrides.
 
 #### NF-5 — Break and repair
 

@@ -85,6 +85,29 @@ public partial class SandboxPartBody : RigidBody2D
         }
     }
 
+    /// <summary>How far a Piston's head reaches past its face when out.</summary>
+    public const float PistonReach = 24.0f;
+
+    private int _pistonTicksLeft;
+
+    /// <summary>
+    /// Ticks a Piston's head stays out; zero when retracted. Set and counted down by the room's
+    /// device tick. Presentation only — the shove itself happens once, when the head goes out.
+    /// </summary>
+    public int PistonTicksLeft
+    {
+        get => _pistonTicksLeft;
+        set
+        {
+            if (_pistonTicksLeft == value)
+                return;
+            bool wasOut = _pistonTicksLeft > 0;
+            _pistonTicksLeft = value;
+            if (wasOut != value > 0)
+                QueueRedraw();
+        }
+    }
+
     /// <summary>Build/Edit's selection outline. Presentation only; the document owns nothing of it.</summary>
     public bool Selected
     {
@@ -166,7 +189,7 @@ public partial class SandboxPartBody : RigidBody2D
 
     /// <summary>
     /// What makes a device read as one, drawn over its shape in both presentations like the nail:
-    /// a Button's red cap, a Timer's clock face, a Lamp's bulb.
+    /// a Button's red cap, a Timer's clock face, a Lamp's bulb, a Piston's head.
     /// </summary>
     private void DrawDeviceFace()
     {
@@ -193,6 +216,19 @@ public partial class SandboxPartBody : RigidBody2D
                     DrawCircle(centre, bulb * 2.2f, LampGlow, true, -1.0f, true);
                 DrawCircle(centre, bulb, _lit ? LampOn : LampOff, true, -1.0f, true);
                 DrawArc(centre, bulb, 0.0f, Mathf.Tau, 20, Outline, 1.5f, true);
+                break;
+            case SandboxDeviceKind.Piston:
+                // The rod and head on the face it pushes from (local up), out or home.
+                float reach = _pistonTicksLeft > 0 ? PistonReach : 0.0f;
+                var rod = new Rect2(-halfWidth * 0.18f, -halfHeight - reach, halfWidth * 0.36f, reach);
+                var head = new Rect2(-halfWidth, -halfHeight - reach - 6.0f, halfWidth * 2.0f, 6.0f);
+                if (reach > 0.0f)
+                {
+                    DrawRect(rod, NailFill, filled: true);
+                    DrawRect(rod, Outline, filled: false, 1.5f);
+                }
+                DrawRect(head, MetalFill, filled: true);
+                DrawRect(head, Outline, filled: false, 1.5f);
                 break;
         }
     }

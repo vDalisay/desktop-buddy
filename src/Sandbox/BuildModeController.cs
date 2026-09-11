@@ -20,10 +20,10 @@ namespace DesktopBuddy.Sandbox;
 /// </summary>
 public partial class BuildModeController : Node
 {
-    // Piston and Weapon Trigger join the palette with their own runtime; until then they would do nothing.
+    // Weapon Trigger joins the palette with its own runtime; until then it would do nothing.
     private readonly List<SandboxPartDefinition> _palette =
         [.. SandboxPartCatalogue.Definitions.Where(definition =>
-            definition.Device is not (SandboxDeviceKind.Piston or SandboxDeviceKind.WeaponTrigger))];
+            definition.Device is not SandboxDeviceKind.WeaponTrigger)];
     private SandboxRoot _sandbox = null!;
     private SceneProgressCoordinator _scenes = null!;
     private Win98CommandBarBootstrap _commandBar = null!;
