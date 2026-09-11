@@ -6,8 +6,8 @@ namespace DesktopBuddy.Sandbox;
 
 /// <summary>
 /// Draws the room's links from the document, against the parts as they stand: a rope as a line, a
-/// hinge as a pin, a weld as a plate, and a room anchor as a nail in the wall. Also draws Build's
-/// half-made link while the player is choosing its second end.
+/// hinge as a pin, a weld as a plate, a room anchor as a nail in the wall, and a signal wire as an
+/// arrowed green line. Also draws Build's half-made link while the player is choosing its second end.
 /// </summary>
 public partial class SandboxLinkView : Node2D
 {
@@ -16,6 +16,7 @@ public partial class SandboxLinkView : Node2D
     private static readonly Color WeldFill = new("9aa6b4");
     private static readonly Color Ink = new("2a2118");
     private static readonly Color PreviewColor = new("000080");
+    private static readonly Color WireColor = new("1e8449");
 
     private SandboxRoot _sandbox = null!;
     private Vector2? _previewFrom;
@@ -65,6 +66,26 @@ public partial class SandboxLinkView : Node2D
             {
                 var nail = new Rect2(b - new Vector2(3.0f, 3.0f), new Vector2(6.0f, 6.0f));
                 DrawRect(nail, Ink, filled: true);
+            }
+        }
+
+        // Wires: a line from the sending device to the receiving one, arrowed halfway along.
+        foreach (SandboxWire wire in _sandbox.DocumentWires)
+        {
+            if (!_sandbox.BuiltParts.TryGetValue(wire.From, out SandboxPartBody? source) ||
+                !_sandbox.BuiltParts.TryGetValue(wire.To, out SandboxPartBody? target))
+            {
+                continue;
+            }
+            Vector2 a = source.GlobalPosition;
+            Vector2 b = target.GlobalPosition;
+            DrawLine(a, b, WireColor, 2.0f, true);
+            if (a.DistanceSquaredTo(b) > 1.0f)
+            {
+                Vector2 along = (b - a).Normalized() * 6.0f;
+                Vector2 middle = (a + b) * 0.5f;
+                Vector2 side = along.Orthogonal() * 0.8f;
+                DrawColoredPolygon([middle + along, middle - along + side, middle - along - side], WireColor);
             }
         }
 

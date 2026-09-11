@@ -260,6 +260,7 @@ public partial class BuildModeController
             Key.Key2 => BuildTool.Rope,
             Key.Key3 => BuildTool.Hinge,
             Key.Key4 => BuildTool.Weld,
+            Key.Key5 => BuildTool.Wire,
             _ => null,
         };
         if (chosen is { } tool)

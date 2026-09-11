@@ -1267,10 +1267,14 @@ in the Scene's sandbox document (schema 3, at most 192, cut with their devices, 
 duplication, bad ones dropped on load); `SandboxSignalNetwork` is the two-phase engine — pulses due
 this tick are gathered first, then delivered in stable part order, a Timer only ever schedules so a
 loop runs across ticks instead of recursing, and a tick is capped at 256 deliveries and a Timer at
-16 pulses in flight. Every Next Fest port carries a pulse, so there are no value kinds yet. Devices
-stay out of the Build palette until their runtime lands. Next: 4B runtime (device bodies, pressing a
-Button in Play, Lamp, Timer, the wiring tool and wire view), then Piston, Weapon Trigger, and the
-gravity presets with Shotgun overrides.
+16 pulses in flight. Every Next Fest port carries a pulse, so there are no value kinds yet.
+**4B done:** Button, Timer and Lamp are in the Build palette with drawn faces (red cap, clock, bulb
+that glows when lit); Build has a Wire tool (key 5: click a sender, then a receiver; right-click a
+wire cuts it) and wires draw as arrowed green lines; a click on a Button in Play presses it and is
+not also taken by the held tool; `SandboxRoot` ticks the network on the routed tick and re-reads the
+document whenever its revision changes. The journey wires Button → Timer → Lamp, sees the Lamp light
+one second after the press, and cuts the wire with a pulse in flight. Next: Piston, Weapon Trigger,
+then the gravity presets with Shotgun overrides.
 
 #### NF-5 — Break and repair
 

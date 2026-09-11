@@ -248,6 +248,7 @@
         { "predicate": "build_edits_apply", "equals": true },
         { "predicate": "build_links_work", "equals": true },
         { "predicate": "build_links_survive_scene_switch", "equals": true },
+        { "predicate": "build_devices_work", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
     },

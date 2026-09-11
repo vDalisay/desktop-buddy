@@ -14,6 +14,7 @@ public enum BuildTool
     Rope = 1,
     Hinge = 2,
     Weld = 3,
+    Wire = 4,
 }
 
 /// <summary>
@@ -30,6 +31,7 @@ public partial class BuildModeController
     private readonly Dictionary<BuildTool, Button> _toolButtons = [];
     private BuildTool _tool = BuildTool.Parts;
     private SandboxLinkEnd? _ropeStart;
+    private SandboxPartId? _wireStart;
 
     public BuildTool Tool => _tool;
 
@@ -44,6 +46,7 @@ public partial class BuildModeController
             BuildTool.Rope => "Rope: click a point on a part, then another part or the room. Right-click cancels.",
             BuildTool.Hinge => "Hinge: click where two parts overlap. On one part, it pins that part to the room.",
             BuildTool.Weld => "Weld: click where two parts overlap to lock them together.",
+            BuildTool.Wire => "Wire: click a device that sends (Button, Timer), then one that receives. Right-click a wire cuts it.",
             _ => "Parts: click empty space to place, click a part to select and drag it.",
         });
     }
@@ -74,9 +77,23 @@ public partial class BuildModeController
         return FinishRope(EndOn(start, from), from, to);
     }
 
-    /// <summary>Removes the link drawn under a point: a hinge or weld pin, or anywhere along a rope.</summary>
+    /// <summary>
+    /// Wires the device under <paramref name="from"/> to the device under <paramref name="to"/>:
+    /// the first must send and the second receive, or nothing is stored.
+    /// </summary>
+    public SandboxWireResult WireBetween(Vector2 from, Vector2 to)
+    {
+        if (!TryPickDevice(from, SandboxPortDirection.Output, out SandboxPartId source))
+            return RejectWire("A wire starts at a device that sends: a Button or a Timer.");
+        return FinishWire(source, to);
+    }
+
+    /// <summary>Removes the link drawn under a point: a hinge or weld pin, or anywhere along a rope or wire.</summary>
     public bool RemoveLinkAt(Vector2 world)
     {
+        if (RemoveWireAt(world))
+            return true;
+
         SandboxLink? nearest = null;
         float best = LinkHitRadius;
         foreach (SandboxLink link in _sandbox.DocumentLinks)
@@ -113,10 +130,10 @@ public partial class BuildModeController
         if (@event is not InputEventMouseButton { Pressed: true } button)
             return false;
 
-        if (button.ButtonIndex == MouseButton.Right && _ropeStart is not null)
+        if (button.ButtonIndex == MouseButton.Right && (_ropeStart is not null || _wireStart is not null))
         {
             CancelPendingLink();
-            SetStatus("Rope cancelled.");
+            SetStatus("Cancelled.");
             return true;
         }
         if (button.ButtonIndex != MouseButton.Left || !_sandbox.Boundaries.InnerBounds.HasPoint(world))
@@ -145,6 +162,21 @@ public partial class BuildModeController
                 SandboxLinkEnd first = _ropeStart!.Value;
                 if (_sandbox.LinkEndWorld(first) is { } from)
                     FinishRope(first, from, world);
+                CancelPendingLink();
+                break;
+            case BuildTool.Wire when _wireStart is null:
+                if (TryPickDevice(world, SandboxPortDirection.Output, out SandboxPartId source))
+                {
+                    _wireStart = source;
+                    SetStatus("Now click the device it should set off.");
+                }
+                else
+                {
+                    RejectWire("A wire starts at a device that sends: a Button or a Timer.");
+                }
+                break;
+            case BuildTool.Wire:
+                FinishWire(_wireStart!.Value, world);
                 CancelPendingLink();
                 break;
         }
@@ -193,9 +225,83 @@ public partial class BuildModeController
         return new SandboxLinkResult(SandboxLinkStatus.Invalid, null, reason);
     }
 
+    private SandboxWireResult FinishWire(SandboxPartId source, Vector2 to)
+    {
+        if (!TryPickDevice(to, SandboxPortDirection.Input, out SandboxPartId target, except: source))
+            return RejectWire("A wire ends at a device that receives: a Timer or a Lamp.");
+
+        SandboxWireResult added = _scenes.ActiveSandbox.AddWire(source, SandboxDevices.Out, target, SandboxDevices.In);
+        if (!added.Succeeded)
+        {
+            SetStatus(added.Status switch
+            {
+                SandboxLinkStatus.Duplicate => "Those two are already wired.",
+                SandboxLinkStatus.LimitReached => $"This room already holds {SandboxDocument.MaximumWires} wires.",
+                _ => added.Detail ?? $"Could not add the wire ({added.Status}).",
+            });
+            return added;
+        }
+
+        _sandbox.RedrawBuiltLinks();
+        SetStatus("Wired.");
+        return added;
+    }
+
+    private SandboxWireResult RejectWire(string reason)
+    {
+        SetStatus(reason);
+        return new SandboxWireResult(SandboxLinkStatus.Invalid, null, reason);
+    }
+
+    private bool RemoveWireAt(Vector2 world)
+    {
+        SandboxWire? nearest = null;
+        float best = LinkHitRadius;
+        foreach (SandboxWire wire in _scenes.ActiveSandbox.Wires)
+        {
+            if (!_sandbox.BuiltParts.TryGetValue(wire.From, out SandboxPartBody? from) ||
+                !_sandbox.BuiltParts.TryGetValue(wire.To, out SandboxPartBody? to))
+            {
+                continue;
+            }
+            float distance = DistanceToSegment(world, from.GlobalPosition, to.GlobalPosition);
+            if (distance <= best)
+            {
+                best = distance;
+                nearest = wire;
+            }
+        }
+        if (nearest is null)
+            return false;
+
+        _scenes.ActiveSandbox.RemoveWire(nearest.WireId);
+        _sandbox.RedrawBuiltLinks();
+        SetStatus("Cut a wire.");
+        return true;
+    }
+
+    /// <summary>The topmost device under a point that has a port facing that way.</summary>
+    private bool TryPickDevice(
+        Vector2 world, SandboxPortDirection direction, out SandboxPartId device, SandboxPartId except = default)
+    {
+        foreach (SandboxPartId candidate in _sandbox.PickBuiltPartsAt(world))
+        {
+            SandboxDeviceKind kind = _scenes.ActiveSandbox.DeviceOf(candidate);
+            if (candidate != except &&
+                SandboxDevices.HasPort(kind, direction == SandboxPortDirection.Output ? SandboxDevices.Out : SandboxDevices.In, direction))
+            {
+                device = candidate;
+                return true;
+            }
+        }
+        device = default;
+        return false;
+    }
+
     private void CancelPendingLink()
     {
         _ropeStart = null;
+        _wireStart = null;
         _sandbox.SetLinkPreview(null, Vector2.Zero, true);
     }
 
@@ -208,6 +314,19 @@ public partial class BuildModeController
         if (_tool == BuildTool.Parts)
         {
             _sandbox.SetLinkPreview(null, world, true);
+            return;
+        }
+        if (_tool == BuildTool.Wire)
+        {
+            if (_wireStart is { } source && _sandbox.BuiltParts.TryGetValue(source, out SandboxPartBody? body))
+            {
+                _sandbox.SetLinkPreview(body.GlobalPosition, world,
+                    TryPickDevice(world, SandboxPortDirection.Input, out _, except: source));
+            }
+            else
+            {
+                _sandbox.SetLinkPreview(world, world, TryPickDevice(world, SandboxPortDirection.Output, out _));
+            }
             return;
         }
         int under = _sandbox.PickBuiltPartsAt(world).Count;
@@ -249,6 +368,7 @@ public partial class BuildModeController
                      (BuildTool.Rope, "Rope", "2 — tie a part to another part or to the room."),
                      (BuildTool.Hinge, "Hinge", "3 — an axle where two parts overlap, or a pin to the room."),
                      (BuildTool.Weld, "Weld", "4 — lock two overlapping parts together."),
+                     (BuildTool.Wire, "Wire", "5 — send a device's pulse to another device."),
                  })
         {
             var button = new Button

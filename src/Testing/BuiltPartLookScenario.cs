@@ -15,7 +15,7 @@ namespace DesktopBuddy.Testing;
 /// <summary>
 /// NF-3: built parts draw as 3D shapes in the frontal presentation and flat in the legacy one —
 /// one silhouette per mode, as every other body in the room. Run without <c>--headless</c> to
-/// also save a screenshot of all four parts for the owner.
+/// also save a screenshot of the parts and devices (the Lamp lit) for the owner.
 /// </summary>
 public sealed class BuiltPartLookScenario : IScenario
 {
@@ -39,12 +39,17 @@ public sealed class BuiltPartLookScenario : IScenario
         Place(sandbox, SandboxPartCatalogue.MetalBlock, 0.45f, 0.55f, 20.0f);
         Place(sandbox, SandboxPartCatalogue.MetalPlate, 0.65f, 0.55f, 0.0f);
         Place(sandbox, SandboxPartCatalogue.Wheel, 0.82f, 0.55f, 30.0f);
+        Place(sandbox, SandboxPartCatalogue.Button, 0.3f, 0.35f, 0.0f);
+        Place(sandbox, SandboxPartCatalogue.Timer, 0.5f, 0.35f, 0.0f);
+        Place(sandbox, SandboxPartCatalogue.Lamp, 0.7f, 0.35f, 0.0f);
         for (int frame = 0; frame < 10; frame++)
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 
         SandboxPartBody[] bodies = sandbox.BuiltParts.Values.ToArray();
+        foreach (SandboxPartBody body in bodies.Where(body => body.Definition.Device == SandboxDeviceKind.Lamp))
+            body.Lit = true;
         int drawn = sandbox.PartVisual?.DrawnCount ?? 0;
-        bool shapesIn3D = drawn == 4 && bodies.All(body => !body.DrawsShape) &&
+        bool shapesIn3D = drawn == bodies.Length && bodies.All(body => !body.DrawsShape) &&
             sandbox.PartVisual!.Visible;
         // Each mesh sits where its body is.
         bool aligned = sandbox.PartVisual is { } visual && bodies.All(body =>

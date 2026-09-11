@@ -27,6 +27,10 @@ public partial class SandboxPartBody : RigidBody2D
     private static readonly Color SelectionInner = new("ffffff");
     private static readonly Color NailFill = new("c8c8c8");
     private const float NailRadius = 3.5f;
+    private static readonly Color ButtonRed = new("c0392b");
+    private static readonly Color LampOff = new("6b6552");
+    private static readonly Color LampOn = new("ffd84a");
+    private static readonly Color LampGlow = new(1.0f, 0.85f, 0.3f, 0.28f);
 
     private bool _selected;
     private bool _frozen;
@@ -66,6 +70,20 @@ public partial class SandboxPartBody : RigidBody2D
     }
 
     private bool _drawsShape = true;
+    private bool _lit;
+
+    /// <summary>A Lamp's light, from the signal network. Presentation only.</summary>
+    public bool Lit
+    {
+        get => _lit;
+        set
+        {
+            if (_lit == value)
+                return;
+            _lit = value;
+            QueueRedraw();
+        }
+    }
 
     /// <summary>Build/Edit's selection outline. Presentation only; the document owns nothing of it.</summary>
     public bool Selected
@@ -146,6 +164,39 @@ public partial class SandboxPartBody : RigidBody2D
             Math.Abs(local.Y) <= _definition.Height * 0.5f;
     }
 
+    /// <summary>
+    /// What makes a device read as one, drawn over its shape in both presentations like the nail:
+    /// a Button's red cap, a Timer's clock face, a Lamp's bulb.
+    /// </summary>
+    private void DrawDeviceFace()
+    {
+        float halfWidth = _definition.Width * 0.5f;
+        float halfHeight = _definition.Height * 0.5f;
+        switch (_definition.Device)
+        {
+            case SandboxDeviceKind.Button:
+                var cap = new Rect2(-halfWidth * 0.55f, -halfHeight - 6.0f, halfWidth * 1.1f, 6.0f);
+                DrawRect(cap, ButtonRed, filled: true);
+                DrawRect(cap, Outline, filled: false, 1.5f);
+                break;
+            case SandboxDeviceKind.Timer:
+                float face = Math.Min(halfWidth, halfHeight) * 0.72f;
+                DrawCircle(Vector2.Zero, face, SelectionInner, true, -1.0f, true);
+                DrawArc(Vector2.Zero, face, 0.0f, Mathf.Tau, 24, Outline, 1.5f, true);
+                DrawLine(Vector2.Zero, new Vector2(0.0f, -face * 0.75f), Outline, 1.5f, true);
+                DrawLine(Vector2.Zero, new Vector2(face * 0.5f, 0.0f), Outline, 1.5f, true);
+                break;
+            case SandboxDeviceKind.Lamp:
+                float bulb = halfWidth * 0.8f;
+                var centre = new Vector2(0.0f, -halfHeight * 0.25f);
+                if (_lit)
+                    DrawCircle(centre, bulb * 2.2f, LampGlow, true, -1.0f, true);
+                DrawCircle(centre, bulb, _lit ? LampOn : LampOff, true, -1.0f, true);
+                DrawArc(centre, bulb, 0.0f, Mathf.Tau, 20, Outline, 1.5f, true);
+                break;
+        }
+    }
+
     public override void _Draw()
     {
         if (!IsConfigured)
@@ -180,6 +231,8 @@ public partial class SandboxPartBody : RigidBody2D
                 DrawRect(rect.Grow(1.0f), SelectionInner, filled: false, 1.0f);
             }
         }
+
+        DrawDeviceFace();
 
         // A nail through the middle: frozen parts do not move, and the player should see which.
         if (_frozen)

@@ -20,9 +20,10 @@ namespace DesktopBuddy.Sandbox;
 /// </summary>
 public partial class BuildModeController : Node
 {
-    // Devices join the palette with their runtime (NF-4B); until then a placed Button would do nothing.
+    // Piston and Weapon Trigger join the palette with their own runtime; until then they would do nothing.
     private readonly List<SandboxPartDefinition> _palette =
-        [.. SandboxPartCatalogue.Definitions.Where(definition => definition.Device == SandboxDeviceKind.None)];
+        [.. SandboxPartCatalogue.Definitions.Where(definition =>
+            definition.Device is not (SandboxDeviceKind.Piston or SandboxDeviceKind.WeaponTrigger))];
     private SandboxRoot _sandbox = null!;
     private SceneProgressCoordinator _scenes = null!;
     private Win98CommandBarBootstrap _commandBar = null!;
@@ -160,7 +161,16 @@ public partial class BuildModeController : Node
     public override void _UnhandledInput(InputEvent @event)
     {
         if (!IsActive)
+        {
+            // In Play a click on a Button presses it, and is the Button's alone: it must not also
+            // grab, swing or shoot. This node sits after the room in the tree, so it hears first.
+            if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } &&
+                CanEnter() && PressButtonAt(_sandbox.GetGlobalMousePosition()))
+            {
+                GetViewport().SetInputAsHandled();
+            }
             return;
+        }
 
         if (HandleEditInput(@event))
         {
@@ -173,6 +183,17 @@ public partial class BuildModeController : Node
             GetViewport().SetInputAsHandled();
             _ = LeaveAsync();
         }
+    }
+
+    /// <summary>Presses the Button under a point in Play; false when there is none.</summary>
+    public bool PressButtonAt(Vector2 world)
+    {
+        foreach (SandboxPartId partId in _sandbox.PickBuiltPartsAt(world))
+        {
+            if (_scenes.ActiveSandbox.DeviceOf(partId) == SandboxDeviceKind.Button)
+                return _sandbox.PressButton(partId);
+        }
+        return false;
     }
 
     /// <summary>Selects one palette part by definition, as clicking its row does.</summary>

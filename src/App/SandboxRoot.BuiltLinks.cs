@@ -46,6 +46,7 @@ public partial class SandboxRoot
         ClearBuiltLinks();
         if (SceneProgress is not { } scenes)
             return;
+        EnsureLinkView();
         foreach (SandboxLink link in scenes.ActiveSandbox.Links)
             SpawnBuiltLink(link);
         _linkView?.QueueRedraw();
@@ -64,6 +65,10 @@ public partial class SandboxRoot
     /// <summary>The document's links, for Build's hit-testing and the link view.</summary>
     public IReadOnlyList<SandboxLink> DocumentLinks =>
         SceneProgress?.ActiveSandbox.Links ?? (IReadOnlyList<SandboxLink>)Array.Empty<SandboxLink>();
+
+    /// <summary>The document's signal wires, for the link view.</summary>
+    public IReadOnlyList<SandboxWire> DocumentWires =>
+        SceneProgress?.ActiveSandbox.Wires ?? (IReadOnlyList<SandboxWire>)Array.Empty<SandboxWire>();
 
     public Vector2 CanonicalToWorld(float x, float y)
     {

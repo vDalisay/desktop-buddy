@@ -333,6 +333,7 @@ public static class ProductionBootstrapJourneyProbe
             bool buildEditsApply = !buildRoom;
             bool buildLinksWork = !buildRoom;
             bool buildLinksSurviveSceneSwitch = !buildRoom;
+            bool buildDevicesWork = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
             if (buildRoom)
@@ -554,6 +555,77 @@ public static class ProductionBootstrapJourneyProbe
                         $"copyRoom={copyRoom} back={back} wheelOnPin={wheelOnPin} returned={returned} removed={removed}");
                 }
 
+                // NF-4: Button -> Timer -> Lamp, built, wired and pressed through the player's controls.
+                {
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Vector2 FloorAt(float x) => bounds.Position + bounds.Size * new Vector2(x, 0.93f);
+                    SandboxPartId PlaceDevice(SemanticDefinitionId definition, Vector2 at)
+                    {
+                        build.SelectPart(definition);
+                        build.PlaceSelectedPartAt(at);
+                        return build.SelectedPlacedPart ?? default;
+                    }
+                    bool pistonHidden = !build.SelectPart(SandboxPartCatalogue.Piston);
+                    SandboxPartId button = PlaceDevice(SandboxPartCatalogue.Button, FloorAt(0.2f));
+                    SandboxPartId timer = PlaceDevice(SandboxPartCatalogue.Timer, FloorAt(0.3f));
+                    SandboxPartId lamp = PlaceDevice(SandboxPartCatalogue.Lamp, FloorAt(0.4f));
+                    bool wired = build.WireBetween(FloorAt(0.2f), FloorAt(0.3f)).Succeeded &&
+                        build.WireBetween(FloorAt(0.3f), FloorAt(0.4f)).Succeeded;
+                    // A Lamp sends nothing, and a Button receives nothing.
+                    bool badRejected = !build.WireBetween(FloorAt(0.4f), FloorAt(0.2f)).Succeeded &&
+                        !build.WireBetween(FloorAt(0.3f), FloorAt(0.2f)).Succeeded &&
+                        scenes.ActiveSandbox.Wires.Count == 2;
+                    await build.LeaveAsync();
+                    for (int frame = 0; frame < 30; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+
+                    SandboxPartBody lampBody = sandbox.BuiltParts[lamp];
+                    bool pressed = build.PressButtonAt(sandbox.BuiltParts[button].GlobalPosition) &&
+                        !build.PressButtonAt(lampBody.GlobalPosition);
+                    int litAfter = -1;
+                    for (int frame = 0; frame < 240 && litAfter < 0; frame++)
+                    {
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                        if (lampBody.Lit)
+                            litAfter = frame;
+                    }
+                    // The Timer waits a second: at 120 Hz the lamp lights a little after 120 ticks.
+                    bool timed = litAfter >= Engine.PhysicsTicksPerSecond - 5 &&
+                        litAfter <= Engine.PhysicsTicksPerSecond + 20;
+
+                    // Press again, then cut the Timer's wire while its pulse is still waiting: the
+                    // lamp must stay lit, because what the wire carried has nowhere to go.
+                    build.PressButtonAt(sandbox.BuiltParts[button].GlobalPosition);
+                    for (int frame = 0; frame < 20; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    bool waiting = sandbox.Signals.PendingAt(timer) == 1;
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Vector2 wireMiddle = (sandbox.BuiltParts[timer].GlobalPosition + lampBody.GlobalPosition) * 0.5f;
+                    bool cut = build.RemoveLinkAt(wireMiddle) && scenes.ActiveSandbox.Wires.Count == 1;
+                    await build.LeaveAsync();
+                    for (int frame = 0; frame < 200; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    bool stayedLit = lampBody.Lit;
+
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    foreach (SandboxPartId device in new[] { button, timer, lamp })
+                    {
+                        if (build.SelectPlaced(device))
+                            build.DeleteSelectedPart();
+                    }
+                    bool cleared = scenes.ActiveSandbox.Wires.Count == 0 && scenes.ActiveSandbox.Count == 1;
+                    await build.LeaveAsync();
+
+                    buildDevicesWork = pistonHidden && wired && badRejected && pressed && timed && waiting &&
+                        cut && stayedLit && cleared && !scenes.IsDirty;
+                    Log.Info("BootstrapJourney",
+                        $"build devices: pistonHidden={pistonHidden} wired={wired} badRejected={badRejected} " +
+                        $"pressed={pressed} litAfter={litAfter} waiting={waiting} cut={cut} stayedLit={stayedLit} cleared={cleared}");
+                }
+
                 if (runtime is { Actors.Count: > 0 } &&
                     sandbox.BuiltParts.Values.FirstOrDefault() is SandboxPartBody beam)
                 {
@@ -768,6 +840,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_edits_apply"] = buildEditsApply,
                 ["build_links_work"] = buildLinksWork,
                 ["build_links_survive_scene_switch"] = buildLinksSurviveSceneSwitch,
+                ["build_devices_work"] = buildDevicesWork,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,
