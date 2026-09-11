@@ -585,23 +585,6 @@ public partial class CursorToolController : Node2D
         }
     }
 
-    /// <summary>
-    /// A second body of a tool, for something other than the cursor to hold — a built Tool Mount's
-    /// arm (NF-4D). It is the same authored tool, so it hits with the same shape, weight and
-    /// attribution; only what moves it is different. The caller owns it and frees it.
-    /// </summary>
-    public CursorToolBody? CreateHeldTool(ToolId tool, Node parent)
-    {
-        ArgumentNullException.ThrowIfNull(parent);
-        if (ProfileFor(tool) is not { } profile)
-            return null;
-        var body = new CursorToolBody { Name = $"mounted-{NodeNameFor(profile)}" };
-        body.Configure(profile);
-        parent.AddChild(body);
-        body.ArmImpacts();
-        return body;
-    }
-
     private CursorToolProfile? ProfileFor(ToolId tool)
     {
         string contentId = ContentIds.ForTool(tool);

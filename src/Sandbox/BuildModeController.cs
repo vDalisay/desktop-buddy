@@ -196,7 +196,7 @@ public partial class BuildModeController : Node
     /// <summary>Selects one palette part by definition, as clicking its row does.</summary>
     public bool SelectPart(SemanticDefinitionId definitionId)
     {
-        int index = _entries.FindIndex(entry => entry.Part?.Id == definitionId && Available(entry));
+        int index = _entries.FindIndex(entry => entry.Part?.Id == definitionId);
         if (index < 0)
             return false;
         SelectEntry(index);

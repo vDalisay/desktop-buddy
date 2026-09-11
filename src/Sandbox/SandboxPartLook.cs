@@ -119,24 +119,6 @@ public static class SandboxPartLook
                 Add(node, "Cap", RoundedBox(cap.Size.X, cap.Size.Y + 2.0f, depth * 0.6f, 3.5f), Material(ButtonRed, 0.35f), Vector3.Zero);
                 Pose(node, definition, 0.0f, false);
                 return node;
-            case SandboxDeviceKind.WeaponTrigger:
-            {
-                // A clamp with a barrel out of its right side: the gun points the way the part is
-                // turned, and the barrel kicks back when it fires.
-                Add(node, "Shape", RoundedBox(definition.Width * 0.7f, definition.Height, depth, 6.0f),
-                    Material(DeviceFill, 0.5f, 0.2f), new Vector3(-definition.Width * 0.15f, 0.0f, 0.0f));
-                float barrel = definition.Height * 0.26f;
-                Add(node, "Barrel", new CylinderMesh
-                    {
-                        TopRadius = barrel, BottomRadius = barrel,
-                        Height = definition.Width * 0.6f, RadialSegments = 16, Rings = 1,
-                    },
-                    Material(RodFill, 0.35f, 0.65f), Vector3.Zero).RotationDegrees = new Vector3(0.0f, 0.0f, 90.0f);
-                Add(node, "Grip", RoundedBox(definition.Width * 0.22f, definition.Height * 0.7f, depth * 0.6f, 3.0f),
-                    Material(StoneFill, 0.8f), new Vector3(-definition.Width * 0.22f, -definition.Height * 0.55f, 0.0f));
-                Pose(node, definition, 0.0f, false);
-                return node;
-            }
             case SandboxDeviceKind.Timer:
             {
                 Add(node, "Shape", RoundedBox(definition.Width, definition.Height, depth, 9.0f), Material(DeviceFill, 0.5f, 0.2f), Vector3.Zero);
@@ -220,11 +202,6 @@ public static class SandboxPartLook
                     rod.Position = FromPart(new Vector2(0.0f, (baseRect.Position.Y + head.End.Y) * 0.5f));
                     rod.Scale = new Vector3(1.0f, length, 1.0f);
                 }
-                break;
-            case SandboxDeviceKind.WeaponTrigger:
-                // The barrel sits out at rest and kicks back into the mount as it fires.
-                model.GetNode<Node3D>("Barrel").Position =
-                    new Vector3(definition.Width * (0.3f - 0.18f * Mathf.Clamp(extension, 0.0f, 1.0f)), 0.0f, 0.0f);
                 break;
             case SandboxDeviceKind.Lamp:
                 var bulb = model.GetNode<MeshInstance3D>("Bulb");

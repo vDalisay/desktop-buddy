@@ -54,23 +54,6 @@ public sealed class SandboxDocumentTests
         }
     }
 
-    /// <summary>A mount holds one of the mountable tools, and an unset one holds the first of them.</summary>
-    [Fact]
-    public void AMountHoldsAMountableTool()
-    {
-        Assert.Equal(SandboxMountableTools.All[0], SandboxMountableTools.ToolOf(null));
-        Assert.Equal(Domain.Tools.ToolId.BaseballBat,
-            SandboxMountableTools.ToolOf(Domain.Content.ContentIds.ToolBaseballBat));
-        Assert.Null(SandboxMountableTools.ToolOf(Domain.Content.ContentIds.ToolMeal));
-        Assert.Null(SandboxMountableTools.ToolOf("not.a.tool"));
-
-        // An unmountable tool never survives into a placement.
-        var overrides = new SandboxPartOverrides(MountedTool: Domain.Content.ContentIds.ToolMeal).Clamped();
-        Assert.Null(overrides.MountedTool);
-        Assert.Equal(Domain.Content.ContentIds.ToolSword,
-            new SandboxPartOverrides(MountedTool: Domain.Content.ContentIds.ToolSword).Clamped().MountedTool);
-    }
-
     [Fact]
     public void AddingPartsAssignsDistinctIdsAndBumpsRevision()
     {

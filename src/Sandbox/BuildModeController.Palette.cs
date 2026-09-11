@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.UI.Win98;
 using Godot;
@@ -69,10 +68,12 @@ public partial class BuildModeController
     private static List<PaletteEntry> BuildEntries()
     {
         var entries = new List<PaletteEntry>();
+        // Weapon Trigger joins the palette with its own runtime; until then it would do nothing.
         foreach (SandboxPartDefinition definition in SandboxPartCatalogue.Definitions)
         {
             string? category = definition switch
             {
+                { Device: SandboxDeviceKind.WeaponTrigger } => null,
                 { Device: SandboxDeviceKind.Piston } or { Shape: SandboxPartShape.Circle } => Mechanics,
                 { Device: SandboxDeviceKind.None } => Structural,
                 _ => Devices,
@@ -99,13 +100,6 @@ public partial class BuildModeController
         _selectedIndex >= 0 && _selectedIndex < _entries.Count ? _entries[_selectedIndex] : null;
 
     /// <summary>
-    /// Whether a row may be used at all. Every row is, including the weapon mounts: the owner's call
-    /// 2026-09-12 is that a built room may hold a gun the player has not bought, because a mount you
-    /// cannot see is a feature that does not exist. Kept as a seam so a rule can come back here.
-    /// </summary>
-    private static bool Available(PaletteEntry entry) => entry is not null;
-
-    /// <summary>
     /// Switches tool. When the chosen row is not already one of that tool's, the first of them is
     /// chosen, so the hotkeys 1–5 land on a sensible preset.
     /// </summary>
@@ -113,7 +107,7 @@ public partial class BuildModeController
     {
         if (CurrentEntry()?.Tool != tool)
         {
-            int index = _entries.FindIndex(entry => entry.Tool == tool && Available(entry));
+            int index = _entries.FindIndex(entry => entry.Tool == tool);
             if (index >= 0)
             {
                 SelectEntry(index);
@@ -128,7 +122,7 @@ public partial class BuildModeController
     {
         int index = _lastInCategory.TryGetValue(category, out int last)
             ? last
-            : _entries.FindIndex(entry => entry.Category == category && Available(entry));
+            : _entries.FindIndex(entry => entry.Category == category);
         if (index < 0)
             return false;
         SelectEntry(index);
@@ -171,7 +165,7 @@ public partial class BuildModeController
         _visible.Clear();
         for (int index = 0; index < _entries.Count; index++)
         {
-            if (_entries[index].Category == _category && Available(_entries[index]))
+            if (_entries[index].Category == _category)
                 _visible.Add(index);
         }
         if (_partsGroup?.FindChild("GroupCaption", recursive: true, owned: false) is Label caption)

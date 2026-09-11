@@ -22,7 +22,6 @@ public static class SandboxPartCatalogue
     public static SemanticDefinitionId WeaponTrigger { get; } = SemanticDefinitionId.CreateCore("part/weapon_trigger");
     public static SemanticDefinitionId Lamp { get; } = SemanticDefinitionId.CreateCore("part/lamp");
 
-
     /// <summary>Definitions in palette order.</summary>
     public static IReadOnlyList<SandboxPartDefinition> Definitions { get; } =
     [
@@ -55,8 +54,8 @@ public static class SandboxPartCatalogue
             "Shoves out hard when a pulse comes in, then pulls back.",
             SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 32.0f, Height: 32.0f, Mass: 8.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Piston),
-        new(WeaponTrigger, "Tool Mount",
-            "Holds a tool and uses it every time a pulse comes in: a gun fires, a bat swings. Pick the tool in Properties; it works the way the mount is turned.",
+        new(WeaponTrigger, "Weapon Trigger",
+            "Holds a gun and pulls its trigger every time a pulse comes in.",
             SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 48.0f, Height: 24.0f, Mass: 5.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.WeaponTrigger),
         new(Lamp, "Lamp",

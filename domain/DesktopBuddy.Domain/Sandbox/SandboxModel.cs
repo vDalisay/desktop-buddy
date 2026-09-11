@@ -112,8 +112,7 @@ public readonly record struct SandboxPartOverrides(
     float? PistonPush = null,
     float? TimerSeconds = null,
     float? Length = null,
-    float? Thickness = null,
-    string? MountedTool = null)
+    float? Thickness = null)
 {
     /// <summary>A resizable part's length (its unrotated width), in pixels.</summary>
     public const float MinimumLength = 16.0f;
@@ -141,8 +140,7 @@ public readonly record struct SandboxPartOverrides(
     public static SandboxPartOverrides None => default;
 
     public bool HasAny => MassScale.HasValue || Bounce.HasValue || GravityScale.HasValue || Frozen ||
-        PistonPush.HasValue || TimerSeconds.HasValue || Length.HasValue || Thickness.HasValue ||
-        MountedTool is not null;
+        PistonPush.HasValue || TimerSeconds.HasValue || Length.HasValue || Thickness.HasValue;
 
     /// <summary>Clamps every present value into its allowed band; out-of-band input never throws.</summary>
     public SandboxPartOverrides Clamped() => new(
@@ -153,9 +151,7 @@ public readonly record struct SandboxPartOverrides(
         Clamp(PistonPush, MinimumPistonPush, MaximumPistonPush),
         Clamp(TimerSeconds, MinimumTimerSeconds, MaximumTimerSeconds),
         Clamp(Length, MinimumLength, MaximumLength),
-        Clamp(Thickness, MinimumThickness, MaximumThickness),
-        // A mount holds a tool this build knows and a player may mount; anything else is no tool.
-        MountedTool is not null && SandboxMountableTools.Contains(MountedTool) ? MountedTool : null);
+        Clamp(Thickness, MinimumThickness, MaximumThickness));
 
     /// <summary>
     /// The part as this placement makes it: a resizable part at its own length and thickness, its
