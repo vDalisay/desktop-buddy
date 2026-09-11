@@ -3,8 +3,13 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DesktopBuddy.App;
+using DesktopBuddy.Buddy.Physics;
+using DesktopBuddy.Buddy.Presentation3D;
+using DesktopBuddy.Buddy.Presentation3D.Characters;
 using DesktopBuddy.Domain.Autonomy;
+using DesktopBuddy.Domain.Characters;
 using DesktopBuddy.Domain.Environment;
+using DesktopBuddy.Domain.Painting;
 using DesktopBuddy.Domain.Persistence;
 using DesktopBuddy.Domain.Platform;
 using DesktopBuddy.Domain.Scenes;
@@ -28,7 +33,16 @@ public partial class SceneStripController
     private ItemList? _pickerList;
     private CanvasLayer? _previewLayer;
     private Label? _previewLabel;
+    private const float GhostOpacity = 0.55f;
+    private const float GhostPadding = 16.0f;
+
     private CastChoice? _placing;
+    private bool _restoreMenuAfterPlacement;
+    private SubViewportContainer? _ghost;
+    private BuddyPreviewSurface? _ghostSurface;
+    private RuntimePaintTextureBridge? _ghostPaint;
+    private int _ghostSide;
+    private int _ghostRequest;
     private bool _castBusy;
 
     /// <summary>An existing Buddy identity to reuse, or a Character to register a new Buddy from.</summary>
@@ -166,7 +180,13 @@ public partial class SceneStripController
             return;
 
         _placing = _choices[selected[0]];
-        ShowPlacementPreview(_placing.Value.Label);
+        // The Scene workspace covers the room; it steps aside while the player aims.
+        if (MenuIsOpen)
+        {
+            _menuBlocker!.Visible = false;
+            _restoreMenuAfterPlacement = true;
+        }
+        ShowPlacementPreview(_placing.Value);
         SetStatus($"Click in the room to place {_placing.Value.Label}. Escape cancels.");
     }
 
@@ -353,13 +373,19 @@ public partial class SceneStripController
         }
     }
 
-    // ponytail: the placement preview is a labelled cursor tag, not a live Buddy ghost. Upgrade to a
-    // real rig preview if placement accuracy ever becomes a complaint.
-    private void ShowPlacementPreview(string label)
+    /// <summary>
+    /// Shows a translucent ghost of the Buddy being placed, dressed as the Character that will
+    /// appear, standing exactly where the click will put it (owner instruction 2026-09-10). The
+    /// ghost renders once into an offscreen <see cref="BuddyPreviewSurface"/> at 1 px per world
+    /// unit, so it is the real Buddy's size, and follows the same spawn clamp as the placement.
+    /// </summary>
+    private void ShowPlacementPreview(CastChoice choice)
     {
         if (_previewLayer is null)
         {
             _previewLayer = new CanvasLayer { Name = "ScenePlacementPreview", Layer = 100 };
+            AddChild(_previewLayer);
+            BuildPlacementGhost();
             _previewLabel = new Label
             {
                 Name = "ScenePlacementPreviewLabel",
@@ -367,17 +393,105 @@ public partial class SceneStripController
                 MouseFilter = Control.MouseFilterEnum.Ignore,
             };
             _previewLayer.AddChild(_previewLabel);
-            AddChild(_previewLayer);
         }
-        _previewLabel!.Text = $"Place {label}";
+        _previewLabel!.Text = $"Place {choice.Label}";
         _previewLayer.Visible = true;
+        DressPlacementGhostAsync(choice.CharacterId);
+        UpdatePlacementPreview();
+    }
+
+    private void BuildPlacementGhost()
+    {
+        PuppetRigProfile rig = _sandbox.Buddy.Rig.Profile;
+        float extent = 0.0f;
+        foreach (PuppetPartDefinition part in rig.Parts)
+        {
+            extent = Math.Max(extent,
+                Math.Max(Math.Abs(part.RestPosition.X), Math.Abs(part.RestPosition.Y)) + part.Radius);
+        }
+        _ghostSide = Mathf.CeilToInt(extent * 2.0f + GhostPadding);
+
+        _ghost = new SubViewportContainer
+        {
+            Name = "ScenePlacementGhost",
+            Stretch = true,
+            MouseFilter = Control.MouseFilterEnum.Ignore,
+            Size = new Vector2(_ghostSide, _ghostSide),
+            Modulate = new Color(1.0f, 1.0f, 1.0f, GhostOpacity),
+        };
+        _previewLayer!.AddChild(_ghost);
+
+        _ghostSurface = new BuddyPreviewSurface { Name = "ScenePlacementGhostViewport" };
+        _ghostSurface.Configure(
+            rigName: "ScenePlacementGhostRig",
+            viewportSize: new Vector2I(_ghostSide, _ghostSide),
+            transparentBackground: true,
+            rigProfile: rig,
+            visualProfile: _sandbox.Buddy.VisualProfile,
+            // Orthographic height equal to the viewport height: one world unit per pixel, which
+            // is the room's own scale, so the ghost is exactly the size of the Buddy it becomes.
+            cameraSize: _ghostSide,
+            cameraPosition: new Vector3(0, 0, 600),
+            lightRotationDegrees: new Vector3(-30, -20, 0),
+            lightEnergy: 0.9f,
+            sourceOrigin: Vector2.Zero,
+            face: ":)");
+        _ghost.AddChild(_ghostSurface);
+        _ghostPaint = new RuntimePaintTextureBridge(_ghostSurface.Rig);
+    }
+
+    private async void DressPlacementGhostAsync(Guid? characterId)
+    {
+        int request = ++_ghostRequest;
+        CompiledCharacterAppearance appearance = BuiltInCharacterAppearance.Value;
+        IReadOnlyDictionary<PaintPart, byte[]>? surfaces = null;
+        if (characterId is { } id && _sandbox.Characters is { } characters)
+        {
+            try
+            {
+                CharacterPaintLoadResult loaded = await characters.CreatePaintStore().LoadAsync(id, CancellationToken.None);
+                if (loaded.IsSuccess && loaded.Character.Document is { } document)
+                {
+                    CharacterCompileResult compiled = CharacterCompiler.Compile(document, characters.FeatureCatalog);
+                    if (compiled.IsSuccess && compiled.Appearance is { } dressed)
+                    {
+                        appearance = dressed;
+                        surfaces = loaded.Surfaces;
+                    }
+                }
+            }
+            catch (Exception exception)
+            {
+                // A ghost that cannot be dressed still shows where the Buddy lands.
+                Diagnostics.Log.Warn("SceneCast", $"Placement ghost fell back to the built-in look: {exception.Message}");
+            }
+        }
+
+        // A newer pick superseded this load, or placement ended while it ran.
+        if (request != _ghostRequest || _placing is null || !GodotObject.IsInstanceValid(_ghostSurface))
+            return;
+
+        _ghostSurface!.Rig.ApplyAppearance(appearance);
+        _ghostPaint!.Clear();
+        if (surfaces is not null)
+            _ghostPaint.Apply(surfaces);
+        _ghostSurface.Rig.ApplyRestPose();
+        _ghostSurface.RequestSingleFrame();
     }
 
     private void CancelPlacement(string? status)
     {
         _placing = null;
+        _ghostRequest++;
         if (_previewLayer is not null)
             _previewLayer.Visible = false;
+        // The Scene workspace stepped aside so the room could be seen; bring it back.
+        if (_restoreMenuAfterPlacement && _menuBlocker is not null && GodotObject.IsInstanceValid(_menuBlocker))
+        {
+            _menuBlocker.Visible = true;
+            RefreshSceneMenu();
+        }
+        _restoreMenuAfterPlacement = false;
         if (status is not null)
             SetStatus(status);
     }
@@ -386,6 +500,19 @@ public partial class SceneStripController
     {
         if (_placing is null || _previewLabel is null)
             return;
-        _previewLabel.Position = GetViewport().GetMousePosition() + new Vector2(12, 12);
+
+        Vector2 mouse = GetViewport().GetMousePosition();
+        _previewLabel.Position = mouse + new Vector2(12, 12);
+        if (_ghost is null)
+            return;
+
+        // Room world -> screen through the canvas, so the ghost stands where the Buddy will.
+        Transform2D canvas = GetViewport().CanvasTransform;
+        Vector2 origin = _sandbox.PlannedSceneBuddyOrigin(_sandbox.GetGlobalMousePosition());
+        Vector2 screen = canvas * origin;
+        Vector2 scale = canvas.Scale;
+        _ghost.Scale = scale;
+        _ghost.Position = screen - new Vector2(_ghostSide, _ghostSide) * 0.5f * scale;
+        _ghost.Visible = _sandbox.Boundaries.InnerBounds.HasPoint(_sandbox.GetGlobalMousePosition());
     }
 }

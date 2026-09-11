@@ -409,6 +409,13 @@ public partial class SandboxRoot
             bounds.Size.Y * position.Y);
     }
 
+    /// <summary>
+    /// Where a Buddy added at <paramref name="world"/> will actually stand. Every actor shares the
+    /// authored rig profile, so the placement ghost and the spawn use this one clamp and cannot
+    /// disagree about where the Buddy lands.
+    /// </summary>
+    public Vector2 PlannedSceneBuddyOrigin(Vector2 world) => ClampSceneBuddyOrigin(Buddy, world);
+
     private Vector2 ClampSceneBuddyOrigin(BuddyRoot buddy, Vector2 origin)
     {
         Rect2 bounds = Boundaries.InnerBounds;
