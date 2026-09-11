@@ -78,6 +78,7 @@ public static class ScenarioCatalog
         ["mood_band_behavior"] = () => new MoodBandBehaviorScenario(),
         ["jump_trait_gate"] = () => new JumpTraitGateScenario(),
         ["built_part_traversal"] = () => new BuiltPartTraversalScenario(),
+        ["built_part_look"] = () => new BuiltPartLookScenario(),
         ["hidden_clock_accrual"] = () => new HiddenClockAccrualScenario(),
         ["suspend_no_catchup"] = () => new SuspendNoCatchupScenario(),
         ["baseball_pullback"] = () => new BaseballPullbackScenario(),

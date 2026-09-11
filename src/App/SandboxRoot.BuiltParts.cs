@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using DesktopBuddy.Domain.Environment;
 using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.Persistence;
+using DesktopBuddy.Presentation3D;
 using DesktopBuddy.Sandbox;
 using Godot;
 
@@ -12,6 +13,7 @@ public partial class SandboxRoot
 {
     private readonly Dictionary<SandboxPartId, SandboxPartBody> _builtParts = [];
     private readonly List<SandboxPartId> _builtPartOrder = [];
+    private SandboxPartVisual3D? _partVisual;
 
     /// <summary>The parts physically standing in the active room, keyed by their durable identity.</summary>
     public IReadOnlyDictionary<SandboxPartId, SandboxPartBody> BuiltParts => _builtParts;
@@ -109,6 +111,7 @@ public partial class SandboxRoot
         }
 
         RemoveBuiltPart(part.PartId);
+        EnsurePartVisual();
         var body = new SandboxPartBody { Name = $"SandboxPart_{part.PartId.ToString()[..8]}" };
         body.Configure(part, definition);
         body.Position = ScenePlacementWorldPosition(part.Position);
@@ -116,6 +119,19 @@ public partial class SandboxRoot
         _builtParts[part.PartId] = body;
         _builtPartOrder.Add(part.PartId);
         return body;
+    }
+
+    /// <summary>The built parts' 3D shapes; made with the first part, like the link view.</summary>
+    public SandboxPartVisual3D? PartVisual => _partVisual;
+
+    private void EnsurePartVisual()
+    {
+        if (_partVisual is not null && GodotObject.IsInstanceValid(_partVisual))
+            return;
+        _partVisual = new SandboxPartVisual3D { Name = "SandboxPartVisual3D" };
+        _partVisual.Configure(_builtParts);
+        AddChild(_partVisual);
+        _partVisual.SetPresentationActive(Mode == PresentationMode.Mii3D);
     }
 
     private void RemoveBuiltPart(SandboxPartId partId)

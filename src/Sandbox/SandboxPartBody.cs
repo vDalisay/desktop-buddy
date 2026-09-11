@@ -46,6 +46,26 @@ public partial class SandboxPartBody : RigidBody2D
 
     public SandboxPartId PartId { get; private set; }
     public bool IsConfigured { get; private set; }
+    public SandboxPartDefinition Definition => _definition;
+
+    /// <summary>
+    /// False while the 3D presentation draws this part's shape: the flat body then draws only
+    /// what sits on top of it — the dark outline (the Buddy's parts are outlined too), the
+    /// selection outline and the frozen nail.
+    /// </summary>
+    public bool DrawsShape
+    {
+        get => _drawsShape;
+        set
+        {
+            if (_drawsShape == value)
+                return;
+            _drawsShape = value;
+            QueueRedraw();
+        }
+    }
+
+    private bool _drawsShape = true;
 
     /// <summary>Build/Edit's selection outline. Presentation only; the document owns nothing of it.</summary>
     public bool Selected
@@ -133,10 +153,13 @@ public partial class SandboxPartBody : RigidBody2D
 
         if (_definition.Shape == SandboxPartShape.Circle)
         {
-            DrawCircle(Vector2.Zero, _definition.Radius, _fill, true, -1.0f, true);
+            if (_drawsShape)
+            {
+                DrawCircle(Vector2.Zero, _definition.Radius, _fill, true, -1.0f, true);
+                // A spoke, so a rolling wheel reads as rolling rather than sliding.
+                DrawLine(Vector2.Zero, new Vector2(_definition.Radius, 0.0f), Outline, OutlineWidth, true);
+            }
             DrawArc(Vector2.Zero, _definition.Radius, 0.0f, Mathf.Tau, 32, Outline, OutlineWidth, true);
-            // A spoke, so a rolling wheel reads as rolling rather than sliding.
-            DrawLine(Vector2.Zero, new Vector2(_definition.Radius, 0.0f), Outline, OutlineWidth, true);
             if (_selected)
             {
                 DrawArc(Vector2.Zero, _definition.Radius + 3.0f, 0.0f, Mathf.Tau, 40, SelectionOuter, 3.0f, true);
@@ -148,7 +171,8 @@ public partial class SandboxPartBody : RigidBody2D
             var rect = new Rect2(
                 new Vector2(-_definition.Width * 0.5f, -_definition.Height * 0.5f),
                 new Vector2(_definition.Width, _definition.Height));
-            DrawRect(rect, _fill, filled: true);
+            if (_drawsShape)
+                DrawRect(rect, _fill, filled: true);
             DrawRect(rect, Outline, filled: false, OutlineWidth);
             if (_selected)
             {

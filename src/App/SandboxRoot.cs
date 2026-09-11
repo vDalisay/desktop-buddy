@@ -924,6 +924,8 @@ public partial class SandboxRoot : Node2D
         // same weapon seen two ways, never both at once.
         SprayerVisual.SetPresentationActive(show3D);
         FireSprayer.SetLegacyVisualEnabled(!show3D);
+        // Built parts belong to the room, not the cast, so an empty room still draws them in 3D.
+        _partVisual?.SetPresentationActive(mode == PresentationMode.Mii3D);
     }
 
     private void ApplyRunnerPresentationOverride()

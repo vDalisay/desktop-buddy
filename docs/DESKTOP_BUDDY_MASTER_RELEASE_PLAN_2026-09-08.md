@@ -1190,9 +1190,10 @@ restart; rope force on the routed fixed tick. The tagged production journey buil
 two-wheel hinged cart and a beam hanging on a rope, and checks the tuning and a rope survive a real
 restart. Deviation from the joint-UX draft in the systemic-sandbox plan: Hinge and Weld are one click
 on an overlap (as an axle through a wheel and a beam) rather than two; Rope keeps two clicks.
-Not done: parts still draw as flat 2D shapes, with no 3D presentation (owner noted 2026-09-10 they
-should match the Buddy's 3D look). NF-3T traversal below is done for steps and piles a hop
-clears. The Scene-switch pass is done: the journey pins a Wheel to the room, duplicates the Scene,
+Parts draw as lit 3D shapes in the frontal presentation (`SandboxPartVisual3D`: chamfered boxes for
+beams, blocks and plates, a tyre and hub for the wheel) under the same dark outline the Buddy's
+parts have, and flat in the legacy one (scenario `built_part_look`). NF-3T traversal below is done
+for steps and piles a hop clears. The Scene-switch pass is done: the journey pins a Wheel to the room, duplicates the Scene,
 switches to the copy and back, and checks each room rebuilds its own parts, links and live joints
 with none of the outgoing room's left behind.
 Known feel issue to tune with the owner: a shoved cart partly slides rather than rolls.
