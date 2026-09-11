@@ -69,9 +69,11 @@ public partial class SandboxLinkView : Node2D
             }
         }
 
-        // Wires: a line from the sending device to the receiving one, arrowed halfway along.
+        // Wires, in Build only: a line from the sending device to the receiving one, arrowed halfway along.
         foreach (SandboxWire wire in _sandbox.DocumentWires)
         {
+            if (!_sandbox.WiresVisible)
+                break;
             if (!_sandbox.BuiltParts.TryGetValue(wire.From, out SandboxPartBody? source) ||
                 !_sandbox.BuiltParts.TryGetValue(wire.To, out SandboxPartBody? target))
             {

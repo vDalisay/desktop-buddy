@@ -89,6 +89,22 @@ public partial class SandboxRoot
     /// <summary>Asks the link view to redraw, e.g. while Build drags a linked part.</summary>
     public void RedrawBuiltLinks() => _linkView?.QueueRedraw();
 
+    /// <summary>
+    /// Signal wires are a building aid, not part of the room: Build shows them, Play hides them
+    /// (owner note 2026-09-11). Ropes, hinges and welds are physical and always show.
+    /// </summary>
+    public bool WiresVisible
+    {
+        get => _wiresVisible;
+        set
+        {
+            _wiresVisible = value;
+            _linkView?.QueueRedraw();
+        }
+    }
+
+    private bool _wiresVisible;
+
     private void EnsureLinkView()
     {
         if (_linkView is not null && GodotObject.IsInstanceValid(_linkView))

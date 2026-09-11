@@ -106,6 +106,7 @@ public partial class BuildModeController : Node
     public void Enter()
     {
         IsActive = true;
+        _sandbox.WiresVisible = true;
         _sandbox.Lifecycle.PauseCoordinator.Set(GameplayPauseReason.BuildMode, true);
         _sandbox.SyncBuiltPartAnchors();
         BuildUi();
@@ -122,6 +123,7 @@ public partial class BuildModeController : Node
         SelectPlacedPart(null);
         SetTool(BuildTool.Parts);
         IsActive = false;
+        _sandbox.WiresVisible = false;
         // The panel, never the layer: a detached palette lives in its own desktop window, and
         // Win98PinnablePanel mirrors that window's visibility from the panel it follows.
         if (_panel is not null)

@@ -12,41 +12,32 @@ namespace DesktopBuddy.Sandbox;
 ///
 /// The body owns no durable state: <see cref="PlacedSandboxPart"/> is the truth, and the room
 /// rebuilds every part at rest from that document on load, exactly as it rebuilds its Buddy roster.
+/// How it looks lives in <see cref="SandboxPartLook"/>, shared with the Build palette's preview.
 /// </summary>
 [GlobalClass]
 public partial class SandboxPartBody : RigidBody2D
 {
-    private const float OutlineWidth = 2.0f;
-
-    private static readonly Color WoodFill = new("b4813f");
-    private static readonly Color MetalFill = new("9aa6b4");
-    private static readonly Color RubberFill = new("3a3f47");
-    private static readonly Color Outline = new("2a2118");
     // Win98 highlight navy with a white inner line, so the selection reads on any backdrop.
     private static readonly Color SelectionOuter = new("000080");
     private static readonly Color SelectionInner = new("ffffff");
     private static readonly Color NailFill = new("c8c8c8");
     private const float NailRadius = 3.5f;
-    private static readonly Color ButtonRed = new("c0392b");
-    private static readonly Color LampOff = new("6b6552");
-    private static readonly Color LampOn = new("ffd84a");
-    private static readonly Color LampGlow = new(1.0f, 0.85f, 0.3f, 0.28f);
+
+    // A Piston's stroke: out quickly, a beat at full reach, back more slowly.
+    private const double PistonOutSeconds = 0.08;
+    private const double PistonHoldSeconds = 0.18;
+    private const double PistonBackSeconds = 0.2;
 
     private bool _selected;
     private bool _frozen;
-
-    /// <summary>The material colours, shared so the build palette previews the real part.</summary>
-    public static Color FillFor(SandboxPartMaterial material) => material switch
-    {
-        SandboxPartMaterial.Metal => MetalFill,
-        SandboxPartMaterial.Rubber => RubberFill,
-        _ => WoodFill,
-    };
-
-    public static Color OutlineColor => Outline;
-
+    private bool _drawsShape = true;
+    private bool _lit;
     private SandboxPartDefinition _definition = null!;
-    private Color _fill = WoodFill;
+    private CollisionShape2D? _pistonHead;
+    private int _strokeTick;
+    private int _outTicks = 1;
+    private int _holdTicks = 1;
+    private int _backTicks = 1;
 
     public SandboxPartId PartId { get; private set; }
     public bool IsConfigured { get; private set; }
@@ -54,8 +45,8 @@ public partial class SandboxPartBody : RigidBody2D
 
     /// <summary>
     /// False while the 3D presentation draws this part's shape: the flat body then draws only
-    /// what sits on top of it — the dark outline (the Buddy's parts are outlined too), the
-    /// selection outline and the frozen nail.
+    /// what sits on top of it — the dark outline (the Buddy's parts are outlined too), the device
+    /// face, the selection outline and the frozen nail.
     /// </summary>
     public bool DrawsShape
     {
@@ -68,9 +59,6 @@ public partial class SandboxPartBody : RigidBody2D
             QueueRedraw();
         }
     }
-
-    private bool _drawsShape = true;
-    private bool _lit;
 
     /// <summary>A Lamp's light, from the signal network. Presentation only.</summary>
     public bool Lit
@@ -85,28 +73,11 @@ public partial class SandboxPartBody : RigidBody2D
         }
     }
 
-    /// <summary>How far a Piston's head reaches past its face when out.</summary>
-    public const float PistonReach = 24.0f;
+    /// <summary>How far out a Piston's head is, 0 home to 1 at full reach.</summary>
+    public float PistonExtension { get; private set; }
 
-    private int _pistonTicksLeft;
-
-    /// <summary>
-    /// Ticks a Piston's head stays out; zero when retracted. Set and counted down by the room's
-    /// device tick. Presentation only — the shove itself happens once, when the head goes out.
-    /// </summary>
-    public int PistonTicksLeft
-    {
-        get => _pistonTicksLeft;
-        set
-        {
-            if (_pistonTicksLeft == value)
-                return;
-            bool wasOut = _pistonTicksLeft > 0;
-            _pistonTicksLeft = value;
-            if (wasOut != value > 0)
-                QueueRedraw();
-        }
-    }
+    /// <summary>True from the moment a Piston fires until its head is home again.</summary>
+    public bool PistonBusy => _strokeTick > 0;
 
     /// <summary>Build/Edit's selection outline. Presentation only; the document owns nothing of it.</summary>
     public bool Selected
@@ -130,14 +101,37 @@ public partial class SandboxPartBody : RigidBody2D
 
         PartId = part.PartId;
         _definition = definition;
-        _fill = FillFor(definition.Material);
 
-        AddChild(new CollisionShape2D
+        if (definition.Device == SandboxDeviceKind.Piston)
         {
-            Shape = definition.Shape == SandboxPartShape.Circle
-                ? new CircleShape2D { Radius = definition.Radius }
-                : new RectangleShape2D { Size = new Vector2(definition.Width, definition.Height) },
-        });
+            // Two shapes: the base, and the head that moves out and is what things are pushed by.
+            Rect2 baseRect = SandboxPartLook.PistonBase(definition);
+            AddChild(new CollisionShape2D
+            {
+                Shape = new RectangleShape2D { Size = baseRect.Size },
+                Position = baseRect.GetCenter(),
+            });
+            Rect2 head = SandboxPartLook.PistonHead(definition, 0.0f);
+            _pistonHead = new CollisionShape2D
+            {
+                Shape = new RectangleShape2D { Size = head.Size },
+                Position = head.GetCenter(),
+            };
+            AddChild(_pistonHead);
+            int ticksPerSecond = Engine.PhysicsTicksPerSecond;
+            _outTicks = Math.Max(1, (int)Math.Round(PistonOutSeconds * ticksPerSecond));
+            _holdTicks = Math.Max(1, (int)Math.Round(PistonHoldSeconds * ticksPerSecond));
+            _backTicks = Math.Max(1, (int)Math.Round(PistonBackSeconds * ticksPerSecond));
+        }
+        else
+        {
+            AddChild(new CollisionShape2D
+            {
+                Shape = definition.Shape == SandboxPartShape.Circle
+                    ? new CircleShape2D { Radius = definition.Radius }
+                    : new RectangleShape2D { Size = new Vector2(definition.Width, definition.Height) },
+            });
+        }
         CollisionLayer = CollisionLayers.LooseObjects;
         CollisionMask = CollisionLayers.MaskLooseObjects;
         CanSleep = true;
@@ -155,6 +149,7 @@ public partial class SandboxPartBody : RigidBody2D
         SandboxPartOverrides clamped = overrides.Clamped();
         Mass = clamped.MassFor(_definition);
         GravityScale = clamped.GravityScaleValue;
+        PistonPush = clamped.PistonPushValue;
 
         float bounce = clamped.BounceFor(_definition);
         PhysicsMaterialOverride = new PhysicsMaterial
@@ -174,6 +169,57 @@ public partial class SandboxPartBody : RigidBody2D
         QueueRedraw();
     }
 
+    /// <summary>A Piston's push speed, from its placement's setting.</summary>
+    public float PistonPush { get; private set; } = SandboxPartOverrides.DefaultPistonPush;
+
+    /// <summary>Starts a Piston's stroke. False while one is already under way, or for anything else.</summary>
+    public bool StartPistonStroke()
+    {
+        if (_pistonHead is null || _strokeTick > 0)
+            return false;
+        _strokeTick = 1;
+        SetPistonExtension(StrokeExtension(_strokeTick));
+        return true;
+    }
+
+    /// <summary>Moves a Piston's stroke on by one routed tick; the head shape moves with it.</summary>
+    public void AdvancePistonStroke()
+    {
+        if (_strokeTick == 0)
+            return;
+        _strokeTick++;
+        if (_strokeTick > _outTicks + _holdTicks + _backTicks)
+        {
+            _strokeTick = 0;
+            SetPistonExtension(0.0f);
+            return;
+        }
+        SetPistonExtension(StrokeExtension(_strokeTick));
+    }
+
+    private float StrokeExtension(int tick)
+    {
+        if (tick <= _outTicks)
+        {
+            float t = tick / (float)_outTicks;
+            return 1.0f - (1.0f - t) * (1.0f - t); // fast off the mark, settling at full reach
+        }
+        if (tick <= _outTicks + _holdTicks)
+            return 1.0f;
+        float back = (tick - _outTicks - _holdTicks) / (float)_backTicks;
+        return 1.0f - back * back * (3.0f - 2.0f * back);
+    }
+
+    private void SetPistonExtension(float extension)
+    {
+        if (PistonExtension.Equals(extension))
+            return;
+        PistonExtension = extension;
+        if (_pistonHead is not null)
+            _pistonHead.Position = SandboxPartLook.PistonHead(_definition, extension).GetCenter();
+        QueueRedraw();
+    }
+
     /// <summary>Geometric hit test in world space; usable while the room is paused.</summary>
     public bool ContainsPoint(Vector2 world)
     {
@@ -187,94 +233,35 @@ public partial class SandboxPartBody : RigidBody2D
             Math.Abs(local.Y) <= _definition.Height * 0.5f;
     }
 
-    /// <summary>
-    /// What makes a device read as one, drawn over its shape in both presentations like the nail:
-    /// a Button's red cap, a Timer's clock face, a Lamp's bulb, a Piston's head.
-    /// </summary>
-    private void DrawDeviceFace()
-    {
-        float halfWidth = _definition.Width * 0.5f;
-        float halfHeight = _definition.Height * 0.5f;
-        switch (_definition.Device)
-        {
-            case SandboxDeviceKind.Button:
-                var cap = new Rect2(-halfWidth * 0.55f, -halfHeight - 6.0f, halfWidth * 1.1f, 6.0f);
-                DrawRect(cap, ButtonRed, filled: true);
-                DrawRect(cap, Outline, filled: false, 1.5f);
-                break;
-            case SandboxDeviceKind.Timer:
-                float face = Math.Min(halfWidth, halfHeight) * 0.72f;
-                DrawCircle(Vector2.Zero, face, SelectionInner, true, -1.0f, true);
-                DrawArc(Vector2.Zero, face, 0.0f, Mathf.Tau, 24, Outline, 1.5f, true);
-                DrawLine(Vector2.Zero, new Vector2(0.0f, -face * 0.75f), Outline, 1.5f, true);
-                DrawLine(Vector2.Zero, new Vector2(face * 0.5f, 0.0f), Outline, 1.5f, true);
-                break;
-            case SandboxDeviceKind.Lamp:
-                float bulb = halfWidth * 0.8f;
-                var centre = new Vector2(0.0f, -halfHeight * 0.25f);
-                if (_lit)
-                    DrawCircle(centre, bulb * 2.2f, LampGlow, true, -1.0f, true);
-                DrawCircle(centre, bulb, _lit ? LampOn : LampOff, true, -1.0f, true);
-                DrawArc(centre, bulb, 0.0f, Mathf.Tau, 20, Outline, 1.5f, true);
-                break;
-            case SandboxDeviceKind.Piston:
-                // The rod and head on the face it pushes from (local up), out or home.
-                float reach = _pistonTicksLeft > 0 ? PistonReach : 0.0f;
-                var rod = new Rect2(-halfWidth * 0.18f, -halfHeight - reach, halfWidth * 0.36f, reach);
-                var head = new Rect2(-halfWidth, -halfHeight - reach - 6.0f, halfWidth * 2.0f, 6.0f);
-                if (reach > 0.0f)
-                {
-                    DrawRect(rod, NailFill, filled: true);
-                    DrawRect(rod, Outline, filled: false, 1.5f);
-                }
-                DrawRect(head, MetalFill, filled: true);
-                DrawRect(head, Outline, filled: false, 1.5f);
-                break;
-        }
-    }
-
     public override void _Draw()
     {
         if (!IsConfigured)
             return;
 
-        if (_definition.Shape == SandboxPartShape.Circle)
+        SandboxPartLook.Draw(this, _definition, _drawsShape, _lit, PistonExtension);
+
+        if (_selected)
         {
-            if (_drawsShape)
-            {
-                DrawCircle(Vector2.Zero, _definition.Radius, _fill, true, -1.0f, true);
-                // A spoke, so a rolling wheel reads as rolling rather than sliding.
-                DrawLine(Vector2.Zero, new Vector2(_definition.Radius, 0.0f), Outline, OutlineWidth, true);
-            }
-            DrawArc(Vector2.Zero, _definition.Radius, 0.0f, Mathf.Tau, 32, Outline, OutlineWidth, true);
-            if (_selected)
+            if (_definition.Shape == SandboxPartShape.Circle)
             {
                 DrawArc(Vector2.Zero, _definition.Radius + 3.0f, 0.0f, Mathf.Tau, 40, SelectionOuter, 3.0f, true);
                 DrawArc(Vector2.Zero, _definition.Radius + 1.0f, 0.0f, Mathf.Tau, 40, SelectionInner, 1.0f, true);
             }
-        }
-        else
-        {
-            var rect = new Rect2(
-                new Vector2(-_definition.Width * 0.5f, -_definition.Height * 0.5f),
-                new Vector2(_definition.Width, _definition.Height));
-            if (_drawsShape)
-                DrawRect(rect, _fill, filled: true);
-            DrawRect(rect, Outline, filled: false, OutlineWidth);
-            if (_selected)
+            else
             {
+                var rect = new Rect2(
+                    new Vector2(-_definition.Width * 0.5f, -_definition.Height * 0.5f),
+                    new Vector2(_definition.Width, _definition.Height));
                 DrawRect(rect.Grow(3.0f), SelectionOuter, filled: false, 3.0f);
                 DrawRect(rect.Grow(1.0f), SelectionInner, filled: false, 1.0f);
             }
         }
 
-        DrawDeviceFace();
-
         // A nail through the middle: frozen parts do not move, and the player should see which.
         if (_frozen)
         {
             DrawCircle(Vector2.Zero, NailRadius, NailFill, true, -1.0f, true);
-            DrawArc(Vector2.Zero, NailRadius, 0.0f, Mathf.Tau, 16, Outline, 1.5f, true);
+            DrawArc(Vector2.Zero, NailRadius, 0.0f, Mathf.Tau, 16, SandboxPartLook.OutlineColor, 1.5f, true);
         }
     }
 }

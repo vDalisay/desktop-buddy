@@ -47,7 +47,7 @@ public static class SandboxPartCatalogue
             SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 32.0f, Height: 16.0f, Mass: 4.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Button),
         new(Timer, "Timer",
-            "Waits a moment after a pulse comes in, then sends one on.",
+            "A clock: sends a pulse every few seconds. Wire something into it and each pulse switches it on or off.",
             SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 32.0f, Height: 32.0f, Mass: 4.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Timer),
         new(Piston, "Piston",

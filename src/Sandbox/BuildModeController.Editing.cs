@@ -32,6 +32,10 @@ public partial class BuildModeController
     private Label? _massReadout;
     private Label? _bounceReadout;
     private Label? _gravityReadout;
+    private HSlider? _strengthSlider;
+    private HSlider? _intervalSlider;
+    private Label? _strengthReadout;
+    private Label? _intervalReadout;
     private CheckBox? _frozenToggle;
     private Button? _duplicateButton;
     private Button? _deleteButton;
@@ -453,6 +457,13 @@ public partial class BuildModeController
         _gravitySlider = AddPropertySlider(group.Content, "Gravity", "How strongly it falls. Negative floats upward.",
             SandboxPartOverrides.MinimumGravityScale, SandboxPartOverrides.MaximumGravityScale,
             0.1, out _gravityReadout, value => WithOverride(o => o with { GravityScale = (float)value }));
+        // Device settings: each row shows only while its device is selected.
+        _strengthSlider = AddPropertySlider(group.Content, "Strength", "How hard the Piston shoves.",
+            SandboxPartOverrides.MinimumPistonPush, SandboxPartOverrides.MaximumPistonPush,
+            10.0, out _strengthReadout, value => WithOverride(o => o with { PistonPush = (float)value }));
+        _intervalSlider = AddPropertySlider(group.Content, "Every", "How often the Timer sends a pulse while it runs.",
+            SandboxPartOverrides.MinimumTimerSeconds, SandboxPartOverrides.MaximumTimerSeconds,
+            0.1, out _intervalReadout, value => WithOverride(o => o with { TimerSeconds = (float)value }));
 
         _frozenToggle = new CheckBox
         {
@@ -473,7 +484,7 @@ public partial class BuildModeController
         _deleteButton.Name = "BuildModeDeleteButton";
         _resetButton = Win98Dialog.Action(actions, "Reset", () => SetSelectedPartOverrides(SandboxPartOverrides.None));
         _resetButton.Name = "BuildModeResetButton";
-        _resetButton.TooltipText = "Back to the part's own mass, bounce and gravity, unfrozen.";
+        _resetButton.TooltipText = "Back to the part's own settings, unfrozen.";
         _unlinkButton = Win98Dialog.Action(actions, "Unlink", () =>
         {
             if (_selectedPart is { } partId && _scenes.ActiveSandbox.RemoveLinksOf(partId) > 0)
@@ -560,6 +571,8 @@ public partial class BuildModeController
         {
             _massReadout!.Text = _bounceReadout!.Text = _gravityReadout!.Text = string.Empty;
             _frozenToggle!.SetPressedNoSignal(false);
+            _strengthSlider!.GetParent<Control>().Visible = false;
+            _intervalSlider!.GetParent<Control>().Visible = false;
             return;
         }
 
@@ -574,6 +587,19 @@ public partial class BuildModeController
         _bounceReadout!.Text = $"{bounce * 100.0f:0}%";
         _gravityReadout!.Text = $"×{gravity:0.0}";
         _frozenToggle!.SetPressedNoSignal(overrides.Frozen);
+
+        bool piston = definition.Device == SandboxDeviceKind.Piston;
+        bool timer = definition.Device == SandboxDeviceKind.Timer;
+        _strengthSlider!.GetParent<Control>().Visible = piston;
+        _intervalSlider!.GetParent<Control>().Visible = timer;
+        _strengthSlider.Editable = piston;
+        _intervalSlider.Editable = timer;
+        float push = overrides.PistonPushValue;
+        float seconds = overrides.TimerSecondsValue;
+        _strengthSlider.SetValueNoSignal(push);
+        _intervalSlider.SetValueNoSignal(seconds);
+        _strengthReadout!.Text = $"{push / SandboxPartOverrides.MaximumPistonPush * 100.0f:0}%";
+        _intervalReadout!.Text = $"{seconds:0.0} s";
     }
 
     private void RefreshPartCount()

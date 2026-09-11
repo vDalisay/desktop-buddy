@@ -602,24 +602,32 @@ public static class ProductionBootstrapJourneyProbe
                     // The Button's other wire went straight to the Piston: it fired once, at once,
                     // and threw the block off its head.
                     bool shoved = sandbox.PistonShoveCount == shovesBefore + 1 && loadRestY - loadHighestY > 20.0f;
-                    // The Timer waits a second: at 120 Hz the lamp lights a little after 120 ticks.
+                    // The press switched the Timer on; its first beat is one interval (default one
+                    // second) later: at 120 Hz the lamp lights a little after 120 ticks.
                     bool timed = litAfter >= Engine.PhysicsTicksPerSecond - 5 &&
                         litAfter <= Engine.PhysicsTicksPerSecond + 20;
+                    bool running = sandbox.Signals.IsTimerRunning(timer);
+                    // Wires are a Build aid: hidden in Play, shown in Build.
+                    bool wiresHiddenInPlay = !sandbox.WiresVisible;
 
-                    // Press again, then cut the Timer's wire while its pulse is still waiting: the
-                    // lamp must stay lit, because what the wire carried has nowhere to go.
-                    build.PressButtonAt(sandbox.BuiltParts[button].GlobalPosition);
-                    for (int frame = 0; frame < 20; frame++)
-                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
-                    bool waiting = sandbox.Signals.PendingAt(timer) == 1;
+                    // Cut the running Timer's wire to the Lamp: the lamp keeps whatever state it
+                    // has, because the beats have nowhere to go.
                     build.Toggle();
                     await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    bool wiresShownInBuild = sandbox.WiresVisible;
+                    bool litBeforeCut = lampBody.Lit;
                     Vector2 wireMiddle = (sandbox.BuiltParts[timer].GlobalPosition + lampBody.GlobalPosition) * 0.5f;
                     bool cut = build.RemoveLinkAt(wireMiddle) && scenes.ActiveSandbox.Wires.Count == 2;
                     await build.LeaveAsync();
-                    for (int frame = 0; frame < 200; frame++)
+                    for (int frame = 0; frame < Engine.PhysicsTicksPerSecond * 3; frame++)
                         await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
-                    bool stayedLit = lampBody.Lit;
+                    bool stayedLit = lampBody.Lit == litBeforeCut && sandbox.Signals.IsTimerRunning(timer);
+
+                    // And the Button switches the clock back off.
+                    build.PressButtonAt(sandbox.BuiltParts[button].GlobalPosition);
+                    for (int frame = 0; frame < 5; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    bool stopped = !sandbox.Signals.IsTimerRunning(timer);
 
                     build.Toggle();
                     await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -632,11 +640,13 @@ public static class ProductionBootstrapJourneyProbe
                     await build.LeaveAsync();
 
                     buildDevicesWork = triggerHidden && wired && badRejected && pressed && timed && shoved &&
-                        waiting && cut && stayedLit && cleared && !scenes.IsDirty;
+                        running && wiresHiddenInPlay && wiresShownInBuild && cut && stayedLit && stopped &&
+                        cleared && !scenes.IsDirty;
                     Log.Info("BootstrapJourney",
                         $"build devices: triggerHidden={triggerHidden} wired={wired} badRejected={badRejected} " +
                         $"pressed={pressed} litAfter={litAfter} shoved={shoved} rise={loadRestY - loadHighestY:F1} " +
-                        $"waiting={waiting} cut={cut} stayedLit={stayedLit} cleared={cleared}");
+                        $"running={running} wiresHiddenInPlay={wiresHiddenInPlay} wiresShownInBuild={wiresShownInBuild} " +
+                        $"cut={cut} stayedLit={stayedLit} stopped={stopped} cleared={cleared}");
                 }
 
                 if (runtime is { Actors.Count: > 0 } &&

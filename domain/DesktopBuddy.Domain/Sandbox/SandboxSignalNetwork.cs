@@ -18,57 +18,69 @@ public readonly record struct SandboxDeviceCommand(SandboxPartId Part, SandboxDe
 /// <summary>
 /// The room's signal network (NF-4), engine-free and ticked once per routed fixed tick.
 ///
-/// <para>Two phases per tick. First the pulses due now are gathered — Buttons pressed since the
-/// last tick and Timers whose wait is up. Then each is delivered along its wires, in stable part
-/// order, and the devices react. Nothing a device does in phase two can emit a pulse in the same
-/// tick: a Timer only ever schedules, so a loop of devices runs across ticks instead of recursing
-/// inside one, and a tick's work is capped at <see cref="MaximumDeliveriesPerTick"/>.</para>
+/// <para>A Timer is a clock: while it runs it sends a pulse every interval (its own setting). A
+/// Timer nothing is wired into runs from the start; one with a wire in starts stopped, and each pulse
+/// arriving switches it on or off — so Button → Timer → Piston is a switch for a repeating piston.</para>
 ///
-/// <para>The document is the truth. <see cref="Rebuild"/> re-reads it after any edit; pending
-/// state for devices that are gone, or wires that were cut, simply stops mattering.</para>
+/// <para>Two phases per tick. First the pulses due now are gathered — Buttons pressed since the
+/// last tick and running Timers whose interval is up. Then each is delivered along its wires, in
+/// stable part order, and the devices react. Nothing a device does in phase two can emit a pulse in
+/// the same tick: a Timer switched on only schedules, so a loop of devices runs across ticks instead
+/// of recursing inside one, and a tick's work is capped at <see cref="MaximumDeliveriesPerTick"/>.</para>
+///
+/// <para>The document is the truth. <see cref="Rebuild"/> re-reads it after any edit; state for
+/// devices that are gone, or wires that were cut, simply stops mattering.</para>
 /// </summary>
 public sealed class SandboxSignalNetwork
 {
     public const int MaximumDeliveriesPerTick = 256;
 
-    /// <summary>A Timer holds at most this many pulses in flight; more arriving are dropped.</summary>
-    public const int MaximumPendingPerTimer = 16;
-
-    private readonly int _timerDelayTicks;
+    private readonly int _ticksPerSecond;
     private readonly Dictionary<SandboxPartId, SandboxDeviceKind> _devices = [];
     private readonly Dictionary<SandboxPartId, List<SandboxWire>> _wiresFrom = [];
-    private readonly Dictionary<SandboxPartId, Queue<long>> _timerDue = [];
+    private readonly Dictionary<SandboxPartId, int> _timerInterval = [];
+    /// <summary>Running Timers and the tick each next fires on; a stopped Timer is absent.</summary>
+    private readonly Dictionary<SandboxPartId, long> _timerNext = [];
     private readonly HashSet<SandboxPartId> _litLamps = [];
     private readonly HashSet<SandboxPartId> _pressed = [];
     private readonly List<SandboxPartId> _emitting = [];
 
-    public SandboxSignalNetwork(int timerDelayTicks)
+    public SandboxSignalNetwork(int ticksPerSecond)
     {
-        if (timerDelayTicks < 1)
-            throw new ArgumentOutOfRangeException(nameof(timerDelayTicks), "A Timer must wait at least one tick.");
-        _timerDelayTicks = timerDelayTicks;
+        if (ticksPerSecond < 1)
+            throw new ArgumentOutOfRangeException(nameof(ticksPerSecond), "The network needs at least one tick a second.");
+        _ticksPerSecond = ticksPerSecond;
     }
 
     public long TickCount { get; private set; }
 
-    /// <summary>Deliveries and Timer pulses turned away by the per-tick and per-Timer caps.</summary>
+    /// <summary>Deliveries turned away by the per-tick cap.</summary>
     public int DroppedPulses { get; private set; }
 
     public bool IsLampLit(SandboxPartId lamp) => _litLamps.Contains(lamp);
 
-    /// <summary>Timer pulses still waiting, for verification and the Timer's own display.</summary>
-    public int PendingAt(SandboxPartId timer) => _timerDue.TryGetValue(timer, out Queue<long>? due) ? due.Count : 0;
+    public bool IsTimerRunning(SandboxPartId timer) => _timerNext.ContainsKey(timer);
+
+    /// <summary>A Timer's interval in ticks, for verification.</summary>
+    public int IntervalTicksOf(SandboxPartId timer) => _timerInterval.TryGetValue(timer, out int ticks) ? ticks : 0;
 
     public void Rebuild(SandboxDocument document)
     {
         ArgumentNullException.ThrowIfNull(document);
         _devices.Clear();
         _wiresFrom.Clear();
+        _timerInterval.Clear();
         foreach (PlacedSandboxPart part in document.Parts)
         {
             SandboxDeviceKind kind = document.DeviceOf(part.PartId);
-            if (kind != SandboxDeviceKind.None)
-                _devices[part.PartId] = kind;
+            if (kind == SandboxDeviceKind.None)
+                continue;
+            _devices[part.PartId] = kind;
+            if (kind == SandboxDeviceKind.Timer)
+            {
+                _timerInterval[part.PartId] = Math.Max(1,
+                    (int)Math.Round(part.Overrides.TimerSecondsValue * _ticksPerSecond));
+            }
         }
         foreach (SandboxWire wire in document.Wires)
         {
@@ -86,8 +98,16 @@ public sealed class SandboxSignalNetwork
             });
         }
 
-        foreach (SandboxPartId gone in _timerDue.Keys.Where(id => KindOf(id) != SandboxDeviceKind.Timer).ToList())
-            _timerDue.Remove(gone);
+        foreach (SandboxPartId gone in _timerNext.Keys.Where(id => KindOf(id) != SandboxDeviceKind.Timer).ToList())
+            _timerNext.Remove(gone);
+        var fed = new HashSet<SandboxPartId>(document.Wires.Select(wire => wire.To));
+        foreach ((SandboxPartId timer, int interval) in _timerInterval)
+        {
+            if (_timerNext.TryGetValue(timer, out long next))
+                _timerNext[timer] = Math.Min(next, TickCount + interval);   // a shortened interval applies now
+            else if (!fed.Contains(timer))
+                _timerNext[timer] = TickCount + interval;                   // a free Timer is a clock
+        }
         _litLamps.RemoveWhere(id => KindOf(id) != SandboxDeviceKind.Lamp);
         _pressed.RemoveWhere(id => KindOf(id) != SandboxDeviceKind.Button);
     }
@@ -110,13 +130,15 @@ public sealed class SandboxSignalNetwork
         _emitting.Clear();
         _emitting.AddRange(_pressed);
         _pressed.Clear();
-        foreach ((SandboxPartId timer, Queue<long> due) in _timerDue)
+        foreach ((SandboxPartId timer, long next) in _timerNext)
         {
-            while (due.Count > 0 && due.Peek() <= TickCount)
-            {
-                due.Dequeue();
+            if (next <= TickCount)
                 _emitting.Add(timer);
-            }
+        }
+        foreach (SandboxPartId source in _emitting)
+        {
+            if (_timerNext.ContainsKey(source))
+                _timerNext[source] = TickCount + _timerInterval[source];
         }
         _emitting.Sort();
 
@@ -144,14 +166,10 @@ public sealed class SandboxSignalNetwork
         switch (KindOf(device))
         {
             case SandboxDeviceKind.Timer:
-                if (!_timerDue.TryGetValue(device, out Queue<long>? due))
-                    _timerDue[device] = due = new Queue<long>();
-                if (due.Count >= MaximumPendingPerTimer)
-                {
-                    DroppedPulses++;
-                    return;
-                }
-                due.Enqueue(TickCount + _timerDelayTicks);
+                // A pulse in switches the clock: off if running, else on with its first beat one
+                // interval from now.
+                if (!_timerNext.Remove(device))
+                    _timerNext[device] = TickCount + _timerInterval[device];
                 break;
             case SandboxDeviceKind.Piston:
                 commands.Add(new SandboxDeviceCommand(device, SandboxDeviceAction.PistonExtend));

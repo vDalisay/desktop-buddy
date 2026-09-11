@@ -98,29 +98,50 @@ public sealed record SandboxPartDefinition(
 
 /// <summary>
 /// Bounded per-placement tuning. Every override is optional; an absent value means "use the shared
-/// definition", so restoring a default can never write back into the definition itself.
+/// definition", so restoring a default can never write back into the definition itself. The two
+/// device settings only mean something on their device: a Piston's push, a Timer's interval.
 /// </summary>
 public readonly record struct SandboxPartOverrides(
     float? MassScale = null,
     float? Bounce = null,
     float? GravityScale = null,
-    bool Frozen = false)
+    bool Frozen = false,
+    float? PistonPush = null,
+    float? TimerSeconds = null)
 {
     public const float MinimumMassScale = 0.1f;
     public const float MaximumMassScale = 10.0f;
     public const float MinimumGravityScale = -2.0f;
     public const float MaximumGravityScale = 4.0f;
 
+    /// <summary>The speed, in pixels a second, a Piston gives what it shoves.</summary>
+    public const float DefaultPistonPush = 850.0f;
+    public const float MinimumPistonPush = 150.0f;
+    public const float MaximumPistonPush = 1300.0f;
+
+    /// <summary>How often a running Timer sends a pulse.</summary>
+    public const float DefaultTimerSeconds = 1.0f;
+    public const float MinimumTimerSeconds = 0.1f;
+    public const float MaximumTimerSeconds = 10.0f;
+
     public static SandboxPartOverrides None => default;
 
-    public bool HasAny => MassScale.HasValue || Bounce.HasValue || GravityScale.HasValue || Frozen;
+    public bool HasAny => MassScale.HasValue || Bounce.HasValue || GravityScale.HasValue || Frozen ||
+        PistonPush.HasValue || TimerSeconds.HasValue;
 
     /// <summary>Clamps every present value into its allowed band; out-of-band input never throws.</summary>
     public SandboxPartOverrides Clamped() => new(
         Clamp(MassScale, MinimumMassScale, MaximumMassScale),
         Clamp(Bounce, 0.0f, 1.0f),
         Clamp(GravityScale, MinimumGravityScale, MaximumGravityScale),
-        Frozen);
+        Frozen,
+        Clamp(PistonPush, MinimumPistonPush, MaximumPistonPush),
+        Clamp(TimerSeconds, MinimumTimerSeconds, MaximumTimerSeconds));
+
+    public float PistonPushValue => Clamp(PistonPush, MinimumPistonPush, MaximumPistonPush) ?? DefaultPistonPush;
+
+    public float TimerSecondsValue =>
+        Clamp(TimerSeconds, MinimumTimerSeconds, MaximumTimerSeconds) ?? DefaultTimerSeconds;
 
     public float MassFor(SandboxPartDefinition definition)
     {

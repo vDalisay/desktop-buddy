@@ -88,7 +88,7 @@ public sealed class SandboxSignalTests
     }
 
     [Fact]
-    public void Button_to_timer_to_piston_fires_after_the_wait()
+    public void A_button_switches_a_timer_that_then_fires_every_interval()
     {
         var document = new SandboxDocument();
         SandboxPartId button = Place(document, SandboxPartCatalogue.Button);
@@ -96,14 +96,59 @@ public sealed class SandboxSignalTests
         SandboxPartId piston = Place(document, SandboxPartCatalogue.Piston);
         Wire(document, button, timer);
         Wire(document, timer, piston);
+        var network = new SandboxSignalNetwork(Delay);   // default 1 s interval = Delay ticks
+        network.Rebuild(document);
+
+        Assert.False(network.IsTimerRunning(timer));   // fed by a wire, so it waits for a pulse
+        Assert.Empty(Run(network, Delay * 3));
+
+        var beat = new SandboxDeviceCommand(piston, SandboxDeviceAction.PistonExtend);
+        network.Press(button);
+        Assert.Empty(Run(network, Delay));             // tick 1 switches it on; first beat an interval later
+        Assert.True(network.IsTimerRunning(timer));
+        Assert.Equal([beat], Run(network, 1));
+        Assert.Equal([beat, beat], Run(network, Delay * 2));
+
+        network.Press(button);                         // and off again
+        Run(network, 1);
+        Assert.False(network.IsTimerRunning(timer));
+        Assert.Empty(Run(network, Delay * 3));
+    }
+
+    [Fact]
+    public void A_timer_with_nothing_wired_in_runs_at_its_own_interval()
+    {
+        var document = new SandboxDocument();
+        SandboxPartId timer = document.Add(
+            SandboxPartCatalogue.Timer,
+            new CanonicalRoomPosition(0.5f, 0.5f),
+            overrides: new SandboxPartOverrides(TimerSeconds: 2.0f)).Part!.PartId;
+        SandboxPartId lamp = Place(document, SandboxPartCatalogue.Lamp);
+        Wire(document, timer, lamp);
         var network = new SandboxSignalNetwork(Delay);
         network.Rebuild(document);
 
-        network.Press(button);
-        Assert.Empty(Run(network, Delay));   // tick 1 reaches the Timer; it waits
-        Assert.Equal(1, network.PendingAt(timer));
-        Assert.Equal([new SandboxDeviceCommand(piston, SandboxDeviceAction.PistonExtend)], Run(network, 1));
-        Assert.Equal(0, network.PendingAt(timer));
+        Assert.True(network.IsTimerRunning(timer));
+        Assert.Equal(Delay * 2, network.IntervalTicksOf(timer));
+        Assert.Empty(Run(network, Delay * 2 - 1));
+        Assert.Equal([new SandboxDeviceCommand(lamp, SandboxDeviceAction.LampOn)], Run(network, 1));
+        Assert.Equal([new SandboxDeviceCommand(lamp, SandboxDeviceAction.LampOff)], Run(network, Delay * 2));
+
+        // The setting survives a save, and so does a Piston's push.
+        SandboxPartId piston = document.Add(
+            SandboxPartCatalogue.Piston,
+            new CanonicalRoomPosition(0.2f, 0.5f),
+            overrides: new SandboxPartOverrides(PistonPush: 5000.0f)).Part!.PartId;
+        SandboxDocument reloaded = SandboxSavePolicy.Decode(SandboxSavePolicy.Serialize(document)).Document!;
+        Assert.True(reloaded.TryGet(timer, out PlacedSandboxPart? savedTimer));
+        Assert.Equal(2.0f, savedTimer!.Overrides.TimerSecondsValue);
+        Assert.True(reloaded.TryGet(piston, out PlacedSandboxPart? savedPiston));
+        Assert.Equal(SandboxPartOverrides.MaximumPistonPush, savedPiston!.Overrides.PistonPushValue);
+
+        // Out-of-band settings are clamped rather than trusted.
+        document.SetOverrides(timer, new SandboxPartOverrides(TimerSeconds: 0.0f));
+        network.Rebuild(document);
+        Assert.Equal(1, network.IntervalTicksOf(timer));   // 0.1 s at 5 ticks a second, never below one tick
     }
 
     [Fact]
@@ -156,9 +201,8 @@ public sealed class SandboxSignalTests
     }
 
     [Fact]
-    public void A_runaway_loop_runs_across_ticks_and_is_capped()
+    public void Timers_switching_each_other_in_a_ring_stay_bounded()
     {
-        // Twelve Timers in a ring, each feeding the next two: the pulse count doubles every wait.
         var document = new SandboxDocument();
         SandboxPartId button = Place(document, SandboxPartCatalogue.Button);
         SandboxPartId[] timers = Enumerable.Range(0, 12).Select(_ => Place(document, SandboxPartCatalogue.Timer)).ToArray();
@@ -172,10 +216,11 @@ public sealed class SandboxSignalTests
         network.Rebuild(document);
 
         network.Press(button);
-        Run(network, 200);
+        List<SandboxDeviceCommand> commands = Run(network, 200);
 
-        Assert.True(network.DroppedPulses > 0);
-        Assert.All(timers, timer => Assert.True(network.PendingAt(timer) <= SandboxSignalNetwork.MaximumPendingPerTimer));
+        // Timers only schedule; the ring ends as twelve switches, never a runaway pile of pulses.
+        Assert.Empty(commands);
+        Assert.Equal(0, network.DroppedPulses);
     }
 
     [Fact]
@@ -203,7 +248,7 @@ public sealed class SandboxSignalTests
         document.Remove(timer);
         network.Rebuild(document);
         Assert.Empty(Run(network, Delay * 2));
-        Assert.Equal(0, network.PendingAt(timer));
+        Assert.False(network.IsTimerRunning(timer));
     }
 
     [Fact]

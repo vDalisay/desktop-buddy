@@ -12,16 +12,6 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class SandboxRoot
 {
-    /// <summary>How long a Timer waits before passing its pulse on.</summary>
-    private const double TimerDelaySeconds = 1.0;
-
-    // ponytail: Piston feel is three constants, not a profile resource; promote when the owner tunes it.
-    /// <summary>Speed a Piston gives what it shoves, whatever that weighs.</summary>
-    private const float PistonPushSpeed = 650.0f;
-
-    /// <summary>How long a Piston's head stays out; pulses arriving meanwhile are ignored.</summary>
-    private const double PistonHoldSeconds = 0.25;
-
     /// <summary>Reach past the head's travel still counted as "in front of" the piston.</summary>
     private const float PistonShoveMargin = 6.0f;
 
@@ -50,8 +40,7 @@ public partial class SandboxRoot
 
     private void SyncSignals()
     {
-        _signals ??= new SandboxSignalNetwork(
-            Mathf.Max(1, Mathf.RoundToInt(TimerDelaySeconds * Engine.PhysicsTicksPerSecond)));
+        _signals ??= new SandboxSignalNetwork(Engine.PhysicsTicksPerSecond);
         if (SceneProgress is not { } scenes)
             return;
         SandboxDocument document = scenes.ActiveSandbox;
@@ -88,8 +77,8 @@ public partial class SandboxRoot
                 continue;
             if (body.Definition.Device == SandboxDeviceKind.Lamp)
                 body.Lit = signals.IsLampLit(partId);
-            else if (body.PistonTicksLeft > 0)
-                body.PistonTicksLeft--;
+            else
+                body.AdvancePistonStroke();
         }
 
         // Wires follow the devices they join, and devices move.
@@ -98,16 +87,16 @@ public partial class SandboxRoot
     }
 
     /// <summary>
-    /// A Piston's head goes out and shoves whatever is in front of its face — parts, loose objects
-    /// and Buddy parts alike — then stays out briefly before it can fire again. The push is a speed
-    /// rather than an impulse, so a ball and a metal block both move. A piston that isn't frozen
-    /// is pushed back by what it pushes against; nail it down to make it a wall.
+    /// A Piston's head goes out — its own collision shape, animated by the body — and shoves
+    /// whatever is in front of its face: parts, loose objects and Buddy parts alike. The push is a
+    /// speed (the Piston's Strength setting) rather than an impulse, so a ball and a metal block both
+    /// move. Pulses arriving before the head is home are ignored. A piston that isn't frozen is
+    /// pushed back by what it pushes against; nail it down to make it a wall.
     /// </summary>
     private void ExtendPiston(SandboxPartBody piston)
     {
-        if (piston.PistonTicksLeft > 0)
+        if (!piston.StartPistonStroke())
             return;
-        piston.PistonTicksLeft = Mathf.Max(1, Mathf.RoundToInt(PistonHoldSeconds * Engine.PhysicsTicksPerSecond));
         PistonShoveCount++;
 
         PhysicsDirectSpaceState2D? space = GetWorld2D()?.DirectSpaceState;
@@ -115,7 +104,7 @@ public partial class SandboxRoot
             return;
 
         float halfHeight = piston.Definition.Height * 0.5f;
-        float depth = SandboxPartBody.PistonReach + PistonShoveMargin;
+        float depth = SandboxPartLook.PistonReach + PistonShoveMargin;
         using var shape = new RectangleShape2D { Size = new Vector2(piston.Definition.Width, depth) };
         var query = new PhysicsShapeQueryParameters2D
         {
@@ -137,11 +126,11 @@ public partial class SandboxRoot
             {
                 continue;
             }
-            float impulse = target.Mass * PistonPushSpeed;
+            float impulse = target.Mass * piston.PistonPush;
             target.ApplyCentralImpulse(push * impulse);
             recoil += impulse;
         }
         if (!piston.Freeze && recoil > 0.0f)
-            piston.ApplyCentralImpulse(-push * Mathf.Min(recoil, piston.Mass * PistonPushSpeed));
+            piston.ApplyCentralImpulse(-push * Mathf.Min(recoil, piston.Mass * piston.PistonPush));
     }
 }
