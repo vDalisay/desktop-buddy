@@ -103,14 +103,19 @@ public partial class BuildModeController : Node
     {
         IsActive = true;
         _sandbox.Lifecycle.PauseCoordinator.Set(GameplayPauseReason.BuildMode, true);
+        _sandbox.SyncBuiltPartAnchors();
         BuildUi();
         RefreshPalette();
-        SetStatus("Build: click to place, right-click a part to remove it. Escape plays.");
+        SelectPlacedPart(null);
+        SetStatus("Build: click empty space to place, click a part to select and drag it. Escape plays.");
     }
 
     /// <summary>Returns to Play and commits the room the player just built.</summary>
     public async Task LeaveAsync()
     {
+        if (_dragging)
+            FinishDrag();
+        SelectPlacedPart(null);
         IsActive = false;
         // The panel, never the layer: a detached palette lives in its own desktop window, and
         // Win98PinnablePanel mirrors that window's visibility from the panel it follows.
@@ -135,6 +140,10 @@ public partial class BuildModeController : Node
         _frame ??= GetTree().Root.FindChild(
             nameof(Win98WindowFrame), recursive: true, owned: false) as Win98WindowFrame;
 
+        // A release that landed on the palette never reaches the room; end the drag anyway.
+        if (_dragging && !Input.IsMouseButtonPressed(MouseButton.Left))
+            FinishDrag();
+
         // Work Mode, a Scene switch or an editor takes the room away from Build without asking.
         if (IsActive && !CanEnter())
             _ = LeaveAsync();
@@ -149,26 +158,17 @@ public partial class BuildModeController : Node
         if (!IsActive)
             return;
 
+        if (HandleEditInput(@event))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        // Escape with nothing selected: the edit handler passed it on, so it plays.
         if (@event is InputEventKey { Pressed: true, Keycode: Key.Escape })
         {
             GetViewport().SetInputAsHandled();
             _ = LeaveAsync();
-            return;
         }
-        if (@event is not InputEventMouseButton { Pressed: true } click)
-            return;
-        if (click.ButtonIndex is not (MouseButton.Left or MouseButton.Right))
-            return;
-
-        Vector2 world = _sandbox.GetGlobalMousePosition();
-        if (!_sandbox.Boundaries.InnerBounds.HasPoint(world))
-            return;
-
-        GetViewport().SetInputAsHandled();
-        if (click.ButtonIndex == MouseButton.Right)
-            RemovePartAt(world);
-        else
-            PlaceSelectedPartAt(world);
     }
 
     /// <summary>Selects one palette part by definition, as clicking its row does.</summary>
@@ -192,12 +192,7 @@ public partial class BuildModeController : Node
             return;
 
         SandboxDocument document = _scenes.ActiveSandbox;
-        Rect2 bounds = _sandbox.Boundaries.InnerBounds;
-        SandboxEditResult added = document.Add(
-            definition.Id,
-            new CanonicalRoomPosition(
-                Mathf.Clamp((world.X - bounds.Position.X) / Math.Max(1.0f, bounds.Size.X), 0.0f, 1.0f),
-                Mathf.Clamp((world.Y - bounds.Position.Y) / Math.Max(1.0f, bounds.Size.Y), 0.0f, 1.0f)));
+        SandboxEditResult added = document.Add(definition.Id, ToCanonical(world));
 
         if (!added.Succeeded)
         {
@@ -208,6 +203,9 @@ public partial class BuildModeController : Node
         }
 
         _sandbox.PlaceBuiltPart(added.Part!);
+        // Selected straight away, so it can be turned or tuned without hunting for it.
+        SelectPlacedPart(added.Part!.PartId);
+        RefreshPartCount();
         SetStatus($"Placed {definition.DisplayName}. {document.Count} parts in this room.");
     }
 
@@ -218,16 +216,24 @@ public partial class BuildModeController : Node
             SetStatus("No part there to remove.");
             return;
         }
+        RemovePart(partId);
+    }
 
+    private bool RemovePart(SandboxPartId partId)
+    {
         SandboxEditResult removed = _scenes.ActiveSandbox.Remove(partId);
         if (!removed.Succeeded)
         {
             SetStatus($"Could not remove the part ({removed.Status}).");
-            return;
+            return false;
         }
 
+        if (_selectedPart == partId)
+            SelectPlacedPart(null);
         _sandbox.RemoveBuiltPartBody(partId);
+        RefreshPartCount();
         SetStatus($"Removed a part. {_scenes.ActiveSandbox.Count} parts in this room.");
+        return true;
     }
 
     private void ShowSelectedPart()
@@ -259,7 +265,7 @@ public partial class BuildModeController : Node
 
         _layer = new CanvasLayer { Name = "BuildModeLayer", Layer = 90 };
         _panel = Win98Dialog.Create(
-            "BuildModePalette", "Build", new Vector2(450, 320), out VBoxContainer body,
+            "BuildModePalette", "Build", new Vector2(460, 540), out VBoxContainer body,
             () => _ = LeaveAsync(), draggable: false);
         _panel.Visible = true;
         // Opens centred, like every other shell workspace (owner instruction 2026-09-10). Growing
@@ -308,6 +314,8 @@ public partial class BuildModeController : Node
         details.AddChild(_description);
         browser.AddChild(details);
 
+        BuildPropertiesUi(body);
+
         _hint = new Label
         {
             Name = "BuildModeHint",
@@ -322,7 +330,7 @@ public partial class BuildModeController : Node
         // can be pulled out onto the desktop and pinned back rather than being stuck in the room.
         _panelPin = new Win98PinnablePanel { Name = "BuildModePinController" };
         AddChild(_panelPin);
-        _panelPin.Configure(_panel, new Vector2I(470, 350), "BuildModeWindow");
+        _panelPin.Configure(_panel, new Vector2I(480, 580), "BuildModeWindow");
     }
 
 
@@ -338,8 +346,7 @@ public partial class BuildModeController : Node
         {
             _partList.Select(Math.Clamp(_selectedIndex, 0, _palette.Count - 1));
         }
-        if (_hint is not null)
-            _hint.Text = $"{_scenes.ActiveSandbox.Count} of {SandboxDocument.MaximumParts} parts placed.";
+        RefreshPartCount();
         ShowSelectedPart();
     }
 

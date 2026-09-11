@@ -102,6 +102,17 @@ public partial class SandboxRoot
     }
 
     /// <summary>
+    /// Writes where every part came to rest back into the active document. Build/Edit calls this
+    /// on entry: once Play has run, the document still holds where parts were first placed, and
+    /// moving or rotating from that stale spot would jump a part away from where the player sees it.
+    /// </summary>
+    public void SyncBuiltPartAnchors()
+    {
+        if (SceneProgress is { } scenes)
+            CaptureBuiltPartAnchors(scenes);
+    }
+
+    /// <summary>
     /// Captures where the parts actually came to rest, so a Scene switch or a restart reopens the
     /// room as the player left it rather than as they first placed it.
     /// </summary>

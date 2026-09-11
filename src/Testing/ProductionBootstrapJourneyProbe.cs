@@ -329,6 +329,7 @@ public static class ProductionBootstrapJourneyProbe
             bool buildCommitsOnReturnToPlay = !buildRoom;
             bool buildPreviewRightOfList = !buildRoom;
             bool buildSurfaceSupportsBuddy = !buildRoom;
+            bool buildEditsApply = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
             if (buildRoom)
@@ -368,6 +369,41 @@ public static class ProductionBootstrapJourneyProbe
                     scenes.ActiveSandbox.Count == 1 &&
                     sandbox.BuiltParts.Count == 1 &&
                     scenes.ActiveSandbox.Parts[0].DefinitionId == SandboxPartCatalogue.WoodBeam;
+
+                // NF-3 editing through the same controls the room uses: select, move, rotate, tune,
+                // duplicate and delete, each landing in the document and on the live body.
+                if (sandbox.BuiltParts.Values.FirstOrDefault() is SandboxPartBody kept)
+                {
+                    SandboxPartId keptId = scenes.ActiveSandbox.Parts[0].PartId;
+                    bool selected = build.SelectPlacedPartAt(kept.GlobalPosition) &&
+                        build.SelectedPlacedPart == keptId;
+                    Vector2 movedTo = kept.GlobalPosition + new Vector2(30.0f, 0.0f);
+                    bool moved = build.MoveSelectedPartTo(movedTo) &&
+                        kept.GlobalPosition.IsEqualApprox(movedTo);
+                    // Gravity 5 is outside the band and must arrive clamped to 4.
+                    bool tuned = build.SetSelectedPartOverrides(
+                        new SandboxPartOverrides(MassScale: 2.0f, Bounce: 0.5f, GravityScale: 5.0f, Frozen: true));
+                    SandboxPartOverrides stored = scenes.ActiveSandbox.Parts[0].Overrides;
+                    tuned = tuned && stored.Frozen && stored.MassScale == 2.0f &&
+                        stored.GravityScale == SandboxPartOverrides.MaximumGravityScale &&
+                        kept.Freeze && Mathf.IsEqualApprox(kept.GravityScale, SandboxPartOverrides.MaximumGravityScale);
+
+                    SandboxPartId? copyId = build.DuplicateSelectedPart();
+                    bool duplicated = copyId is { } copy && copy != keptId &&
+                        scenes.ActiveSandbox.Count == 2 && sandbox.BuiltParts.Count == 2 &&
+                        scenes.ActiveSandbox.TryGet(copy, out PlacedSandboxPart? copied) &&
+                        copied!.Overrides == stored && build.SelectedPlacedPart == copy;
+                    bool rotated = build.RotateSelectedPart(30.0f) && copyId is { } rotatedId &&
+                        scenes.ActiveSandbox.TryGet(rotatedId, out PlacedSandboxPart? turned) &&
+                        Mathf.IsEqualApprox(turned!.RotationDegrees, 30.0f) &&
+                        Mathf.IsEqualApprox(sandbox.BuiltParts[rotatedId].RotationDegrees, 30.0f);
+                    bool deleted = build.DeleteSelectedPart() &&
+                        scenes.ActiveSandbox.Count == 1 && sandbox.BuiltParts.Count == 1 &&
+                        build.SelectedPlacedPart is null;
+                    buildEditsApply = selected && moved && tuned && duplicated && rotated && deleted;
+                    Log.Info("BootstrapJourney",
+                        $"build edits: selected={selected} moved={moved} tuned={tuned} duplicated={duplicated} rotated={rotated} deleted={deleted}");
+                }
 
                 await build.LeaveAsync();
                 buildCommitsOnReturnToPlay = !build.IsActive &&
@@ -411,10 +447,16 @@ public static class ProductionBootstrapJourneyProbe
             {
                 SceneProgressCoordinator scenes = context.SceneProgress
                     ?? throw new InvalidOperationException("Built-room phase requires Scene progress.");
-                builtRoomRestored = scenes.ActiveSandbox.Count == 1 &&
-                    scenes.ActiveSandbox.Parts[0].DefinitionId == SandboxPartCatalogue.WoodBeam &&
+                PlacedSandboxPart? restored = scenes.ActiveSandbox.Count == 1 ? scenes.ActiveSandbox.Parts[0] : null;
+                // The tuning set in Build must survive a real restart, and the body must honour it.
+                builtRoomRestored = restored is not null &&
+                    restored.DefinitionId == SandboxPartCatalogue.WoodBeam &&
+                    restored.Overrides.Frozen &&
+                    restored.Overrides.MassScale == 2.0f &&
+                    restored.Overrides.GravityScale == SandboxPartOverrides.MaximumGravityScale &&
                     sandbox.BuiltParts.Count == 1 &&
-                    sandbox.BuiltParts.ContainsKey(scenes.ActiveSandbox.Parts[0].PartId);
+                    sandbox.BuiltParts.TryGetValue(restored.PartId, out SandboxPartBody? restoredBody) &&
+                    restoredBody!.Freeze;
             }
 
             bool restartPrepared = !prepareRestart;
@@ -574,6 +616,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_commits_on_return_to_play"] = buildCommitsOnReturnToPlay,
                 ["build_preview_right_of_list"] = buildPreviewRightOfList,
                 ["build_surface_supports_buddy"] = buildSurfaceSupportsBuddy,
+                ["build_edits_apply"] = buildEditsApply,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,
