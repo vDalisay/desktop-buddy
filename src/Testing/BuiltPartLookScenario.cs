@@ -42,6 +42,7 @@ public sealed class BuiltPartLookScenario : IScenario
         Place(sandbox, SandboxPartCatalogue.Button, 0.3f, 0.35f, 0.0f);
         Place(sandbox, SandboxPartCatalogue.Timer, 0.5f, 0.35f, 0.0f);
         Place(sandbox, SandboxPartCatalogue.Lamp, 0.7f, 0.35f, 0.0f);
+        Place(sandbox, SandboxPartCatalogue.Piston, 0.85f, 0.35f, 0.0f);
         for (int frame = 0; frame < 10; frame++)
             await tree.ToSignal(tree, SceneTree.SignalName.ProcessFrame);
 

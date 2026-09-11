@@ -8,9 +8,8 @@ namespace DesktopBuddy.Sandbox;
 /// A sunken well showing the part that is about to be placed, scaled to fit.
 ///
 /// <para>It is the part as the room draws it: the same <see cref="SandboxPartLook"/> model, rendered
-/// by a small camera in the room's own 3D world (so the room's lights light it), with the same flat
-/// outline and device face on top. The model stands far outside the room, where the room's camera
-/// never looks.</para>
+/// by a small camera in the room's own 3D world, so the room's lights light it. The model stands far
+/// outside the room, where the room's camera never looks.</para>
 /// </summary>
 public partial class SandboxPartPreview : Control
 {
@@ -22,7 +21,6 @@ public partial class SandboxPartPreview : Control
     private SubViewport? _viewport;
     private Camera3D? _camera;
     private Node3D? _model;
-    private Control? _overlay;
 
     public override void _Ready()
     {
@@ -55,11 +53,6 @@ public partial class SandboxPartPreview : Control
             Far = CameraDistance * 2.0f,
         };
         _viewport.AddChild(_camera);
-
-        _overlay = new Control { Name = "PreviewFace", MouseFilter = MouseFilterEnum.Ignore };
-        _overlay.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
-        _overlay.Draw += DrawFace;
-        AddChild(_overlay);
 
         Resized += Restage;
         VisibilityChanged += () =>
@@ -103,19 +96,8 @@ public partial class SandboxPartPreview : Control
         if (_camera is not null && Size.Y > 4.0f)
             _camera.Size = (Size.Y - 4.0f) / FitScale();   // world units across the well's height
         QueueRedraw();
-        _overlay?.QueueRedraw();
     }
 
     public override void _Draw() =>
         DrawStyleBox(Win98ThemeFactory.Recessed(Win98ThemeFactory.Light, 2), new Rect2(Vector2.Zero, Size));
-
-    private void DrawFace()
-    {
-        if (_definition is not { } definition || _overlay is null)
-            return;
-        float scale = FitScale();
-        _overlay.DrawSetTransform(Size * 0.5f, 0.0f, new Vector2(scale, scale));
-        SandboxPartLook.Draw(_overlay, definition, drawsShape: false, lit: false, extension: 0.0f);
-        _overlay.DrawSetTransform(Vector2.Zero);
-    }
 }

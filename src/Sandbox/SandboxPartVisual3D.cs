@@ -12,7 +12,7 @@ namespace DesktopBuddy.Sandbox;
 ///
 /// <para>Render-only: follows each part's 2D body and never writes to it. It keeps running while
 /// the room is paused, because Build moves parts with the room paused. The flat body keeps drawing
-/// the outline, device face, selection outline and frozen nail over the shape.</para>
+/// the selection outline and frozen nail over the model.</para>
 /// </summary>
 public partial class SandboxPartVisual3D : Node3D
 {
@@ -89,7 +89,7 @@ public partial class SandboxPartVisual3D : Node3D
             position.Z = body.Definition.Shape == SandboxPartShape.Circle ? WheelDepthLane : BoxDepthLane;
             node.GlobalPosition = position;
             node.GlobalRotation = new Vector3(0.0f, 0.0f, WorldPlaneMapping.To3DRotationZ(angle));
-            SandboxPartLook.Pose(node, body.Definition, body.PistonExtension);
+            SandboxPartLook.Pose(node, body.Definition, body.PistonExtension, body.Lit);
         }
     }
 
