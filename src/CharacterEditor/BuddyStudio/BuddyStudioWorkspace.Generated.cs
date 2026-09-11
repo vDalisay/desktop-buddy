@@ -132,7 +132,9 @@ public partial class BuddyStudioWorkspace
         bool purchasable = !owned && definition.OwnershipContentId is string contentId &&
             _economy.Catalogue.TryGet(contentId, out entry) && entry.Visible &&
             entry.Kind == CatalogueEntryKind.Cosmetic && entry.HasValidPrice;
-        bool affordable = !purchasable || entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
+        // Free for now: see EconomyService.EverythingIsFree (owner 2026-09-12).
+        bool affordable = !purchasable || Economy.EconomyService.EverythingIsFree ||
+            entry.PriceMilliCredits <= _economy.BalanceMilliCredits;
 
         string status = equipped ? "Equipped" : owned ? "Owned" : "Preview";
         _values.SetRows(

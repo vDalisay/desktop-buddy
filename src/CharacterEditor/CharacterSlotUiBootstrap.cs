@@ -181,7 +181,9 @@ public partial class CharacterSlotUiBootstrap : Node
         long balanceCredits = _sandbox!.Economy.BalanceMilliCredits / 1000;
         bool full = remaining <= 0;
         bool hasWorkingCharacter = _host!.Session.WorkingDocument is not null;
-        bool canAffordSlot = _sandbox.Economy.BalanceMilliCredits >= _slots.NextPriceMilliCredits;
+        // Free for now: see EconomyService.EverythingIsFree (owner 2026-09-12).
+        bool canAffordSlot = Economy.EconomyService.EverythingIsFree ||
+            _sandbox.Economy.BalanceMilliCredits >= _slots.NextPriceMilliCredits;
 
         _newButton!.Disabled = full || _purchaseBusy;
         _newButton.Text = full ? "+ New Character (full)" : $"+ New Character ({remaining} free)";

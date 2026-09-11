@@ -182,9 +182,14 @@ public partial class ShopPanel : PanelContainer
         {
             bool owned = row.Entry.IsStarting || _progress.IsUnlocked(row.Entry.ContentId);
             bool active = _progress.SelectedTool == row.Tool;
-            bool affordable = _progress.BalanceMilliCredits >= row.Entry.PriceMilliCredits;
+            // Free for now (owner 2026-09-12; see EconomyService.EverythingIsFree): nothing shows a
+            // price, and nothing is out of reach.
+            bool affordable = EconomyService.EverythingIsFree ||
+                _progress.BalanceMilliCredits >= row.Entry.PriceMilliCredits;
             string name = ContentDisplayName.For(row.Entry.ContentId);
-            string price = ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
+            string price = EconomyService.EverythingIsFree
+                ? "Free"
+                : ContentDisplayName.Credits(row.Entry.PriceMilliCredits);
 
             row.Price.Text = owned ? string.Empty : price;
             row.Action.Text = active ? "Equipped" : owned ? "Equip" : "Buy";
@@ -194,7 +199,9 @@ public partial class ShopPanel : PanelContainer
                 : owned
                     ? $"Equip {name}."
                     : affordable
-                        ? $"Buy {name} permanently for {price}."
+                        ? (EconomyService.EverythingIsFree
+                            ? $"Take {name}; it is yours permanently, and free."
+                            : $"Buy {name} permanently for {price}.")
                         : $"{name} costs {price}; you have {ContentDisplayName.Credits(_progress.BalanceMilliCredits)}. Earn more credits to buy it.";
             UiFeedbackAudioBootstrap.Tag(row.Action, layer: UiSfx.NoLayer);
         }

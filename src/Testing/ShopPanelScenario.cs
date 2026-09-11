@@ -70,11 +70,15 @@ public sealed class ShopPanelScenario : IScenario
             IReadOnlyList<CatalogueEntry> purchasable = offered
                 .Where(static e => !e.IsStarting)
                 .ToArray();
-            bool brokeDisablesUnownedBuys = progress.BalanceMilliCredits == 0 &&
-                purchasable.All(entry => shop.BuyButtonFor(entry.ContentId) is { Disabled: true, Text: "Buy" } button &&
-                    button.TooltipText.Contains("Earn more credits", System.StringComparison.OrdinalIgnoreCase));
-            checks.Add(new StartupCheck("catalogue_refuses_purchases_while_broke", brokeDisablesUnownedBuys,
-                $"balance={progress.BalanceMilliCredits}"));
+            // While everything is free (owner 2026-09-12) a player with nothing may still take
+            // anything; with the economy on, the same rows are refused for want of credits.
+            bool brokeRule = progress.BalanceMilliCredits == 0 &&
+                purchasable.All(entry => shop.BuyButtonFor(entry.ContentId) is { Text: "Buy" } button &&
+                    (Economy.EconomyService.EverythingIsFree
+                        ? !button.Disabled
+                        : button.Disabled && button.TooltipText.Contains("Earn more credits", System.StringComparison.OrdinalIgnoreCase)));
+            checks.Add(new StartupCheck("catalogue_refuses_purchases_while_broke", brokeRule,
+                $"balance={progress.BalanceMilliCredits} free={Economy.EconomyService.EverythingIsFree}"));
 
             CatalogueEntry cheapest = purchasable
                 .OrderBy(static e => e.PriceMilliCredits)
