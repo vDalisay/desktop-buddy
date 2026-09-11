@@ -28,19 +28,16 @@ public partial class BuildModeController
 {
     private const float LinkHitRadius = 8.0f;
 
-    private readonly Dictionary<BuildTool, Button> _toolButtons = [];
     private BuildTool _tool = BuildTool.Parts;
     private SandboxLinkEnd? _ropeStart;
     private SandboxPartId? _wireStart;
 
     public BuildTool Tool => _tool;
 
-    public void SetTool(BuildTool tool)
+    private void ApplyTool(BuildTool tool)
     {
         _tool = tool;
         CancelPendingLink();
-        foreach ((BuildTool key, Button button) in _toolButtons)
-            button.SetPressedNoSignal(key == tool);
         SetStatus(tool switch
         {
             BuildTool.Rope => "Rope: click a point on a part, then another part or the room. Right-click cancels.",
@@ -93,25 +90,11 @@ public partial class BuildModeController
     {
         if (RemoveWireAt(world))
             return true;
-
-        SandboxLink? nearest = null;
-        float best = LinkHitRadius;
-        foreach (SandboxLink link in _sandbox.DocumentLinks)
-        {
-            if (_sandbox.LinkEndWorld(link.A) is not { } a || _sandbox.LinkEndWorld(link.B) is not { } b)
-                continue;
-            float distance = link.Kind == SandboxLinkKind.Rope
-                ? DistanceToSegment(world, a, b)
-                : world.DistanceTo(a);
-            if (distance <= best)
-            {
-                best = distance;
-                nearest = link;
-            }
-        }
-        if (nearest is null)
+        if (!TryFindLinkAt(world, LinkHitRadius, out SandboxLink nearest))
             return false;
 
+        if (_selectedLink == nearest.LinkId)
+            SelectLink(null);
         _scenes.ActiveSandbox.RemoveLink(nearest.LinkId);
         _sandbox.RebuildBuiltLinks();
         RefreshProperties();
@@ -200,7 +183,9 @@ public partial class BuildModeController
 
     private SandboxLinkResult CommitLink(SandboxLinkKind kind, SandboxLinkEnd a, SandboxLinkEnd b, float length)
     {
-        SandboxLinkResult added = _scenes.ActiveSandbox.AddLink(kind, a, b, length);
+        // The chosen preset, as adjusted in Properties before placing.
+        SandboxLinkResult added = _scenes.ActiveSandbox.AddLink(
+            kind, a, b, length, _newLink.Strength, _newLink.Elasticity, _newLink.Stiffness);
         string name = kind.ToString().ToLowerInvariant();
         if (!added.Succeeded)
         {
@@ -230,7 +215,8 @@ public partial class BuildModeController
         if (!TryPickDevice(to, SandboxPortDirection.Input, out SandboxPartId target, except: source))
             return RejectWire("A wire ends at a device that receives: a Timer or a Lamp.");
 
-        SandboxWireResult added = _scenes.ActiveSandbox.AddWire(source, SandboxDevices.Out, target, SandboxDevices.In);
+        SandboxWireResult added = _scenes.ActiveSandbox.AddWire(
+            source, SandboxDevices.Out, target, SandboxDevices.In, _wireColor);
         if (!added.Succeeded)
         {
             SetStatus(added.Status switch
@@ -354,38 +340,6 @@ public partial class BuildModeController
     {
         CanonicalRoomPosition at = ToCanonical(world);
         return SandboxLinkEnd.World(at.X, at.Y);
-    }
-
-    private void BuildToolRow(VBoxContainer body)
-    {
-        var row = new HBoxContainer { Name = "BuildModeTools" };
-        row.AddThemeConstantOverride("separation", Win98ThemeFactory.Gap);
-        body.AddChild(row);
-        var group = new ButtonGroup();
-        foreach ((BuildTool tool, string label, string tip) in new[]
-                 {
-                     (BuildTool.Parts, "Parts", "1 — place, select and move parts."),
-                     (BuildTool.Rope, "Rope", "2 — tie a part to another part or to the room."),
-                     (BuildTool.Hinge, "Hinge", "3 — an axle where two parts overlap, or a pin to the room."),
-                     (BuildTool.Weld, "Weld", "4 — lock two overlapping parts together."),
-                     (BuildTool.Wire, "Wire", "5 — send a device's pulse to another device."),
-                 })
-        {
-            var button = new Button
-            {
-                Name = $"BuildModeTool{label}",
-                Text = label,
-                TooltipText = tip,
-                ToggleMode = true,
-                ButtonGroup = group,
-                ButtonPressed = tool == _tool,
-                FocusMode = Control.FocusModeEnum.None,
-                CustomMinimumSize = new Vector2(72, 26),
-            };
-            button.Pressed += () => SetTool(tool);
-            row.AddChild(button);
-            _toolButtons[tool] = button;
-        }
     }
 
     private static float DistanceToSegment(Vector2 point, Vector2 start, Vector2 end)

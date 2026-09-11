@@ -65,6 +65,10 @@ public sealed record SandboxLinkSave
     public float BX { get; set; }
     public float BY { get; set; }
     public float Length { get; set; }
+    /// <summary>Absent in rooms from before links had tuning: those were unbreakable, taut and free.</summary>
+    public float? Strength { get; set; }
+    public float? Elasticity { get; set; }
+    public float? Stiffness { get; set; }
 
     public static SandboxLinkSave FromLink(SandboxLink link)
     {
@@ -80,6 +84,9 @@ public sealed record SandboxLinkSave
             BX = link.B.X,
             BY = link.B.Y,
             Length = link.Length,
+            Strength = link.Strength,
+            Elasticity = link.Elasticity,
+            Stiffness = link.Stiffness,
         };
     }
 
@@ -98,7 +105,7 @@ public sealed record SandboxLinkSave
             BPartId == Guid.Empty
                 ? SandboxLinkEnd.World(BX, BY)
                 : SandboxLinkEnd.OnPart(SandboxPartId.From(BPartId), BX, BY),
-            Length);
+            Length).WithTuning(Strength ?? 1.0f, Elasticity ?? 0.0f, Stiffness ?? 0.0f);
         return link.Problem() is null ? link : null;
     }
 }
@@ -110,6 +117,7 @@ public sealed record SandboxWireSave
     public string FromPort { get; set; } = string.Empty;
     public Guid ToPartId { get; set; }
     public string ToPort { get; set; } = string.Empty;
+    public string? Color { get; set; }
 
     public static SandboxWireSave FromWire(SandboxWire wire)
     {
@@ -121,10 +129,14 @@ public sealed record SandboxWireSave
             FromPort = wire.FromPort,
             ToPartId = wire.To.Value,
             ToPort = wire.ToPort,
+            Color = wire.Color.ToString().ToLowerInvariant(),
         };
     }
 
-    /// <summary>The wire, or null when a stored ID is empty; ports and parts are checked by the room.</summary>
+    /// <summary>
+    /// The wire, or null when a stored ID is empty; ports and parts are checked by the room. An
+    /// unknown colour is only paint, so it falls back to green rather than costing the wire.
+    /// </summary>
     public SandboxWire? TryCreateWire() =>
         WireId == Guid.Empty || FromPartId == Guid.Empty || ToPartId == Guid.Empty
             ? null
@@ -133,7 +145,10 @@ public sealed record SandboxWireSave
                 SandboxPartId.From(FromPartId),
                 FromPort ?? string.Empty,
                 SandboxPartId.From(ToPartId),
-                ToPort ?? string.Empty);
+                ToPort ?? string.Empty,
+                Enum.TryParse(Color, ignoreCase: true, out SandboxWireColor color) && Enum.IsDefined(color)
+                    ? color
+                    : SandboxWireColor.Green);
 }
 
 /// <summary>
@@ -144,8 +159,9 @@ public sealed record SandboxWireSave
 public sealed record SandboxDocumentSave
 {
     /// <summary>
-    /// 2 added links, 3 signal wires, 4 device settings (Piston push, Timer interval) and a
-    /// beam's own length and thickness. An older room simply has none.
+    /// 2 added links, 3 signal wires, 4 device settings (Piston push, Timer interval), a beam's own
+    /// length and thickness, link strength/stretch/stiffness and wire colours. An older room simply
+    /// has none.
     /// </summary>
     public const int CurrentSchemaVersion = 4;
 

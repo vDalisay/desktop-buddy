@@ -334,6 +334,7 @@ public static class ProductionBootstrapJourneyProbe
             bool buildLinksWork = !buildRoom;
             bool buildLinksSurviveSceneSwitch = !buildRoom;
             bool buildDevicesWork = !buildRoom;
+            bool buildLinksSnap = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
             if (buildRoom)
@@ -679,6 +680,52 @@ public static class ProductionBootstrapJourneyProbe
                         $"lastPresser={sandbox.LastButtonPresser} button={sandbox.BuiltParts.GetValueOrDefault(button)?.GlobalPosition} resized={resized} cleared={cleared}");
                 }
 
+                // Link strength: a Metal Block on a weak rope snaps it; one on a strong rope hangs.
+                {
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Vector2 AirAt(float x) => bounds.Position + bounds.Size * new Vector2(x, 0.3f);
+                    SandboxPartId Place(Vector2 at)
+                    {
+                        build.SelectPart(SandboxPartCatalogue.MetalBlock);
+                        build.PlaceSelectedPartAt(at);
+                        return build.SelectedPlacedPart ?? default;
+                    }
+                    SandboxPartId weakBlock = Place(AirAt(0.8f));
+                    SandboxPartId strongBlock = Place(AirAt(0.9f));
+                    build.SetTool(BuildTool.Rope);
+                    build.TuneLink(0.25f, 0.3f, 0.0f);
+                    SandboxLink? weakRope = build.RopeBetween(AirAt(0.8f) + new Vector2(0.0f, -12.0f), AirAt(0.8f) + new Vector2(0.0f, -70.0f)).Link;
+                    build.TuneLink(1.0f, 0.1f, 0.0f);
+                    SandboxLink? strongRope = build.RopeBetween(AirAt(0.9f) + new Vector2(0.0f, -12.0f), AirAt(0.9f) + new Vector2(0.0f, -70.0f)).Link;
+                    bool tuned = weakRope is { Strength: 0.25f } && strongRope is { IsUnbreakable: true };
+                    build.SetTool(BuildTool.Parts);
+                    // Counted before Play resumes: the weak rope snaps the moment the block's weight
+                    // comes on it, which is while leaving Build is still saving the room.
+                    int snappedBefore = sandbox.SnappedLinkCount;
+                    int linksBefore = scenes.ActiveSandbox.Links.Count - 2;
+                    await build.LeaveAsync();
+                    for (int frame = 0; frame < Engine.PhysicsTicksPerSecond * 2; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    bool weakSnapped = sandbox.SnappedLinkCount == snappedBefore + 1 && weakRope is not null &&
+                        !scenes.ActiveSandbox.TryGetLink(weakRope.LinkId, out _);
+                    bool strongHeld = strongRope is not null && scenes.ActiveSandbox.TryGetLink(strongRope.LinkId, out _);
+
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    foreach (SandboxPartId block in new[] { weakBlock, strongBlock })
+                    {
+                        if (build.SelectPlaced(block))
+                            build.DeleteSelectedPart();
+                    }
+                    await build.LeaveAsync();
+                    buildLinksSnap = tuned && weakSnapped && strongHeld && scenes.ActiveSandbox.Links.Count == linksBefore &&
+                        !scenes.IsDirty;
+                    Log.Info("BootstrapJourney",
+                        $"build links: tuned={tuned} weakSnapped={weakSnapped} strongHeld={strongHeld} " +
+                        $"snapped={sandbox.SnappedLinkCount - snappedBefore} links={scenes.ActiveSandbox.Links.Count}/{linksBefore}");
+                }
+
                 if (runtime is { Actors.Count: > 0 } &&
                     sandbox.BuiltParts.Values.FirstOrDefault() is SandboxPartBody beam)
                 {
@@ -894,6 +941,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_links_work"] = buildLinksWork,
                 ["build_links_survive_scene_switch"] = buildLinksSurviveSceneSwitch,
                 ["build_devices_work"] = buildDevicesWork,
+                ["build_links_snap"] = buildLinksSnap,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,

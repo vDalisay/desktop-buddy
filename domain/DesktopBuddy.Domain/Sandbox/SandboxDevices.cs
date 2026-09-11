@@ -83,6 +83,17 @@ public readonly struct SandboxWireId : IEquatable<SandboxWireId>, IComparable<Sa
     public static bool operator !=(SandboxWireId left, SandboxWireId right) => !left.Equals(right);
 }
 
+/// <summary>A wire's colour: only a way to tell circuits apart; every colour carries the same pulse.</summary>
+public enum SandboxWireColor
+{
+    Green = 0,
+    Red,
+    Blue,
+    Yellow,
+    Purple,
+    White,
+}
+
 /// <summary>
 /// One signal wire: from a device's output port to another device's input port. Wires are logic,
 /// not physics — they pull on nothing, and a wire is drawn rather than simulated.
@@ -92,7 +103,8 @@ public sealed record SandboxWire(
     SandboxPartId From,
     string FromPort,
     SandboxPartId To,
-    string ToPort)
+    string ToPort,
+    SandboxWireColor Color = SandboxWireColor.Green)
 {
     public bool Touches(SandboxPartId partId) => From == partId || To == partId;
 

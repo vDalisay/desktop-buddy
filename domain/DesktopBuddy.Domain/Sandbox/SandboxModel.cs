@@ -255,14 +255,11 @@ public sealed class SandboxDocument
 {
     public const int CurrentSchemaVersion = 1;
 
-    /// <summary>Bounded so one room cannot be built into an unopenable save or an unplayable tick.</summary>
-    public const int MaximumParts = 200;
-
-    /// <summary>Two per part on average: enough for carts and chains, bounded for the fixed tick.</summary>
-    public const int MaximumLinks = 400;
-
-    /// <summary>The systemic-sandbox budget's signal-wire allowance for one room.</summary>
-    public const int MaximumWires = 192;
+    // Owner 2026-09-11: no part limit a player should ever meet. These are only safety rails, so a
+    // damaged or hostile save cannot allocate without bound; nobody builds ten thousand parts by hand.
+    public const int MaximumParts = 10_000;
+    public const int MaximumLinks = 20_000;
+    public const int MaximumWires = 10_000;
 
     private readonly List<PlacedSandboxPart> _parts;
     private readonly List<SandboxLink> _links;
@@ -444,9 +441,12 @@ public sealed class SandboxDocument
     /// valid — both ends are devices with those ports, facing the right way, and not the same part —
     /// so a rejected wire never changes the room.
     /// </summary>
-    public SandboxWireResult AddWire(SandboxPartId from, string fromPort, SandboxPartId to, string toPort)
+    public SandboxWireResult AddWire(
+        SandboxPartId from, string fromPort, SandboxPartId to, string toPort,
+        SandboxWireColor color = SandboxWireColor.Green)
     {
-        var wire = new SandboxWire(SandboxWireId.New(), from, fromPort, to, toPort);
+        var wire = new SandboxWire(SandboxWireId.New(), from, fromPort, to, toPort,
+            Enum.IsDefined(color) ? color : SandboxWireColor.Green);
         SandboxWireResult admitted = Admit(wire);
         if (!admitted.Succeeded)
             return admitted;
@@ -521,7 +521,10 @@ public sealed class SandboxDocument
         SandboxLinkKind kind,
         SandboxLinkEnd a,
         SandboxLinkEnd b,
-        float length = 0.0f)
+        float length = 0.0f,
+        float strength = 1.0f,
+        float elasticity = 0.0f,
+        float stiffness = 0.0f)
     {
         var link = new SandboxLink(
             SandboxLinkId.New(),
@@ -530,7 +533,7 @@ public sealed class SandboxDocument
             b,
             kind == SandboxLinkKind.Rope
                 ? Math.Clamp(float.IsFinite(length) ? length : 0.0f, SandboxLink.MinimumRopeLength, SandboxLink.MaximumRopeLength)
-                : 0.0f);
+                : 0.0f).WithTuning(strength, elasticity, stiffness);
         SandboxLinkResult admitted = Admit(link);
         if (!admitted.Succeeded)
             return admitted;
@@ -579,6 +582,20 @@ public sealed class SandboxDocument
         if (updated == current)
             return new SandboxLinkResult(SandboxLinkStatus.Succeeded, current);
 
+        _links[index] = updated;
+        Touch();
+        return new SandboxLinkResult(SandboxLinkStatus.Succeeded, updated);
+    }
+
+    /// <summary>Retunes a link's strength, stretch and stiffness, clamped; same identity, same ends.</summary>
+    public SandboxLinkResult SetLinkTuning(SandboxLinkId linkId, float strength, float elasticity, float stiffness)
+    {
+        int index = _links.FindIndex(link => link.LinkId == linkId);
+        if (index < 0)
+            return new SandboxLinkResult(SandboxLinkStatus.LinkNotFound);
+        SandboxLink updated = _links[index].WithTuning(strength, elasticity, stiffness);
+        if (updated == _links[index])
+            return new SandboxLinkResult(SandboxLinkStatus.Succeeded, updated);
         _links[index] = updated;
         Touch();
         return new SandboxLinkResult(SandboxLinkStatus.Succeeded, updated);

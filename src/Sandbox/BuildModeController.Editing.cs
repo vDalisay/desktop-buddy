@@ -123,7 +123,6 @@ public partial class BuildModeController
         _sandbox.PlaceBuiltPart(added.Part!);
         SelectPlacedPart(added.Part!.PartId);
         SetStatus($"Duplicated. {document.Count} parts in this room.");
-        RefreshPartCount();
         return added.Part.PartId;
     }
 
@@ -165,6 +164,12 @@ public partial class BuildModeController
 
     private void SelectPlacedPart(SandboxPartId? partId)
     {
+        // One thing is selected at a time: a part or a link.
+        if (partId is not null && _selectedLink is not null)
+        {
+            _selectedLink = null;
+            _sandbox.HighlightedLink = default;
+        }
         if (_selectedPart is { } previous && _sandbox.BuiltParts.TryGetValue(previous, out SandboxPartBody? old) &&
             GodotObject.IsInstanceValid(old))
         {
@@ -197,6 +202,16 @@ public partial class BuildModeController
                     member.GlobalPosition = dragged.GlobalPosition + offset;
                 _sandbox.RedrawBuiltLinks();
             }
+            return true;
+        }
+
+        // A click right on a placed rope, hinge or weld selects it for tuning, whatever the tool —
+        // unless a rope or wire is half made, when the click is its second end.
+        if (@event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } &&
+            _ropeStart is null && _wireStart is null &&
+            _sandbox.Boundaries.InnerBounds.HasPoint(_sandbox.GetGlobalMousePosition()) &&
+            SelectLinkAt(_sandbox.GetGlobalMousePosition()))
+        {
             return true;
         }
 
@@ -289,10 +304,16 @@ public partial class BuildModeController
             SetTool(BuildTool.Parts);
             return true;
         }
-        if (key.Keycode == Key.Escape && _selectedPart is not null)
+        if (key.Keycode == Key.Escape && (_selectedPart is not null || _selectedLink is not null))
         {
+            SelectLink(null);
             SelectPlacedPart(null);
             SetStatus("Nothing selected. Escape again plays.");
+            return true;
+        }
+        if (_selectedLink is not null && key.Keycode is Key.Delete or Key.Backspace)
+        {
+            DeleteSelection();
             return true;
         }
         if (_selectedPart is null)
@@ -469,12 +490,13 @@ public partial class BuildModeController
             SandboxPartOverrides.MinimumGravityScale, SandboxPartOverrides.MaximumGravityScale,
             0.1, out _gravityReadout, value => WithOverride(o => o with { GravityScale = (float)value }));
         // Device settings: each row shows only while its device is selected.
-        _strengthSlider = AddPropertySlider(group.Content, "Strength", "How hard the Piston shoves.",
+        _strengthSlider = AddPropertySlider(group.Content, "Push", "How hard the Piston shoves.",
             SandboxPartOverrides.MinimumPistonPush, SandboxPartOverrides.MaximumPistonPush,
             10.0, out _strengthReadout, value => WithOverride(o => o with { PistonPush = (float)value }));
         _intervalSlider = AddPropertySlider(group.Content, "Every", "How often the Timer sends a pulse while it runs.",
             SandboxPartOverrides.MinimumTimerSeconds, SandboxPartOverrides.MaximumTimerSeconds,
             0.1, out _intervalReadout, value => WithOverride(o => o with { TimerSeconds = (float)value }));
+        BuildLinkPropertiesUi(group.Content);
 
         _frozenToggle = new CheckBox
         {
@@ -491,9 +513,17 @@ public partial class BuildModeController
         group.Content.AddChild(actions);
         _duplicateButton = Win98Dialog.Action(actions, "Duplicate", () => DuplicateSelectedPart());
         _duplicateButton.Name = "BuildModeDuplicateButton";
-        _deleteButton = Win98Dialog.Action(actions, "Delete", () => DeleteSelectedPart());
+        _deleteButton = Win98Dialog.Action(actions, "Delete", DeleteSelection);
         _deleteButton.Name = "BuildModeDeleteButton";
-        _resetButton = Win98Dialog.Action(actions, "Reset", () => SetSelectedPartOverrides(SandboxPartOverrides.None));
+        _resetButton = Win98Dialog.Action(actions, "Reset", () =>
+        {
+            if (_selectedPart is not null)
+                SetSelectedPartOverrides(SandboxPartOverrides.None);
+            else if (_selectedLink is not null)
+                TuneLink(1.0f, 0.0f, 0.0f);
+            else if (CurrentEntry()?.Preset is { } preset)
+                TuneLink(preset.Strength, preset.Elasticity, preset.Stiffness);
+        });
         _resetButton.Name = "BuildModeResetButton";
         _resetButton.TooltipText = "Back to the part's own settings, unfrozen.";
         _unlinkButton = Win98Dialog.Action(actions, "Unlink", () =>
@@ -559,6 +589,23 @@ public partial class BuildModeController
         if (_propertiesTitle is null)
             return;
 
+        // A link — placed and selected, or the preset about to be placed — shows only its own rows.
+        bool linkContext = RefreshLinkProperties();
+        foreach (Control? row in new Control?[] { _massSlider, _bounceSlider, _gravitySlider })
+            Row(row!).Visible = !linkContext;
+        _frozenToggle!.Visible = !linkContext;
+        if (linkContext)
+        {
+            foreach (HSlider? slider in new[] { _lengthSlider, _thicknessSlider, _strengthSlider, _intervalSlider })
+                Row(slider!).Visible = false;
+            bool placed = _selectedLink is not null;
+            _duplicateButton!.Disabled = true;
+            _unlinkButton!.Disabled = true;
+            _deleteButton!.Disabled = !placed;
+            _resetButton!.Disabled = false;
+            return;
+        }
+
         bool hasPart = TrySelectedPart(out PlacedSandboxPart part, out _);
         SandboxPartDefinition? definition = null;
         if (hasPart && !SandboxPartCatalogue.TryGet(part.DefinitionId, out definition))
@@ -622,11 +669,5 @@ public partial class BuildModeController
         _intervalSlider.SetValueNoSignal(seconds);
         _strengthReadout!.Text = $"{push / SandboxPartOverrides.MaximumPistonPush * 100.0f:0}%";
         _intervalReadout!.Text = $"{seconds:0.0} s";
-    }
-
-    private void RefreshPartCount()
-    {
-        if (_hint is not null)
-            _hint.Text = $"{_scenes.ActiveSandbox.Count} of {SandboxDocument.MaximumParts} parts placed.";
     }
 }

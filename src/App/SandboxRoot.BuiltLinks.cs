@@ -13,15 +13,34 @@ namespace DesktopBuddy.App;
 /// </summary>
 public partial class SandboxRoot
 {
-    /// <summary>Ropes reuse the Rope Suspender's bounded damped pull, so neither can outmuscle the other.</summary>
+    /// <summary>A taut rope reuses the Rope Suspender's bounded damped pull, so neither can outmuscle the other.</summary>
     private const float RopeStiffness = 900.0f;
-    private const float RopeDamping = 42.0f;
     private const float RopeMaximumForce = 90000.0f;
+
+    /// <summary>
+    /// A fully stretchy rope's spring is this fraction of a taut one's: at 900 × 0.005 a hanging
+    /// load settles about 130 px below the rope's length, which is what makes a bungee a bungee.
+    /// </summary>
+    private const float BungeeStiffnessFraction = 0.005f;
 
     /// <summary>A weld is two pins this far apart, which is what stops the parts turning.</summary>
     private const float WeldPinSpacing = 20.0f;
 
+    // ponytail: link breaking reads a rope's pull and a pin's drift apart, not true joint forces
+    // (Godot 2D joints report none); calibrated by eye, and a feel knob for the owner.
+    /// <summary>The pull (mass × px/s²) a rope snaps at, scaled by strength² on top of the floor.</summary>
+    private const float RopeBreakForceFloor = 2000.0f;
+    private const float RopeBreakForceSpan = 80000.0f;
+
+    /// <summary>How far apart (px) a hinge or weld pin's two ends may be pulled before it tears.</summary>
+    private const float PinBreakDriftFloor = 1.5f;
+    private const float PinBreakDriftSpan = 40.0f;
+
+    /// <summary>A stiff hinge's spring at full stiffness, in rad/s² per radian.</summary>
+    private const float HingeSpringAtFullStiffness = 600.0f;
+
     private readonly List<BuiltLink> _builtLinks = [];
+    private readonly List<BuiltLink> _snapped = [];
     private SandboxLinkView? _linkView;
 
     /// <summary>One document link made live: its joints (hinge/weld) or its rope ends.</summary>
@@ -31,10 +50,19 @@ public partial class SandboxRoot
         public SandboxPartBody A { get; } = a;
         public SandboxPartBody? B { get; } = b;
         public List<Node> Nodes { get; } = [];
+
+        /// <summary>Each pin's two ends, in the space of the body each is on, to see it being pulled apart.</summary>
+        public List<(PhysicsBody2D A, Vector2 OnA, PhysicsBody2D B, Vector2 OnB)> Pins { get; } = [];
+
+        /// <summary>The angle between the two bodies when the hinge was made, which a stiff hinge returns to.</summary>
+        public float RestAngle { get; set; }
     }
 
     /// <summary>The links standing in the room, for verification.</summary>
     public int BuiltLinkCount => _builtLinks.Count;
+
+    /// <summary>Links that snapped in Play, for verification.</summary>
+    public int SnappedLinkCount { get; private set; }
 
     /// <summary>
     /// Drops every live link and makes the document's links again against the parts as they stand
@@ -105,6 +133,19 @@ public partial class SandboxRoot
 
     private bool _wiresVisible;
 
+    /// <summary>The link Build has selected, drawn highlighted; default for none.</summary>
+    public SandboxLinkId HighlightedLink
+    {
+        get => _highlightedLink;
+        set
+        {
+            _highlightedLink = value;
+            _linkView?.QueueRedraw();
+        }
+    }
+
+    private SandboxLinkId _highlightedLink;
+
     private void EnsureLinkView()
     {
         if (_linkView is not null && GodotObject.IsInstanceValid(_linkView))
@@ -126,7 +167,7 @@ public partial class SandboxRoot
             return;
         }
 
-        var built = new BuiltLink(link, a!, b);
+        var built = new BuiltLink(link, a!, b) { RestAngle = (b?.GlobalRotation ?? 0.0f) - a!.GlobalRotation };
         Vector2 pivot = a!.ToGlobal(new Vector2(link.A.X, link.A.Y));
         switch (link.Kind)
         {
@@ -165,6 +206,7 @@ public partial class SandboxRoot
         pin.NodeA = pin.GetPathTo(a);
         pin.NodeB = pin.GetPathTo(b);
         built.Nodes.Add(pin);
+        built.Pins.Add((a, a.ToLocal(pivot), b, b.ToLocal(pivot)));
     }
 
     /// <summary>A shapeless static anchor, so a hinge to the room pins to something that never moves.</summary>
@@ -199,22 +241,34 @@ public partial class SandboxRoot
     }
 
     /// <summary>
-    /// Rope pull on the routed fixed tick. A rope only pulls, and only past its length: slack when
-    /// the ends are closer, a bounded damped spring when they are further, never a push.
+    /// Links on the routed fixed tick. A rope only pulls, and only past its length: slack when the
+    /// ends are closer, a bounded damped spring when they are further, never a push; how springy is
+    /// its stretch setting. A stiff hinge springs back toward the angle it was made at. Any link
+    /// that is not unbreakable snaps once it is loaded past its strength, and stays snapped: the
+    /// document drops it, as it keeps the parts where Play left them.
     /// </summary>
     private void TickBuiltLinks(double delta)
     {
         if (_builtLinks.Count == 0 || delta <= 0.0)
             return;
 
+        _snapped.Clear();
         foreach (BuiltLink built in _builtLinks)
         {
-            if (built.Link.Kind != SandboxLinkKind.Rope ||
-                !GodotObject.IsInstanceValid(built.A) ||
+            if (!GodotObject.IsInstanceValid(built.A) ||
                 (built.B is not null && !GodotObject.IsInstanceValid(built.B)))
             {
                 continue;
             }
+            if (built.Link.Kind == SandboxLinkKind.Hinge && built.Link.Stiffness > 0.0f)
+                SpringHinge(built);
+            if (!built.Link.IsUnbreakable && built.Link.Kind != SandboxLinkKind.Rope && PinTorn(built))
+            {
+                _snapped.Add(built);
+                continue;
+            }
+            if (built.Link.Kind != SandboxLinkKind.Rope)
+                continue;
 
             Vector2 held = built.A.ToGlobal(new Vector2(built.Link.A.X, built.Link.A.Y));
             Vector2 other = built.B is { } b
@@ -238,14 +292,77 @@ public partial class SandboxRoot
             Vector2 relative = (built.B?.LinearVelocity ?? Vector2.Zero) - built.A.LinearVelocity;
             float separating = relative.Dot(direction);
             float stretch = distance - built.Link.Length;
-            float pull = (stretch * RopeStiffness + separating * RopeDamping) * mass;
+            float stiffness = RopeStiffness * MathF.Pow(BungeeStiffnessFraction, built.Link.Elasticity);
+            float damping = 1.4f * MathF.Sqrt(stiffness);   // 42 at the taut 900, as the Rope Suspender
+            float pull = (stretch * stiffness + separating * damping) * mass;
             if (pull <= 0.0f || !float.IsFinite(pull))
                 continue;
+            if (!built.Link.IsUnbreakable &&
+                pull > RopeBreakForceFloor + RopeBreakForceSpan * built.Link.Strength * built.Link.Strength)
+            {
+                _snapped.Add(built);
+                continue;
+            }
             Vector2 force = direction * Math.Min(pull, RopeMaximumForce);
 
             built.A.ApplyForce(force, held - built.A.GlobalPosition);
             built.B?.ApplyForce(-force, other - built.B.GlobalPosition);
         }
+        foreach (BuiltLink built in _snapped)
+            SnapLink(built);
         _linkView?.QueueRedraw();
+    }
+
+    /// <summary>True once any of a hinge or weld's pins has been pulled apart past what its strength allows.</summary>
+    private static bool PinTorn(BuiltLink built)
+    {
+        float allowed = PinBreakDriftFloor + PinBreakDriftSpan * built.Link.Strength * built.Link.Strength;
+        foreach ((PhysicsBody2D a, Vector2 onA, PhysicsBody2D b, Vector2 onB) in built.Pins)
+        {
+            if (!GodotObject.IsInstanceValid(a) || !GodotObject.IsInstanceValid(b))
+                continue;
+            if (a.ToGlobal(onA).DistanceTo(b.ToGlobal(onB)) > allowed)
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>A stiff hinge: a damped spring on the angle between the two bodies, back toward where it was made.</summary>
+    private static void SpringHinge(BuiltLink built)
+    {
+        SandboxPartBody a = built.A;
+        SandboxPartBody? b = built.B;
+        float inverseA = a.Freeze ? 0.0f : PhysicsServer2D.BodyGetDirectState(a.GetRid())?.InverseInertia ?? 0.0f;
+        float inverseB = b is null || b.Freeze ? 0.0f : PhysicsServer2D.BodyGetDirectState(b.GetRid())?.InverseInertia ?? 0.0f;
+        if (inverseA + inverseB <= 0.0f)
+            return;
+
+        float stiffness = built.Link.Stiffness;
+        float spring = HingeSpringAtFullStiffness * stiffness * stiffness;
+        float damping = 1.6f * MathF.Sqrt(spring);
+        float error = Mathf.AngleDifference(built.RestAngle, (b?.GlobalRotation ?? 0.0f) - a.GlobalRotation);
+        float turning = (b?.AngularVelocity ?? 0.0f) - a.AngularVelocity;
+        float torque = (spring * error + damping * turning) / (inverseA + inverseB);
+        if (!float.IsFinite(torque))
+            return;
+        if (inverseA > 0.0f)
+            a.ApplyTorque(torque);
+        if (b is not null && inverseB > 0.0f)
+            b.ApplyTorque(-torque);
+    }
+
+    /// <summary>A link loaded past its strength comes apart for good: gone from the room and from the document.</summary>
+    private void SnapLink(BuiltLink built)
+    {
+        foreach (Node node in built.Nodes)
+        {
+            if (!GodotObject.IsInstanceValid(node))
+                continue;
+            node.GetParent()?.RemoveChild(node);
+            node.QueueFree();
+        }
+        _builtLinks.Remove(built);
+        SceneProgress?.ActiveSandbox.RemoveLink(built.Link.LinkId);
+        SnappedLinkCount++;
     }
 }

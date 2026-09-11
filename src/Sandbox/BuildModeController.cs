@@ -20,10 +20,6 @@ namespace DesktopBuddy.Sandbox;
 /// </summary>
 public partial class BuildModeController : Node
 {
-    // Weapon Trigger joins the palette with its own runtime; until then it would do nothing.
-    private readonly List<SandboxPartDefinition> _palette =
-        [.. SandboxPartCatalogue.Definitions.Where(definition =>
-            definition.Device is not SandboxDeviceKind.WeaponTrigger)];
     private SandboxRoot _sandbox = null!;
     private SceneProgressCoordinator _scenes = null!;
     private Win98CommandBarBootstrap _commandBar = null!;
@@ -35,9 +31,8 @@ public partial class BuildModeController : Node
     private ItemList? _partList;
     private SandboxPartPreview? _preview;
     private Label? _description;
-    private Label? _hint;
     private bool _configured;
-    private int _selectedIndex;
+    private int _selectedIndex = 1;   // the first part, under the Parts heading
 
     public bool IsActive { get; private set; }
 
@@ -201,21 +196,16 @@ public partial class BuildModeController : Node
     /// <summary>Selects one palette part by definition, as clicking its row does.</summary>
     public bool SelectPart(SemanticDefinitionId definitionId)
     {
-        for (int index = 0; index < _palette.Count; index++)
-        {
-            if (_palette[index].Id != definitionId)
-                continue;
-            _partList?.Select(index);
-            _selectedIndex = index;
-            ShowSelectedPart();
-            return true;
-        }
-        return false;
+        int index = _entries.FindIndex(entry => entry.Part?.Id == definitionId);
+        if (index < 0)
+            return false;
+        SelectEntry(index);
+        return true;
     }
 
     public void PlaceSelectedPartAt(Vector2 world)
     {
-        if (SelectedDefinition() is not { } definition)
+        if (CurrentEntry()?.Part is not { } definition)
             return;
 
         SandboxDocument document = _scenes.ActiveSandbox;
@@ -232,7 +222,6 @@ public partial class BuildModeController : Node
         _sandbox.PlaceBuiltPart(added.Part!);
         // Selected straight away, so it can be turned or tuned without hunting for it.
         SelectPlacedPart(added.Part!.PartId);
-        RefreshPartCount();
         SetStatus($"Placed {definition.DisplayName}. {document.Count} parts in this room.");
     }
 
@@ -258,28 +247,8 @@ public partial class BuildModeController : Node
         if (_selectedPart == partId)
             SelectPlacedPart(null);
         _sandbox.RemoveBuiltPartBody(partId);
-        RefreshPartCount();
         SetStatus($"Removed a part. {_scenes.ActiveSandbox.Count} parts in this room.");
         return true;
-    }
-
-    private void ShowSelectedPart()
-    {
-        SandboxPartDefinition? definition = SelectedDefinition();
-        _preview?.Show(definition);
-        if (_description is not null)
-        {
-            _description.Text = definition is null
-                ? string.Empty
-                : $"{definition.Description}\n{definition.Material} · {definition.Width:0}×{definition.Height:0} · mass {definition.Mass:0.#}";
-        }
-    }
-
-    private SandboxPartDefinition? SelectedDefinition()
-    {
-        int[] selected = _partList?.GetSelectedItems() ?? [];
-        int index = selected.Length > 0 ? selected[0] : _selectedIndex;
-        return index >= 0 && index < _palette.Count ? _palette[index] : null;
     }
 
     private void BuildUi()
@@ -299,20 +268,22 @@ public partial class BuildModeController : Node
         // both ways keeps it centred if its content outgrows the authored size.
         _panel.GrowHorizontal = Control.GrowDirection.Both;
         _panel.GrowVertical = Control.GrowDirection.Both;
+        // One list for everything that can be built with (owner note 2026-09-11), and it takes
+        // whatever height the window has left, so the palette fills its window instead of scrolling
+        // inside a strip.
         _partList = new ItemList
         {
             Name = "BuildModePartList",
-            CustomMinimumSize = new Vector2(200, 92),
+            CustomMinimumSize = new Vector2(200, 160),
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-        _partList.ItemSelected += index =>
+        _partList.ItemSelected += index => SelectEntry((int)index);
+
+        var browser = new HBoxContainer
         {
-            _selectedIndex = (int)index;
-            ShowSelectedPart();
+            Name = "BuildModeBrowser",
+            SizeFlagsVertical = Control.SizeFlags.ExpandFill,
         };
-
-        BuildToolRow(body);
-
-        var browser = new HBoxContainer { Name = "BuildModeBrowser" };
         browser.AddThemeConstantOverride("separation", 10);
         body.AddChild(browser);
         browser.AddChild(_partList);
@@ -344,15 +315,6 @@ public partial class BuildModeController : Node
         browser.AddChild(details);
 
         BuildPropertiesUi(body);
-
-        _hint = new Label
-        {
-            Name = "BuildModeHint",
-            Text = "Left click places, right click removes.",
-            AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(200, 0),
-        };
-        body.AddChild(_hint);
         _layer.AddChild(_panel);
         AddChild(_layer);
         // Same deal as Paint Background: the pin controller owns the title drag, so the palette
@@ -362,22 +324,6 @@ public partial class BuildModeController : Node
         _panelPin.Configure(_panel, new Vector2I(500, 620), "BuildModeWindow");
     }
 
-
-    private void RefreshPalette()
-    {
-        if (_partList is null)
-            return;
-
-        _partList.Clear();
-        foreach (SandboxPartDefinition definition in _palette)
-            _partList.AddItem(definition.DisplayName);
-        if (_palette.Count > 0)
-        {
-            _partList.Select(Math.Clamp(_selectedIndex, 0, _palette.Count - 1));
-        }
-        RefreshPartCount();
-        ShowSelectedPart();
-    }
 
     private void SetStatus(string status)
     {

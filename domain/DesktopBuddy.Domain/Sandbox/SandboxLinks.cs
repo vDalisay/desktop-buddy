@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace DesktopBuddy.Domain.Sandbox;
 
@@ -58,15 +59,36 @@ public readonly record struct SandboxLinkEnd(SandboxPartId PartId, float X, floa
         new(default, canonicalX, canonicalY);
 }
 
+/// <summary>
+/// One link. <see cref="Strength"/> (0..1) is how much it takes to break it — 1 is unbreakable.
+/// <see cref="Elasticity"/> (0..1) is how far a rope stretches under load; <see cref="Stiffness"/>
+/// (0..1) how hard a hinge resists turning, from swinging free to nearly locked. Each is a plain
+/// fraction here; the room turns it into forces.
+/// </summary>
 public sealed record SandboxLink(
     SandboxLinkId LinkId,
     SandboxLinkKind Kind,
     SandboxLinkEnd A,
     SandboxLinkEnd B,
-    float Length = 0.0f)
+    float Length = 0.0f,
+    float Strength = 1.0f,
+    float Elasticity = 0.0f,
+    float Stiffness = 0.0f)
 {
     public const float MinimumRopeLength = 8.0f;
     public const float MaximumRopeLength = 2048.0f;
+
+    public bool IsUnbreakable => Strength >= 1.0f;
+
+    /// <summary>The same link with its tuning clamped into 0..1; non-finite input becomes the default.</summary>
+    public SandboxLink WithTuning(float strength, float elasticity, float stiffness) => this with
+    {
+        Strength = Unit(strength, 1.0f),
+        Elasticity = Kind == SandboxLinkKind.Rope ? Unit(elasticity, 0.0f) : 0.0f,
+        Stiffness = Kind == SandboxLinkKind.Hinge ? Unit(stiffness, 0.0f) : 0.0f,
+    };
+
+    private static float Unit(float value, float fallback) => float.IsFinite(value) ? Math.Clamp(value, 0.0f, 1.0f) : fallback;
 
     public bool Touches(SandboxPartId partId) => A.PartId == partId || B.PartId == partId;
 
@@ -97,6 +119,8 @@ public sealed record SandboxLink(
         {
             return $"A rope must be {MinimumRopeLength}-{MaximumRopeLength} pixels long.";
         }
+        if (!IsUnit(Strength) || !IsUnit(Elasticity) || !IsUnit(Stiffness))
+            return "A link's strength, stretch and stiffness must each be between 0 and 1.";
         return null;
     }
 
@@ -108,9 +132,38 @@ public sealed record SandboxLink(
 
     private static bool IsFiniteEnd(SandboxLinkEnd end) => float.IsFinite(end.X) && float.IsFinite(end.Y);
 
+    private static bool IsUnit(float value) => float.IsFinite(value) && value is >= 0.0f and <= 1.0f;
+
     private static bool IsLocalInBand(SandboxLinkEnd end) =>
         Math.Abs(end.X) <= SandboxPartDefinition.MaximumExtent &&
         Math.Abs(end.Y) <= SandboxPartDefinition.MaximumExtent;
+}
+
+/// <summary>A named starting point for a new link, as the Build palette offers it.</summary>
+public sealed record SandboxLinkPreset(
+    string Name,
+    SandboxLinkKind Kind,
+    float Strength,
+    float Elasticity,
+    float Stiffness,
+    string Description);
+
+public static class SandboxLinkPresets
+{
+    /// <summary>In palette order; the first of each kind is what the kind's hotkey picks.</summary>
+    public static IReadOnlyList<SandboxLinkPreset> All { get; } =
+    [
+        new("Strong Rope", SandboxLinkKind.Rope, 1.0f, 0.1f, 0.0f, "Ties a part to another part or the room. Never snaps."),
+        new("Medium Rope", SandboxLinkKind.Rope, 0.6f, 0.25f, 0.0f, "Holds a beam or a Buddy, but a heavy jerk will snap it."),
+        new("Weak Rope", SandboxLinkKind.Rope, 0.25f, 0.3f, 0.0f, "String. Snaps under anything heavy."),
+        new("Bungee", SandboxLinkKind.Rope, 0.8f, 0.9f, 0.0f, "Stretches a long way and springs back."),
+        new("Free Hinge", SandboxLinkKind.Hinge, 1.0f, 0.0f, 0.0f, "An axle where two parts overlap, or a pin to the room. Swings freely."),
+        new("Stiff Hinge", SandboxLinkKind.Hinge, 1.0f, 0.0f, 0.6f, "Bends under load and springs back to where it was made."),
+        new("Weak Hinge", SandboxLinkKind.Hinge, 0.3f, 0.0f, 0.0f, "Swings freely, and tears loose when yanked."),
+        new("Unbreakable Weld", SandboxLinkKind.Weld, 1.0f, 0.0f, 0.0f, "Locks two overlapping parts together for good."),
+        new("Strong Weld", SandboxLinkKind.Weld, 0.7f, 0.0f, 0.0f, "Locks two parts together until something big hits it."),
+        new("Weak Weld", SandboxLinkKind.Weld, 0.3f, 0.0f, 0.0f, "Tacked on. Knocks loose easily."),
+    ];
 }
 
 public enum SandboxLinkStatus

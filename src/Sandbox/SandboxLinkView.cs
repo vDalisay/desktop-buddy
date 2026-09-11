@@ -16,7 +16,21 @@ public partial class SandboxLinkView : Node2D
     private static readonly Color WeldFill = new("9aa6b4");
     private static readonly Color Ink = new("2a2118");
     private static readonly Color PreviewColor = new("000080");
-    private static readonly Color WireColor = new("1e8449");
+    private static readonly Color SelectionOuter = new("000080");
+
+    /// <summary>What each wire colour draws as; shared with the Build palette's preview.</summary>
+    public static Color WireColorOf(SandboxWireColor color) => color switch
+    {
+        SandboxWireColor.Red => new Color("c0392b"),
+        SandboxWireColor.Blue => new Color("2e6fd8"),
+        SandboxWireColor.Yellow => new Color("e8b923"),
+        SandboxWireColor.Purple => new Color("8e44ad"),
+        SandboxWireColor.White => new Color("f2f2f2"),
+        _ => new Color("1e8449"),
+    };
+
+    /// <summary>A rope's drawn thickness grows with its strength, so a weak one looks like string.</summary>
+    public static float RopeWidthFor(float strength) => 1.5f + 2.5f * Mathf.Clamp(strength, 0.0f, 1.0f);
 
     private SandboxRoot _sandbox = null!;
     private Vector2? _previewFrom;
@@ -43,10 +57,22 @@ public partial class SandboxLinkView : Node2D
         {
             if (_sandbox.LinkEndWorld(link.A) is not { } a || _sandbox.LinkEndWorld(link.B) is not { } b)
                 continue;
+            // Build's selection, under the link so the link still reads on top of it.
+            if (link.LinkId == _sandbox.HighlightedLink)
+            {
+                if (link.Kind == SandboxLinkKind.Rope)
+                    DrawLine(a, b, SelectionOuter, RopeWidthFor(link.Strength) + 4.0f, true);
+                else
+                    DrawCircle(a, 9.0f, SelectionOuter, true, -1.0f, true);
+            }
             switch (link.Kind)
             {
                 case SandboxLinkKind.Rope:
-                    DrawLine(a, b, RopeColor, 2.5f, true);
+                    float width = RopeWidthFor(link.Strength);
+                    if (link.Elasticity >= 0.5f)
+                        DrawDashedLine(a, b, RopeColor, width, 5.0f, true, true);   // a bungee's cord
+                    else
+                        DrawLine(a, b, RopeColor, width, true);
                     DrawCircle(a, 3.0f, RopeColor, true, -1.0f, true);
                     DrawCircle(b, 3.0f, RopeColor, true, -1.0f, true);
                     break;
@@ -81,13 +107,15 @@ public partial class SandboxLinkView : Node2D
             }
             Vector2 a = source.GlobalPosition;
             Vector2 b = target.GlobalPosition;
-            DrawLine(a, b, WireColor, 2.0f, true);
+            Color color = WireColorOf(wire.Color);
+            DrawLine(a, b, Ink, 3.5f, true);   // a dark core, so a white or yellow wire still reads
+            DrawLine(a, b, color, 2.0f, true);
             if (a.DistanceSquaredTo(b) > 1.0f)
             {
                 Vector2 along = (b - a).Normalized() * 6.0f;
                 Vector2 middle = (a + b) * 0.5f;
                 Vector2 side = along.Orthogonal() * 0.8f;
-                DrawColoredPolygon([middle + along, middle - along + side, middle - along - side], WireColor);
+                DrawColoredPolygon([middle + along, middle - along + side, middle - along - side], color);
             }
         }
 

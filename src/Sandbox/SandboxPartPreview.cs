@@ -63,8 +63,50 @@ public partial class SandboxPartPreview : Control
         Restage();
     }
 
+    // Links and wires are drawn, not modelled, in the room too; the preview draws them the same way.
+    private static readonly Color Wood = new("b4813f");
+    private static readonly Color Metal = new("8f9bab");
+    private static readonly Color Ink = new("2a2118");
+    private static readonly Color Rope = new("8b5a2b");
+    private static readonly Color Pin = new("f0f0f0");
+    private static readonly Color CapRed = new("d0392b");
+    private static readonly Color BulbOff = new("b3ad93");
+
+    private enum Drawing
+    {
+        None = 0,
+        Link,
+        Wire,
+    }
+
+    private Drawing _drawing;
+    private SandboxLinkKind _linkKind;
+    private float _strength;
+    private float _elasticity;
+    private float _stiffness;
+    private SandboxWireColor _wireColor;
+
+    /// <summary>Shows a link as it will look with this tuning: a rope's thickness and stretch, a hinge's stiffness.</summary>
+    public void ShowLink(SandboxLinkKind kind, float strength, float elasticity, float stiffness)
+    {
+        Show(null);
+        _drawing = Drawing.Link;
+        (_linkKind, _strength, _elasticity, _stiffness) = (kind, strength, elasticity, stiffness);
+        QueueRedraw();
+    }
+
+    public void ShowWire(SandboxWireColor color)
+    {
+        Show(null);
+        _drawing = Drawing.Wire;
+        _wireColor = color;
+        QueueRedraw();
+    }
+
     public void Show(SandboxPartDefinition? definition)
     {
+        _drawing = Drawing.None;
+        QueueRedraw();
         if (ReferenceEquals(definition, _definition))
             return;
         _definition = definition;
@@ -98,6 +140,73 @@ public partial class SandboxPartPreview : Control
         QueueRedraw();
     }
 
-    public override void _Draw() =>
+    public override void _Draw()
+    {
         DrawStyleBox(Win98ThemeFactory.Recessed(Win98ThemeFactory.Light, 2), new Rect2(Vector2.Zero, Size));
+        Vector2 c = Size * 0.5f;
+        switch (_drawing)
+        {
+            case Drawing.Link when _linkKind == SandboxLinkKind.Rope:
+                // A block hanging from a beam: thicker for a stronger rope, dashed and longer for a bungee.
+                var beam = new Rect2(c.X - 60.0f, 8.0f, 120.0f, 10.0f);
+                Box(beam, Wood);
+                float drop = Mathf.Lerp(c.Y - 4.0f, Size.Y - 34.0f, _elasticity);
+                var from = new Vector2(c.X, beam.End.Y);
+                var to = new Vector2(c.X, drop);
+                float width = SandboxLinkView.RopeWidthFor(_strength);
+                if (_elasticity >= 0.5f)
+                    DrawDashedLine(from, to, Rope, width, 5.0f, true, true);
+                else
+                    DrawLine(from, to, Rope, width, true);
+                Box(new Rect2(c.X - 14.0f, drop, 28.0f, 22.0f), Metal);
+                break;
+            case Drawing.Link when _linkKind == SandboxLinkKind.Hinge:
+                // Two beams on one pin; a stiff hinge shows its spring.
+                var pivot = new Vector2(c.X + 6.0f, c.Y);
+                DrawSetTransform(pivot, 0.0f, Vector2.One);
+                Box(new Rect2(-76.0f, -6.0f, 82.0f, 12.0f), Wood);
+                DrawSetTransform(pivot, -0.6f, Vector2.One);
+                Box(new Rect2(-6.0f, -6.0f, 70.0f, 12.0f), Wood);
+                DrawSetTransform(Vector2.Zero);
+                if (_stiffness > 0.0f)
+                    DrawArc(pivot, 12.0f, -0.6f, 0.0f, 12, Ink, 1.0f + 2.0f * _stiffness, true);
+                DrawCircle(pivot, 6.0f, Pin, true, -1.0f, true);
+                DrawArc(pivot, 6.0f, 0.0f, Mathf.Tau, 20, Ink, 1.5f, true);
+                DrawCircle(pivot, 1.8f, Ink, true, -1.0f, true);
+                break;
+            case Drawing.Link:
+                // Two overlapping blocks and the weld plate between them.
+                Box(new Rect2(c.X - 38.0f, c.Y - 18.0f, 44.0f, 30.0f), Metal);
+                Box(new Rect2(c.X - 6.0f, c.Y - 8.0f, 44.0f, 30.0f), Metal);
+                var plate = new Rect2(c.X - 6.0f, c.Y - 8.0f, 12.0f, 12.0f);
+                DrawRect(plate, Metal.Darkened(0.2f), filled: true);
+                DrawRect(plate, Ink, filled: false, 1.5f);
+                DrawLine(plate.Position, plate.End, Ink, 1.0f, true);
+                break;
+            case Drawing.Wire:
+                // A Button sending to a Lamp, in this wire's colour.
+                var button = new Rect2(c.X - 76.0f, c.Y - 2.0f, 36.0f, 16.0f);
+                Box(button, Metal);
+                DrawRect(new Rect2(button.Position.X + 8.0f, button.Position.Y - 6.0f, 20.0f, 6.0f), CapRed, filled: true);
+                Box(new Rect2(c.X + 44.0f, c.Y + 4.0f, 26.0f, 12.0f), Metal);
+                var bulb = new Vector2(c.X + 57.0f, c.Y - 5.0f);
+                DrawCircle(bulb, 9.0f, BulbOff, true, -1.0f, true);
+                DrawArc(bulb, 9.0f, 0.0f, Mathf.Tau, 20, Ink, 1.5f, true);
+                var start = new Vector2(button.End.X, button.GetCenter().Y);
+                var end = new Vector2(c.X + 44.0f, c.Y + 6.0f);
+                Color color = SandboxLinkView.WireColorOf(_wireColor);
+                DrawLine(start, end, Ink, 3.5f, true);
+                DrawLine(start, end, color, 2.0f, true);
+                Vector2 along = (end - start).Normalized() * 6.0f;
+                Vector2 middle = (start + end) * 0.5f;
+                DrawColoredPolygon([middle + along, middle - along + along.Orthogonal() * 0.8f, middle - along - along.Orthogonal() * 0.8f], color);
+                break;
+        }
+    }
+
+    private void Box(Rect2 rect, Color fill)
+    {
+        DrawRect(rect, fill, filled: true);
+        DrawRect(rect, Ink, filled: false, 1.5f);
+    }
 }

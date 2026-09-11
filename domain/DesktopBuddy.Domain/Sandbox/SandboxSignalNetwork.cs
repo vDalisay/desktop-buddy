@@ -33,7 +33,7 @@ public readonly record struct SandboxDeviceCommand(SandboxPartId Part, SandboxDe
 /// </summary>
 public sealed class SandboxSignalNetwork
 {
-    public const int MaximumDeliveriesPerTick = 256;
+    public const int MaximumDeliveriesPerTick = 4096;
 
     private readonly int _ticksPerSecond;
     private readonly Dictionary<SandboxPartId, SandboxDeviceKind> _devices = [];
