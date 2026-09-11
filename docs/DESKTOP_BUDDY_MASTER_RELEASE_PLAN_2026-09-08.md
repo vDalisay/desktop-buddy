@@ -1208,6 +1208,12 @@ SHALL climb or step over them and continue, rather than treating the structure a
    but the room floor, so a Buddy that did get on top of the pile has nothing holding it there and
    `RecoveryComponent` returns it to its safe pose — the respawning the owner described.
 
+**Status 2026-09-11.** Point 4 is fixed: `PuppetPartBody` now accepts a `SandboxPartBody` as foot
+support (commit `4ab8f10d`), so a Buddy standing on a built floor stands, balances and is no longer
+reset by recovery. Points 2 and 3 remain: a built part in the committed walk still reads as a wall,
+and the only way over it is the trait-gated single hop, so piles and steps are still impassable. The
+remaining work below is about getting *onto* and *across* structures, not standing on them.
+
 **What this needs.** A ground model rather than a floor line: a downward probe per foot, a step-up
 height budget, and `RecoveryComponent` accepting a resting surface above the floor as valid footing.
 The trait gate stays for the *decorative* hop; traversal must not be trait-gated, or a third of the
