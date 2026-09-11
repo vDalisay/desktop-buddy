@@ -469,12 +469,42 @@ public partial class CursorGunComponent : Node2D
         QueueRedraw();
     }
 
+    /// <summary>
+    /// Fires one shot from a fixed point along a fixed direction: a built Weapon Trigger pulling the
+    /// gun's trigger rather than the player's hand (NF-4D). The projectiles are the gun's own and
+    /// are attributed to its content, so a mounted gun hurts exactly as the held one does.
+    ///
+    /// <para>A mount has no magazine: rounds, reloads and pumping belong to the gun in the player's
+    /// hand. What bounds a mount is the device's own cooldown
+    /// (<c>SandboxPartBody.StartWeaponShot</c>), so a fast Timer cannot turn a pistol into a
+    /// machine gun.</para>
+    /// </summary>
+    public bool FireMounted(ToolId tool, Vector2 muzzle, Vector2 direction)
+    {
+        RequireInitialized();
+        if (ProfileFor(tool) is not { } profile || direction == Vector2.Zero)
+            return false;
+
+        GunRuntime gun = RuntimeFor(profile);
+        Vector2 forward = direction.Normalized();
+        LaunchShot(gun, profile.ProjectilesPerShot,
+            ClampInsideRoom(muzzle + (forward * profile.MuzzleOffsetPx), profile.ProjectileRadius), forward);
+        ShotCount++;
+        ShotFired?.Invoke(profile);
+        return true;
+    }
+
     private void LaunchShot(GunRuntime gun, in GunResult shot)
     {
-        GunProfile profile = gun.Profile;
         Vector2 forward = AimForward;
-        Vector2 muzzle = ClampInsideRoom(
-            _cursor + (forward * profile.MuzzleOffsetPx), profile.ProjectileRadius);
+        LaunchShot(gun, shot.Projectiles,
+            ClampInsideRoom(_cursor + (forward * gun.Profile.MuzzleOffsetPx), gun.Profile.ProjectileRadius),
+            forward);
+    }
+
+    private void LaunchShot(GunRuntime gun, int projectiles, Vector2 muzzle, Vector2 forward)
+    {
+        GunProfile profile = gun.Profile;
 
         // One trigger pull is one interaction. A spread gun's pellets share this identity,
         // so the impact router's (source, part) episode key makes six pellets arriving on
@@ -482,12 +512,12 @@ public partial class CursorGunComponent : Node2D
         // parts, not by concentrating on one (RAGDOLL §7.1–7.2, DECISIONS M5 Task 9). A
         // single-projectile gun passes null and mints per launch exactly as it always has,
         // which is the behaviour the pistol and nerf regressions pin.
-        int? sharedShotId = shot.Projectiles > 1 ? InteractionIds.Next() : null;
+        int? sharedShotId = projectiles > 1 ? InteractionIds.Next() : null;
         LastShotInteractionId = sharedShotId ?? 0;
         // Drawn once for the whole shot, before any pellet: the cone is a property of the
         // trigger pull, and drawing it per pellet would be a different weapon.
         ChooseShotCone(profile);
-        for (int index = 0; index < shot.Projectiles; index++)
+        for (int index = 0; index < projectiles; index++)
         {
             ProjectileBody? projectile = gun.TryTake();
             if (projectile is null)
@@ -499,7 +529,7 @@ public partial class CursorGunComponent : Node2D
                 break;
             }
 
-            Vector2 direction = SpreadDirection(forward, index, shot.Projectiles, profile);
+            Vector2 direction = SpreadDirection(forward, index, projectiles, profile);
             projectile.Launch(muzzle, direction * profile.MuzzleSpeed, sharedShotId);
             ProjectilesLaunched++;
         }

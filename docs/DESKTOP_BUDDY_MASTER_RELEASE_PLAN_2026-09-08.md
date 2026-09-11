@@ -1280,7 +1280,16 @@ push speed whatever it weighs; the head stays out a quarter second and ignores p
 an unfrozen piston is pushed back by what it pushes (nail it to make it a wall). Push speed, hold
 time and reach are constants in `SandboxRoot.Devices.cs`, left for owner feel tuning. The journey
 adds Button → Piston with a Metal Block on the head and checks the block is thrown.
-Next: Weapon Trigger, then the gravity presets with Shotgun overrides.
+**4D done:** the Weapon Trigger is three palette rows — Pistol Mount, Shotgun Mount and Nerf Mount
+(`SandboxPartCatalogue.WeaponOf` names the gun each holds). A pulse pulls that gun's trigger:
+`CursorGunComponent.FireMounted` launches the gun's own projectiles from the mount's barrel along the
+way the part is turned, attributed to the gun's content, so a mounted gun hurts exactly as the held
+one does. A mount is offered only while the player owns that gun, so building one is never a way
+around the shop. A mount has no magazine — rounds, reloads and pumping belong to the gun in hand —
+and its own quarter-second recoil is the fastest it can be made to fire, so a fast Timer cannot turn
+a pistol into a machine gun. The journey buys a pistol, builds a mount aimed at the ceiling, wires
+Button → Mount and checks one press puts one round out of the barrel.
+Next: the gravity presets with Shotgun overrides (4E).
 
 #### NF-5 — Break and repair
 

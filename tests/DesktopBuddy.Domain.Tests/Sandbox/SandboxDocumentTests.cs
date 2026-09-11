@@ -44,7 +44,7 @@ public sealed class SandboxDocumentTests
     [Fact]
     public void ShippedPartsAreValidCoreDefinitions()
     {
-        Assert.Equal(9, SandboxPartCatalogue.Definitions.Count);
+        Assert.Equal(11, SandboxPartCatalogue.Definitions.Count);
         foreach (SandboxPartDefinition definition in SandboxPartCatalogue.Definitions)
         {
             Assert.Empty(definition.Validate());
@@ -52,6 +52,19 @@ public sealed class SandboxDocumentTests
             Assert.True(SandboxPartCatalogue.TryGet(definition.Id, out SandboxPartDefinition resolved));
             Assert.Same(definition, resolved);
         }
+    }
+
+    /// <summary>Every mount names the gun it holds, and nothing else does.</summary>
+    [Fact]
+    public void OnlyWeaponMountsNameAGun()
+    {
+        foreach (SandboxPartDefinition definition in SandboxPartCatalogue.Definitions)
+        {
+            Assert.Equal(
+                definition.Device == SandboxDeviceKind.WeaponTrigger,
+                SandboxPartCatalogue.WeaponOf(definition.Id) is not null);
+        }
+        Assert.Equal(Domain.Tools.ToolId.Shotgun, SandboxPartCatalogue.WeaponOf(SandboxPartCatalogue.ShotgunTrigger));
     }
 
     [Fact]

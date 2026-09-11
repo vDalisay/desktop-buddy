@@ -648,20 +648,33 @@ public static class ProductionBootstrapJourneyProbe
                     Vector2 ShelfAt(float x) => bounds.Position + bounds.Size * new Vector2(x, ShelfY) + new Vector2(0.0f, -24.0f);
                     SandboxPartId shelf = PlaceDevice(SandboxPartCatalogue.MetalPlate, bounds.Position + bounds.Size * new Vector2(0.225f, ShelfY));
                     bool shelfBuilt = build.SetSelectedPartOverrides(new SandboxPartOverrides(Frozen: true, Length: 384.0f, Thickness: 12.0f));
-                    bool triggerHidden = !build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
+                    // NF-4D: a weapon mount is offered only for a gun this player owns, so buy the
+                    // pistol first — before that, the row is not in the palette at all.
+                    bool mountHiddenUnowned = sandbox.Economy.IsUnlocked(ContentIds.ToolPistol) ||
+                        !build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
+                    sandbox.Economy.Unlock(ContentIds.ToolPistol);
+                    bool mountOffered = build.SelectPart(SandboxPartCatalogue.WeaponTrigger);
                     SandboxPartId button = PlaceDevice(SandboxPartCatalogue.Button, ShelfAt(0.19f));
                     SandboxPartId timer = PlaceDevice(SandboxPartCatalogue.Timer, ShelfAt(0.26f));
                     SandboxPartId lamp = PlaceDevice(SandboxPartCatalogue.Lamp, ShelfAt(0.33f));
                     // A Metal Block resting on a Piston's head, for Button -> Piston.
                     SandboxPartId piston = PlaceDevice(SandboxPartCatalogue.Piston, ShelfAt(0.12f));
                     SandboxPartId load = PlaceDevice(SandboxPartCatalogue.MetalBlock, ShelfAt(0.12f) + new Vector2(0.0f, -40.0f));
+                    // The pistol mount, nailed down and turned to shoot at the ceiling, so its rounds
+                    // cannot cross the room and hit the cast.
+                    // It stands off the shelf line so its wire does not run along the Timer's.
+                    Vector2 mountAt = ShelfAt(0.40f) + new Vector2(0.0f, -40.0f);
+                    SandboxPartId mount = PlaceDevice(SandboxPartCatalogue.WeaponTrigger, mountAt);
+                    bool mountAimed = build.RotateSelectedPart(-90.0f) &&
+                        build.SetSelectedPartOverrides(new SandboxPartOverrides(Frozen: true));
                     bool wired = build.WireBetween(ShelfAt(0.19f), ShelfAt(0.26f)).Succeeded &&
                         build.WireBetween(ShelfAt(0.26f), ShelfAt(0.33f)).Succeeded &&
-                        build.WireBetween(ShelfAt(0.19f), ShelfAt(0.12f)).Succeeded;
+                        build.WireBetween(ShelfAt(0.19f), ShelfAt(0.12f)).Succeeded &&
+                        build.WireBetween(ShelfAt(0.19f), mountAt).Succeeded;
                     // A Lamp sends nothing, and a Button receives nothing.
                     bool badRejected = !build.WireBetween(ShelfAt(0.33f), ShelfAt(0.19f)).Succeeded &&
                         !build.WireBetween(ShelfAt(0.26f), ShelfAt(0.19f)).Succeeded &&
-                        scenes.ActiveSandbox.Wires.Count == 3;
+                        scenes.ActiveSandbox.Wires.Count == 4;
                     await build.LeaveAsync();
                     for (int frame = 0; frame < 30; frame++)
                         await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
@@ -671,6 +684,8 @@ public static class ProductionBootstrapJourneyProbe
                     float loadRestY = loadBody.GlobalPosition.Y;
                     float loadHighestY = loadRestY;
                     int shovesBefore = sandbox.PistonShoveCount;
+                    int mountShotsBefore = sandbox.WeaponMountShots;
+                    int roundsBefore = sandbox.CursorGuns.ProjectilesLaunched;
                     bool pressed = build.PressButtonAt(sandbox.BuiltParts[button].GlobalPosition) &&
                         !build.PressButtonAt(lampBody.GlobalPosition);
                     int litAfter = -1;
@@ -684,6 +699,10 @@ public static class ProductionBootstrapJourneyProbe
                     // The Button's other wire went straight to the Piston: it fired once, at once,
                     // and threw the block off its head.
                     bool shoved = sandbox.PistonShoveCount == shovesBefore + 1 && loadRestY - loadHighestY > 20.0f;
+                    // The same press pulled the mounted pistol's trigger: one shot, one round out of
+                    // the barrel, and the mount kicked.
+                    bool mountFired = sandbox.WeaponMountShots == mountShotsBefore + 1 &&
+                        sandbox.CursorGuns.ProjectilesLaunched > roundsBefore;
                     // The press switched the Timer on; its first beat is one interval (default one
                     // second) later: at 120 Hz the lamp lights a little after 120 ticks.
                     bool timed = litAfter >= Engine.PhysicsTicksPerSecond - 5 &&
@@ -699,7 +718,7 @@ public static class ProductionBootstrapJourneyProbe
                     bool wiresShownInBuild = sandbox.WiresVisible;
                     bool litBeforeCut = lampBody.Lit;
                     Vector2 wireMiddle = (sandbox.BuiltParts[timer].GlobalPosition + lampBody.GlobalPosition) * 0.5f;
-                    bool cut = build.RemoveLinkAt(wireMiddle) && scenes.ActiveSandbox.Wires.Count == 2;
+                    bool cut = build.RemoveLinkAt(wireMiddle) && scenes.ActiveSandbox.Wires.Count == 3;
                     await build.LeaveAsync();
                     for (int frame = 0; frame < Engine.PhysicsTicksPerSecond * 3; frame++)
                         await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
@@ -735,7 +754,7 @@ public static class ProductionBootstrapJourneyProbe
                         beamBody.Definition.Width == 192.0f && beamBody.Definition.Height == 24.0f &&
                         Mathf.IsEqualApprox(beamBody.Mass, beamMass * 3.0f) &&
                         beamBody.ContainsPoint(beamBody.GlobalPosition + new Vector2(90.0f, 0.0f));
-                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, beamPart, weight, shelf })
+                    foreach (SandboxPartId device in new[] { button, timer, lamp, piston, load, mount, beamPart, weight, shelf })
                     {
                         if (build.SelectPlaced(device))
                             build.DeleteSelectedPart();
@@ -743,11 +762,11 @@ public static class ProductionBootstrapJourneyProbe
                     bool cleared = scenes.ActiveSandbox.Wires.Count == 0 && scenes.ActiveSandbox.Count == 1;
                     await build.LeaveAsync();
 
-                    buildDevicesWork = shelfBuilt && triggerHidden && wired && badRejected && pressed && timed && shoved &&
+                    buildDevicesWork = shelfBuilt && mountHiddenUnowned && mountOffered && mountAimed && mountFired && wired && badRejected && pressed && timed && shoved &&
                         running && wiresHiddenInPlay && wiresShownInBuild && cut && stayedLit && stopped &&
                         pressedByWeight && resized && cleared && !scenes.IsDirty;
                     Log.Info("BootstrapJourney",
-                        $"build devices: triggerHidden={triggerHidden} wired={wired} badRejected={badRejected} " +
+                        $"build devices: mountHidden={mountHiddenUnowned} mountOffered={mountOffered} mountAimed={mountAimed} mountFired={mountFired} wired={wired} badRejected={badRejected} " +
                         $"pressed={pressed} litAfter={litAfter} shoved={shoved} rise={loadRestY - loadHighestY:F1} " +
                         $"running={running} wiresHiddenInPlay={wiresHiddenInPlay} wiresShownInBuild={wiresShownInBuild} " +
                         $"cut={cut} stayedLit={stayedLit} stopped={stopped} pressedByWeight={pressedByWeight} contactPresses={sandbox.ButtonContactPresses} " +

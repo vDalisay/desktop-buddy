@@ -32,6 +32,9 @@ public partial class SandboxPartBody : RigidBody2D
     // bouncing on it presses it once rather than chattering.
     private const double ButtonReleaseSeconds = 0.15;
 
+    // A weapon mount's kick, and the fastest it can be made to fire.
+    private const double WeaponRecoilSeconds = 0.25;
+
     private bool _selected;
     private bool _frozen;
     private bool _drawsShape = true;
@@ -46,6 +49,8 @@ public partial class SandboxPartBody : RigidBody2D
     private int _buttonFlashTicks;
     private int _buttonReleaseTicks = 1;
     private int _strokeTick;
+    private int _recoilTicks;
+    private int _recoilLength = 1;
     private int _outTicks = 1;
     private int _holdTicks = 1;
     private int _backTicks = 1;
@@ -95,8 +100,33 @@ public partial class SandboxPartBody : RigidBody2D
     /// <summary>How far a Button's cap is down, 0 up to 1 fully pressed.</summary>
     public float ButtonPress { get; private set; }
 
-    /// <summary>Whatever a device's model moves: a Piston's head travel, a Button's press.</summary>
-    public float DeviceMotion => _definition.Device == SandboxDeviceKind.Button ? ButtonPress : PistonExtension;
+    /// <summary>How far a weapon mount is through its recoil, 1 the moment it fires and 0 at rest.</summary>
+    public float WeaponRecoil => _recoilTicks / (float)Math.Max(1, _recoilLength);
+
+    /// <summary>True while a weapon mount is still working its last shot; pulses meanwhile are ignored.</summary>
+    public bool WeaponBusy => _recoilTicks > 0;
+
+    /// <summary>
+    /// Fires the mounted gun: false while the last shot is still being worked, exactly as a Piston
+    /// refuses pulses until its head is home.
+    /// </summary>
+    public bool StartWeaponShot()
+    {
+        if (_definition.Device != SandboxDeviceKind.WeaponTrigger || _recoilTicks > 0)
+            return false;
+        _recoilLength = Math.Max(1, (int)Math.Round(WeaponRecoilSeconds * Engine.PhysicsTicksPerSecond));
+        _recoilTicks = _recoilLength;
+        QueueRedraw();
+        return true;
+    }
+
+    /// <summary>Whatever a device's model moves: a Piston's head travel, a Button's press, a mount's kick.</summary>
+    public float DeviceMotion => _definition.Device switch
+    {
+        SandboxDeviceKind.Button => ButtonPress,
+        SandboxDeviceKind.WeaponTrigger => WeaponRecoil,
+        _ => PistonExtension,
+    };
 
     /// <summary>Build/Edit's selection outline. Presentation only; the document owns nothing of it.</summary>
     public bool Selected
@@ -225,9 +255,17 @@ public partial class SandboxPartBody : RigidBody2D
         return true;
     }
 
-    /// <summary>Moves a Piston's stroke on by one routed tick; the head shape moves with it.</summary>
-    public void AdvancePistonStroke()
+    /// <summary>
+    /// One routed tick of this part's own motion: a Piston's stroke (the head shape moves with it)
+    /// and a weapon mount's recoil settling back.
+    /// </summary>
+    public void AdvanceDevice()
     {
+        if (_recoilTicks > 0)
+        {
+            _recoilTicks--;
+            QueueRedraw();
+        }
         if (_strokeTick == 0)
             return;
         _strokeTick++;

@@ -20,7 +20,20 @@ public static class SandboxPartCatalogue
     public static SemanticDefinitionId Timer { get; } = SemanticDefinitionId.CreateCore("part/timer");
     public static SemanticDefinitionId Piston { get; } = SemanticDefinitionId.CreateCore("part/piston");
     public static SemanticDefinitionId WeaponTrigger { get; } = SemanticDefinitionId.CreateCore("part/weapon_trigger");
+    public static SemanticDefinitionId ShotgunTrigger { get; } = SemanticDefinitionId.CreateCore("part/shotgun_trigger");
+    public static SemanticDefinitionId NerfTrigger { get; } = SemanticDefinitionId.CreateCore("part/nerf_trigger");
     public static SemanticDefinitionId Lamp { get; } = SemanticDefinitionId.CreateCore("part/lamp");
+
+    /// <summary>
+    /// The gun a mount holds, or null for a part that holds none. Which mounts a player may place is
+    /// the shop's business: a mount is only offered for a gun that player owns, so building one is
+    /// never a way around buying the gun.
+    /// </summary>
+    public static Tools.ToolId? WeaponOf(SemanticDefinitionId id) =>
+        id == WeaponTrigger ? Tools.ToolId.Pistol
+        : id == ShotgunTrigger ? Tools.ToolId.Shotgun
+        : id == NerfTrigger ? Tools.ToolId.NerfBlaster
+        : null;
 
     /// <summary>Definitions in palette order.</summary>
     public static IReadOnlyList<SandboxPartDefinition> Definitions { get; } =
@@ -54,10 +67,18 @@ public static class SandboxPartCatalogue
             "Shoves out hard when a pulse comes in, then pulls back.",
             SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 32.0f, Height: 32.0f, Mass: 8.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.Piston),
-        new(WeaponTrigger, "Weapon Trigger",
-            "Holds a gun and pulls its trigger every time a pulse comes in.",
+        new(WeaponTrigger, "Pistol Mount",
+            "Holds your pistol and pulls its trigger every time a pulse comes in. It shoots the way it is turned.",
             SandboxPartShape.Box, SandboxPartMaterial.Metal,
             Width: 48.0f, Height: 24.0f, Mass: 5.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.WeaponTrigger),
+        new(ShotgunTrigger, "Shotgun Mount",
+            "Holds your shotgun and pulls its trigger every time a pulse comes in. It shoots the way it is turned.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 56.0f, Height: 26.0f, Mass: 7.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.WeaponTrigger),
+        new(NerfTrigger, "Nerf Mount",
+            "Holds your nerf blaster and pulls its trigger every time a pulse comes in. It shoots the way it is turned.",
+            SandboxPartShape.Box, SandboxPartMaterial.Metal,
+            Width: 48.0f, Height: 24.0f, Mass: 4.0f, Bounce: 0.02f, Friction: 0.8f, SandboxDeviceKind.WeaponTrigger),
         new(Lamp, "Lamp",
             "Lights up with one pulse and goes out with the next.",
             SandboxPartShape.Box, SandboxPartMaterial.Metal,

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using DesktopBuddy.Domain.Content;
 using DesktopBuddy.Domain.Sandbox;
 using DesktopBuddy.Sandbox;
 using Godot;
@@ -22,6 +23,9 @@ public partial class SandboxRoot
 
     /// <summary>Pistons that went out, for verification.</summary>
     public int PistonShoveCount { get; private set; }
+
+    /// <summary>Shots a built weapon mount fired, for verification.</summary>
+    public int WeaponMountShots { get; private set; }
     private SandboxSignalNetwork? _signals;
     private SandboxDocument? _signalDocument;
     private long _signalRevision = -1;
@@ -117,14 +121,18 @@ public partial class SandboxRoot
         signals.Tick(_deviceCommands);
         foreach (SandboxDeviceCommand command in _deviceCommands)
         {
-            if (command.Action == SandboxDeviceAction.PistonExtend &&
-                _builtParts.TryGetValue(command.Part, out SandboxPartBody? piston) &&
-                GodotObject.IsInstanceValid(piston))
+            if (!_builtParts.TryGetValue(command.Part, out SandboxPartBody? device) || !GodotObject.IsInstanceValid(device))
+                continue;
+            switch (command.Action)
             {
-                ExtendPiston(piston);
+                case SandboxDeviceAction.PistonExtend:
+                    ExtendPiston(device);
+                    break;
+                case SandboxDeviceAction.WeaponFire:
+                    FireWeaponMount(device);
+                    break;
             }
         }
-        // Weapon Trigger commands arrive with that device's own packet.
 
         // Lamps show the network's state rather than replaying its commands, so a lamp rebuilt by
         // a cast change or a Scene switch comes back lit if it was lit.
@@ -135,12 +143,33 @@ public partial class SandboxRoot
             if (body.Definition.Device == SandboxDeviceKind.Lamp)
                 body.Lit = signals.IsLampLit(partId);
             else
-                body.AdvancePistonStroke();
+                body.AdvanceDevice();
         }
 
         // Wires follow the devices they join, and devices move.
         if (DocumentWires.Count > 0)
             _linkView?.QueueRedraw();
+    }
+
+    /// <summary>
+    /// A weapon mount pulls its gun's trigger (NF-4D): one shot out of the barrel, along the way the
+    /// part is turned. The mount only fires the gun it holds, and only while the player owns that
+    /// gun — building a mount is never a way around the shop — and its own recoil is the fastest it
+    /// can be made to fire, so a quick Timer cannot turn a pistol into a machine gun.
+    /// </summary>
+    private void FireWeaponMount(SandboxPartBody mount)
+    {
+        if (SandboxPartCatalogue.WeaponOf(mount.Definition.Id) is not { } weapon ||
+            !GodotObject.IsInstanceValid(CursorGuns) ||
+            !Economy.IsUnlocked(ContentIds.ForTool(weapon)) ||
+            !mount.StartWeaponShot())
+        {
+            return;
+        }
+        Vector2 forward = Vector2.Right.Rotated(mount.GlobalRotation);
+        Vector2 barrel = mount.GlobalPosition + forward * (mount.Definition.Width * 0.5f);
+        if (CursorGuns.FireMounted(weapon, barrel, forward))
+            WeaponMountShots++;
     }
 
     /// <summary>
