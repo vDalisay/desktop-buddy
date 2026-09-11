@@ -247,6 +247,7 @@
         { "predicate": "build_surface_supports_buddy", "equals": true },
         { "predicate": "build_edits_apply", "equals": true },
         { "predicate": "build_links_work", "equals": true },
+        { "predicate": "build_links_survive_scene_switch", "equals": true },
         { "predicate": "work_preserved", "equals": true }
       ]
     },

@@ -332,6 +332,7 @@ public static class ProductionBootstrapJourneyProbe
             bool buildSurfaceSupportsBuddy = !buildRoom;
             bool buildEditsApply = !buildRoom;
             bool buildLinksWork = !buildRoom;
+            bool buildLinksSurviveSceneSwitch = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
             if (buildRoom)
@@ -496,6 +497,61 @@ public static class ProductionBootstrapJourneyProbe
                         sandbox.BuiltLinkCount == 1;
                     await build.LeaveAsync();
                     buildLinksWork = created && played && cleaned && !scenes.IsDirty;
+                }
+
+                // NF-3 acceptance: switch Scenes and come back. Each room's parts and links are rebuilt
+                // from its own document, and the outgoing room's joints go with its parts rather than
+                // pinning freed bodies. A Wheel hinged to the room gives the switch a real joint to move.
+                {
+                    int PinCount() => sandbox.GetChildren().Count(node => node is PinJoint2D);
+
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    Vector2 pinPoint = bounds.Position + bounds.Size * new Vector2(0.8f, 0.4f);
+                    build.SelectPart(SandboxPartCatalogue.Wheel);
+                    build.PlaceSelectedPartAt(pinPoint);
+                    SandboxPartId pinnedWheel = build.SelectedPlacedPart ?? default;
+                    bool pinned = build.HingeAt(pinPoint).Succeeded;
+                    await build.LeaveAsync();
+
+                    SceneId builtSceneId = scenes.ActiveSceneId;
+                    int parts = scenes.ActiveSandbox.Count;
+                    int links = scenes.ActiveSandbox.Links.Count;
+                    int pins = PinCount();
+                    SandboxPartBody outgoingWheel = sandbox.BuiltParts[pinnedWheel];
+
+                    bool RoomMatches() =>
+                        sandbox.BuiltParts.Count == parts && sandbox.BuiltLinkCount == links &&
+                        scenes.ActiveSandbox.Count == parts && scenes.ActiveSandbox.Links.Count == links &&
+                        PinCount() == pins;
+
+                    SceneId copyId = strip is null ? default : await strip.DuplicateActiveSceneAsync();
+                    bool toCopy = copyId.IsValid && (await sandbox.SwitchSceneAsync(copyId)).Succeeded;
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    bool copyRoom = toCopy && RoomMatches() &&
+                        (!GodotObject.IsInstanceValid(outgoingWheel) || !outgoingWheel.IsInsideTree());
+
+                    bool back = (await sandbox.SwitchSceneAsync(builtSceneId)).Succeeded;
+                    for (int frame = 0; frame < 30; frame++)
+                        await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.PhysicsFrame);
+                    // Hinged to the room, the wheel may turn but must stay on its pin.
+                    bool wheelOnPin = sandbox.BuiltParts.TryGetValue(pinnedWheel, out SandboxPartBody? wheelBack) &&
+                        wheelBack!.GlobalPosition.DistanceTo(pinPoint) < 4.0f;
+                    bool returned = back && scenes.ActiveSceneId == builtSceneId && RoomMatches() && wheelOnPin;
+
+                    // Take the wheel out again so the restart phase finds the room it expects.
+                    build.Toggle();
+                    await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    bool removed = build.SelectPlaced(pinnedWheel) && build.DeleteSelectedPart() &&
+                        sandbox.BuiltLinkCount == links - 1 && PinCount() == pins - 1;
+                    await build.LeaveAsync();
+                    runtime = sandbox.ActiveSceneRuntime;
+
+                    buildLinksSurviveSceneSwitch = pinned && pins == 1 && copyRoom && returned && removed &&
+                        !scenes.IsDirty;
+                    Log.Info("BootstrapJourney",
+                        $"build switch: pinned={pinned} parts={parts} links={links} pins={pins} toCopy={toCopy} " +
+                        $"copyRoom={copyRoom} back={back} wheelOnPin={wheelOnPin} returned={returned} removed={removed}");
                 }
 
                 if (runtime is { Actors.Count: > 0 } &&
@@ -711,6 +767,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_surface_supports_buddy"] = buildSurfaceSupportsBuddy,
                 ["build_edits_apply"] = buildEditsApply,
                 ["build_links_work"] = buildLinksWork,
+                ["build_links_survive_scene_switch"] = buildLinksSurviveSceneSwitch,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,
