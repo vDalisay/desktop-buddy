@@ -335,6 +335,7 @@ public static class ProductionBootstrapJourneyProbe
             bool buildLinksSurviveSceneSwitch = !buildRoom;
             bool buildDevicesWork = !buildRoom;
             bool buildLinksSnap = !buildRoom;
+            bool buildPreviewPlays = !buildRoom;
             bool builtRoomRestored = !expectBuiltRoom;
 
             if (buildRoom)
@@ -376,6 +377,59 @@ public static class ProductionBootstrapJourneyProbe
                     build.SetTool(BuildTool.Wire);
                     await Picture("build_palette_wire.png");
                     build.SetTool(BuildTool.Parts);
+                }
+
+                // The preview can be played with (owner note 2026-09-11): a wired Button lights its
+                // Lamp, a Piston's head comes out, and a weak rope snaps when its block is yanked.
+                // Headless drops mouse events, so the preview is handed them directly.
+                if (build.FindChild("BuildModePartPreview", recursive: true, owned: false) is SandboxPartPreview playable &&
+                    playable.FindChild("PreviewViewport", recursive: true, owned: false) is SandboxModelStage stage)
+                {
+                    async Task Frames(int count)
+                    {
+                        for (int frame = 0; frame < count; frame++)
+                            await sandbox.ToSignal(sandbox.GetTree(), SceneTree.SignalName.ProcessFrame);
+                    }
+                    void Mouse(Vector2 model, bool? pressed)
+                    {
+                        Vector2 at = stage.ToPixel(model) + new Vector2(2.0f, 2.0f);   // the well's inset
+                        playable._GuiInput(pressed is { } down
+                            ? new InputEventMouseButton { ButtonIndex = MouseButton.Left, Pressed = down, Position = at }
+                            : new InputEventMouseMotion { Position = at });
+                    }
+
+                    build.SetTool(BuildTool.Wire);
+                    await Frames(2);
+                    Mouse(new Vector2(-46.0f, -8.0f), true);
+                    Mouse(new Vector2(-46.0f, -8.0f), false);
+                    await Frames(2);
+                    bool lampLit = playable.FindChild("Glow", recursive: true, owned: false) is OmniLight3D { Visible: true };
+
+                    build.SelectPart(SandboxPartCatalogue.Piston);
+                    await Frames(2);
+                    Mouse(Vector2.Zero, true);
+                    Mouse(Vector2.Zero, false);
+                    await Frames(4);
+                    bool pistonMoved = playable.FindChild("Rod", recursive: true, owned: false) is Node3D { Visible: true };
+
+                    build.SetTool(BuildTool.Rope);
+                    build.TuneLink(0.25f, 0.3f, 0.0f);
+                    await Frames(2);
+                    var block = new Vector2(0.0f, -SandboxPaletteModels.RopeHang(0.3f));
+                    Mouse(block, true);
+                    Mouse(block + new Vector2(0.0f, -200.0f), null);
+                    bool ropeSnapped = false;
+                    ulong until = Time.GetTicksMsec() + 3000;
+                    while (!ropeSnapped && Time.GetTicksMsec() < until)
+                    {
+                        await Frames(1);
+                        ropeSnapped = playable.FindChild("Cord", recursive: true, owned: false) is Node3D { Visible: false };
+                    }
+                    Mouse(block, false);
+                    build.TuneLink(1.0f, 0.1f, 0.0f);   // back to the Strong Rope the rest of the journey expects
+                    build.SetTool(BuildTool.Parts);
+                    buildPreviewPlays = lampLit && pistonMoved && ropeSnapped;
+                    GD.Print($"[Journey] build preview: lamp {lampLit}, piston {pistonMoved}, rope snapped {ropeSnapped}");
                 }
 
                 build.SelectPart(SandboxPartCatalogue.WoodBeam);
@@ -962,6 +1016,7 @@ public static class ProductionBootstrapJourneyProbe
                 ["build_links_survive_scene_switch"] = buildLinksSurviveSceneSwitch,
                 ["build_devices_work"] = buildDevicesWork,
                 ["build_links_snap"] = buildLinksSnap,
+                ["build_preview_plays"] = buildPreviewPlays,
                 ["built_room_restored"] = builtRoomRestored,
                 ["scene_restart_prepared"] = restartPrepared,
                 ["scene_restart_restored"] = restartRestored,

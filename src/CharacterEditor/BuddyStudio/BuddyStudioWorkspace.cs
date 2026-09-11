@@ -1293,6 +1293,7 @@ public partial class BuddyStudioWorkspace : VBoxContainer
             FocusMode = FocusModeEnum.All,
             CustomMinimumSize = new Vector2(96, 30),
         };
+        UI.Win98.Win98Icons.Decorate(button);
         button.Pressed += pressed;
         parent.AddChild(button);
         return button;

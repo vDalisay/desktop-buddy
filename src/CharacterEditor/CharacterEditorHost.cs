@@ -736,7 +736,7 @@ public partial class CharacterEditorHost : CanvasLayer
 
     private Button AddAction(Control parent, string text, Func<Task> action)
     {
-        Button button = Button(text, text.Replace(" ", string.Empty) + "Button");
+        Button button = UI.Win98.Win98Icons.Decorate(Button(text, text.Replace(" ", string.Empty) + "Button"));
         button.Pressed += async () => await action();
         parent.AddChild(button);
         return button;

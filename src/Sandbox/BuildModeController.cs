@@ -315,12 +315,13 @@ public partial class BuildModeController : Node
         var previewGroup = new Win98GroupBox { Name = "BuildModePreviewGroup" };
         previewGroup.Configure("Preview");
         right.AddChild(previewGroup);
-        // What it actually is before it is in the room: the 3D thing that will be placed.
+        // What it actually is before it is in the room: the 3D thing that will be placed, and a
+        // place to try it — click it, drag it, yank it.
         _preview = new SandboxPartPreview
         {
             Name = "BuildModePartPreview",
             CustomMinimumSize = new Vector2(220, 120),
-            MouseFilter = Control.MouseFilterEnum.Ignore,
+            MouseFilter = Control.MouseFilterEnum.Stop,
         };
         previewGroup.Content.AddChild(_preview);
 

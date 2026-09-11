@@ -60,6 +60,20 @@ public partial class SandboxModelStage : SubViewport
         Frame();
     }
 
+    /// <summary>A point in this view's pixels, in the shown model's own units: y up, the view's centre at 0.</summary>
+    public Vector2 ToModel(Vector2 pixel)
+    {
+        float unitsPerPixel = _camera.Size / Mathf.Max(1.0f, Size.Y);
+        return new Vector2((pixel.X - Size.X * 0.5f) * unitsPerPixel, (Size.Y * 0.5f - pixel.Y) * unitsPerPixel);
+    }
+
+    /// <summary>The inverse of <see cref="ToModel"/>: where a model point shows, in this view's pixels.</summary>
+    public Vector2 ToPixel(Vector2 model)
+    {
+        float pixelsPerUnit = Mathf.Max(1.0f, Size.Y) / _camera.Size;
+        return new Vector2(Size.X * 0.5f + model.X * pixelsPerUnit, Size.Y * 0.5f - model.Y * pixelsPerUnit);
+    }
+
     /// <summary>Fits the model, both axes at one scale, never enlarged past <see cref="MaximumZoom"/>.</summary>
     private void Frame()
     {

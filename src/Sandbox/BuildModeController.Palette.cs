@@ -308,7 +308,7 @@ public partial class BuildModeController
         {
             var row = new HBoxContainer();
             row.AddThemeConstantOverride("separation", 8);
-            row.AddChild(new TextureRect { Texture = BuildIcons.Get(icon), StretchMode = TextureRect.StretchModeEnum.KeepCentered, CustomMinimumSize = new Vector2(20, 20) });
+            row.AddChild(new TextureRect { Texture = Win98Icons.Get(icon), StretchMode = TextureRect.StretchModeEnum.KeepCentered, CustomMinimumSize = new Vector2(20, 20) });
             row.AddChild(new Label { Text = text });
             _stats.AddChild(row);
         }

@@ -396,7 +396,7 @@ public partial class CharacterEditorHost
             });
             var buttons = new HBoxContainer { Alignment = BoxContainer.AlignmentMode.Center };
             body.AddChild(buttons);
-            var confirm = new Button { Name = "ResetProgressConfirmButton", Text = "Reset" };
+            var confirm = UI.Win98.Win98Icons.Decorate(new Button { Name = "ResetProgressConfirmButton", Text = "Reset" });
             confirm.Pressed += () =>
             {
                 _sandbox.TrayCommands.ConfirmResetProgress();

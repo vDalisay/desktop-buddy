@@ -1,14 +1,34 @@
 using System.Collections.Generic;
 using Godot;
 
-namespace DesktopBuddy.Sandbox;
+namespace DesktopBuddy.UI.Win98;
 
 /// <summary>
-/// The Build window's small flat icons — sliders, stats and actions — authored here as tiny SVGs in
-/// the Win98 ink-and-fill style and rasterised once. Parts and categories use 3D renders instead.
+/// Small flat icons — the Build window's sliders, stats and actions, and the Delete, Duplicate and
+/// Reset buttons of every other window (owner note 2026-09-11) — authored here as tiny SVGs in the
+/// Win98 ink-and-fill style and rasterised once.
 /// </summary>
-public static class BuildIcons
+public static class Win98Icons
 {
+    /// <summary>
+    /// Gives an action button the icon its label's verb has, if any ("Delete...", "Remove Focused",
+    /// "Reset Room" and so on), so the same action looks the same in every window.
+    /// </summary>
+    public static Button Decorate(Button button)
+    {
+        string verb = button.Text.Split(' ')[0].TrimEnd('.').ToLowerInvariant();
+        string? icon = verb switch
+        {
+            "delete" or "remove" => "delete",
+            "duplicate" => "duplicate",
+            "reset" => "reset",
+            _ => null,
+        };
+        if (icon is not null && button.Icon is null)
+            button.Icon = Get(icon);
+        return button;
+    }
+
     private const string Ink = "#2a2118";
     private static readonly Dictionary<string, Texture2D> Cache = [];
 

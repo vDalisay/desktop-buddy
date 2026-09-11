@@ -1052,7 +1052,7 @@ public partial class EnvironmentDecorator : CanvasLayer
 
     private static Button Action(Control parent, string text, Action action)
     {
-        var button = new Button { Name = $"Environment{text.Replace(" ", string.Empty)}Button", Text = text };
+        var button = UI.Win98.Win98Icons.Decorate(new Button { Name = $"Environment{text.Replace(" ", string.Empty)}Button", Text = text });
         button.Pressed += action;
         parent.AddChild(button);
         return button;

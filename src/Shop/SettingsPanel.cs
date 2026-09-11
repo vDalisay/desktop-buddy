@@ -107,7 +107,7 @@ public partial class SettingsPanel : PanelContainer
         string buttonText = "Open")
     {
         ArgumentNullException.ThrowIfNull(pressed);
-        var button = new Button { Text = buttonText };
+        var button = UI.Win98.Win98Icons.Decorate(new Button { Text = buttonText });
         button.Pressed += pressed;
         DescribedRow(group, label, new Label(), button, description);
         button.TooltipText = description;

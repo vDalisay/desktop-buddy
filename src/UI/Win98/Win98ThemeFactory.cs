@@ -245,10 +245,11 @@ public static class Win98ThemeFactory
         theme.SetIcon("checked", "CheckBox", CheckBoxIcon(checkMark: true));
         theme.SetIcon("unchecked_disabled", "CheckBox", CheckBoxIcon(checkMark: false));
         theme.SetIcon("checked_disabled", "CheckBox", CheckBoxIcon(checkMark: true));
-        theme.SetStylebox("normal", "CheckBox", new StyleBoxEmpty());
-        theme.SetStylebox("hover", "CheckBox", new StyleBoxEmpty());
-        theme.SetStylebox("pressed", "CheckBox", new StyleBoxEmpty());
-        theme.SetStylebox("hover_pressed", "CheckBox", new StyleBoxEmpty());
+        // Every state, disabled included: a missing one falls back to Button's raised frame, which
+        // drew a disabled check box as a button with the box hanging off its edge.
+        var bare = new StyleBoxEmpty { ContentMarginLeft = 3, ContentMarginRight = 3, ContentMarginTop = 2, ContentMarginBottom = 2 };
+        foreach (string state in new[] { "normal", "hover", "pressed", "hover_pressed", "disabled" })
+            theme.SetStylebox(state, "CheckBox", bare);
         theme.SetStylebox("focus", "CheckBox", FocusBox());
 
         // Drop-downs are ordinary raised buttons carrying a black arrow.

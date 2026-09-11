@@ -317,6 +317,7 @@ public partial class Win98PaintUxPolishBootstrap : Node
             CustomMinimumSize = new Vector2(0, 30),
             FocusMode = Control.FocusModeEnum.All,
         };
+        Win98Icons.Decorate(button);
         button.Pressed += OpenDeletePrompt;
         manage.AddChild(button);
         return button;

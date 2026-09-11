@@ -144,7 +144,7 @@ public static class Win98Dialog
 
     public static Button Action(BoxContainer row, string text, Action pressed)
     {
-        var button = new Button { Text = text, CustomMinimumSize = new Vector2(96, 30) };
+        var button = Win98Icons.Decorate(new Button { Text = text, CustomMinimumSize = new Vector2(96, 30) });
         button.Pressed += pressed;
         row.AddChild(button);
         return button;

@@ -240,17 +240,25 @@ public partial class SandboxPartBody : RigidBody2D
         SetPistonExtension(StrokeExtension(_strokeTick));
     }
 
-    private float StrokeExtension(int tick)
+    private float StrokeExtension(int tick) => StrokeCurve(tick, _outTicks, _holdTicks, _backTicks);
+
+    /// <summary>The same stroke by elapsed time, for the Build preview; null once it is over.</summary>
+    public static float? PistonStrokeAt(double seconds) =>
+        seconds > PistonOutSeconds + PistonHoldSeconds + PistonBackSeconds
+            ? null
+            : StrokeCurve(seconds, PistonOutSeconds, PistonHoldSeconds, PistonBackSeconds);
+
+    private static float StrokeCurve(double at, double outLength, double hold, double back)
     {
-        if (tick <= _outTicks)
+        if (at <= outLength)
         {
-            float t = tick / (float)_outTicks;
+            float t = (float)(at / outLength);
             return 1.0f - (1.0f - t) * (1.0f - t); // fast off the mark, settling at full reach
         }
-        if (tick <= _outTicks + _holdTicks)
+        if (at <= outLength + hold)
             return 1.0f;
-        float back = (tick - _outTicks - _holdTicks) / (float)_backTicks;
-        return 1.0f - back * back * (3.0f - 2.0f * back);
+        float b = Mathf.Clamp((float)((at - outLength - hold) / back), 0.0f, 1.0f);
+        return 1.0f - b * b * (3.0f - 2.0f * b);
     }
 
     private void SetPistonExtension(float extension)

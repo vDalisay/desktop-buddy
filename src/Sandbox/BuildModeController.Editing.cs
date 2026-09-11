@@ -557,7 +557,7 @@ public partial class BuildModeController
         {
             Name = $"BuildMode{text}Button",
             Text = text,
-            Icon = BuildIcons.Get(icon),
+            Icon = Win98Icons.Get(icon),
             Alignment = HorizontalAlignment.Left,
             FocusMode = Control.FocusModeEnum.All,
             CustomMinimumSize = new Vector2(104, 30),
@@ -586,7 +586,7 @@ public partial class BuildModeController
         column.AddChild(row);
         row.AddChild(new TextureRect
         {
-            Texture = BuildIcons.Get(icon),
+            Texture = Win98Icons.Get(icon),
             StretchMode = TextureRect.StretchModeEnum.KeepCentered,
             CustomMinimumSize = new Vector2(20, 20),
         });
